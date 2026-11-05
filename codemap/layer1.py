@@ -46,7 +46,20 @@ def load_compile_db(root):
     return units
 
 
-def rewrite_args(args, obj):
+CXX_EXT = (".cc", ".cpp", ".cxx", ".C", ".c++")
+
+
+def pick_compiler(args, src, cc=None):
+    """-fcallgraph-info exists only in GCC; clang (often installed as cc) lacks it."""
+    if cc:
+        return cc
+    first = Path(args[0]).name
+    if "gcc" in first or "g++" in first:
+        return args[0]
+    return "g++" if str(src).endswith(CXX_EXT) else "gcc"
+
+
+def rewrite_args(args, obj, compiler=None):
     """Keep include paths and defines, drop output, optimisation and dep flags."""
     out, skip = [], False
     for a in args[1:]:
@@ -62,7 +75,7 @@ def rewrite_args(args, obj):
     if "-c" not in out:
         out.append("-c")
     dep = obj.with_suffix(".d")
-    return [args[0]] + out + ["-O0", "-fcallgraph-info", "-MMD", "-MF", str(dep), "-o", str(obj)]
+    return [compiler or args[0]] + out + ["-O0", "-fcallgraph-info", "-MMD", "-MF", str(dep), "-o", str(obj)]
 
 
 def parse_deps(dep_path, directory):
@@ -83,13 +96,13 @@ def rel(path, root):
         return str(path)
 
 
-def compile_unit(unit, root, cache):
+def compile_unit(unit, root, cache, cc=None):
     relfile = rel(unit["file"], root)
     key = sha(relfile.encode())[:16]
     obj = cache / f"{key}.o"
     ci = cache / f"{key}.ci"
     meta_path = cache / f"{key}.json"
-    args = rewrite_args(unit["args"], obj)
+    args = rewrite_args(unit["args"], obj, pick_compiler(unit["args"], unit["file"], cc))
     args_hash = sha(json.dumps(unit["args"]).encode())
 
     if meta_path.exists() and ci.exists():
@@ -97,7 +110,10 @@ def compile_unit(unit, root, cache):
         if meta.get("args") == args_hash and all(file_sha(p) == h for p, h in meta["deps"].items()):
             return dict(file=relfile, status="cached", ci=str(ci), src=str(unit["file"]), dir=str(unit["directory"]))
 
-    p = subprocess.run(args, cwd=unit["directory"], capture_output=True, text=True)
+    try:
+        p = subprocess.run(args, cwd=unit["directory"], capture_output=True, text=True)
+    except FileNotFoundError:
+        return dict(file=relfile, status="failed", error=f"{args[0]} not found: codemap needs GCC (-fcallgraph-info)")
     if p.returncode != 0 or not ci.exists():
         return dict(file=relfile, status="failed", error=p.stderr.strip()[-2000:])
     deps = parse_deps(obj.with_suffix(".d"), unit["directory"]) or [str(unit["file"])]
@@ -153,7 +169,7 @@ def parse_ci(path, root, unit_file=None, unit_dir="."):
     return nodes, edges, dropped
 
 
-def build(root, scope=None, jobs=None):
+def build(root, scope=None, jobs=None, cc=None):
     root = Path(root).resolve()
     out = root / ".codemap"
     cache = out / "cache"
@@ -163,7 +179,7 @@ def build(root, scope=None, jobs=None):
         units = [u for u in units if any(rel(u["file"], root).startswith(s.rstrip("/") + "/") for s in scope)]
 
     with ThreadPoolExecutor(jobs or os.cpu_count()) as ex:
-        results = list(ex.map(lambda u: compile_unit(u, root, cache), units))
+        results = list(ex.map(lambda u: compile_unit(u, root, cache, cc), units))
 
     parsed = [parse_ci(r["ci"], root, r["src"], r["dir"]) for r in results if "ci" in r]
     # the same global name defined in several programs (main, a helper copied

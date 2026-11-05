@@ -32,7 +32,10 @@ Python 3.9+ and no runtime dependencies; the `diagram` extra adds Pillow for
 measuring text in the architecture diagram. `--editable` makes a `git pull`
 in the clone take effect without reinstalling.
 
-`gcc` must be on the path. `rsvg-convert` is used to also write a PNG.
+GCC must be installed: `-fcallgraph-info` is a GCC option, so units are
+compiled with `gcc` (or `g++`) even when `compile_commands.json` says `cc` or
+`clang`; use `--cc` to name another GCC. On macOS, where `gcc` is clang, run
+codemap in Linux or a container. `rsvg-convert` is used to also write a PNG.
 
 ## Use
 

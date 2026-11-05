@@ -53,7 +53,7 @@ def cmd_index(a):
     t = time.time()
     root = Path(a.root).resolve()
     scope = a.scope or rules.load_config(root).get("scope")
-    idx = layer1.build(root, scope, a.jobs)
+    idx = layer1.build(root, scope, a.jobs, a.cc or rules.load_config(root).get("cc"))
     idx = rules.run(root, idx, rules.load_config(root))
     idx["root"] = str(root)
     idx["scope"] = scope
@@ -131,6 +131,7 @@ def main(argv=None):
     s = sub.add_parser("index")
     s.add_argument("--scope", nargs="*", help="only translation units under these directories")
     s.add_argument("-j", "--jobs", type=int)
+    s.add_argument("--cc", help="GCC to compile with (default: gcc, or the database's compiler if it is GCC)")
     s.set_defaults(fn=cmd_index)
     for d in ("callers", "callees"):
         s = sub.add_parser(d)
