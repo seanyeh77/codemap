@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codemap"
+version = "0.1.0"
+description = "Static code maps for people and AI: compiler call graph, rule scan, validated tours"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+diagram = ["pillow"]
+
+[project.scripts]
+codemap = "codemap.cli:main"
+
+[tool.setuptools]
+packages = ["codemap"]
