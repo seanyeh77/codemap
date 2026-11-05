@@ -33,14 +33,18 @@ def external(decl_file):
 
 def summarize(index, config=None):
     nodes, edges = index["nodes"], index["edges"]
-    comp_of = lambda nid: component(nodes[nid]["file"], config) if nid in nodes and nodes[nid].get("file") and not nodes[nid]["file"].startswith("/") else None
+    def in_repo(nid):
+        f = nodes.get(nid, {}).get("file") or ""
+        return bool(f) and not f.startswith(("/", "<"))
+
+    comp_of = lambda nid: component(nodes[nid]["file"], config) if in_repo(nid) else None
     comps = defaultdict(lambda: dict(files=set(), funcs=set(), main=[], ctor=[], exported=[]))
     called = set()
     for e in edges:
         if e["source"] == "compiler":
             called.add(e["dst"])
     for nid, n in nodes.items():
-        if n.get("kind") == "site" or not n.get("defined") or not n.get("file") or n["file"].startswith("/"):
+        if n.get("kind") == "site" or not n.get("defined") or not in_repo(nid):
             continue
         c = comps[component(n["file"], config)]
         c["files"].add(n["file"])
@@ -58,11 +62,16 @@ def summarize(index, config=None):
         if not a:
             continue
         b = comp_of(e["dst"])
-        if b is None and e["dst"] in nodes:
-            x = external(nodes[e["dst"]].get("file"))
+        dn = nodes.get(e["dst"], {})
+        if b is None:
+            x = external(dn.get("file"))
             if x:
                 ext[(a, x)].append(e)
-        elif b and b != a:
+        elif b != a and external((dn.get("declared") or "").rsplit(":", 1)[0]):
+            # an external API that another component of the repo interposes
+            x = external(dn["declared"].rsplit(":", 1)[0])
+            ext[(a, f"{x} (interposed by {b})")].append(e)
+        elif b != a:
             calls[(a, b)].append(e)
     rules = [e for e in edges if e["source"] == "rule"]
     for e in rules:
@@ -100,7 +109,8 @@ def render(index, config=None, svg_name=None):
         ex = sorted(name(nodes, x) for x in c["exported"])
         if ex:
             shown = ", ".join(f"`{x}`" for x in ex[:6])
-            entries.append(f"{len(ex)} global functions with no caller in the repo: {shown}" + (", ..." if len(ex) > 6 else ""))
+            entries.append(f"{len(ex)} global function{'s' if len(ex) > 1 else ''} with no caller in the repo: {shown}"
+                           + (", ..." if len(ex) > 6 else ""))
         out.append(f'| {cname} | {len(c["files"])} | {len(c["funcs"])} | {"; ".join(entries) or "-"} |')
     out.append("")
 
@@ -134,10 +144,11 @@ def render(index, config=None, svg_name=None):
          lambda e: f'`{name(nodes, e["src"])}` calls `{e["call"]}` at {loc(e)}')
     env = [e for e in groups["env"] if not e["file"].endswith(".py")]
     rows("Environment variables", env,
-         lambda e: f'`{e["name"]}` is set by `{name(nodes, e["src"])}` at {loc(e)} and read by '
-                   f'`{name(nodes, e["dst"])}` at `{e["read_at"]}`')
+         lambda e: f'`{e["name"]}` is set by `{name(nodes, e["src"])}` at {loc(e)} and read '
+                   + (f'at `{e["read_at"]}`' if nodes.get(e["dst"], {}).get("kind") == "site"
+                      else f'by `{name(nodes, e["dst"])}` at `{e["read_at"]}`'))
     rows("Run by the loader", groups["ctor"],
-         lambda e: f'`{name(nodes, e["dst"])}` is a {e["kind"]}, declared at {loc(e)}')
+         lambda e: f'`{name(nodes, e["dst"])}` is a {e["kind"]}, declared at `{e["file"]}:{e["line"]}-{e.get("defined_at", e["line"])}`')
     rows("Functions stored in pointers", groups["fnptr_assign"],
          lambda e: f'`{name(nodes, e["src"])}` stores `{name(nodes, e["dst"])}` in `{e["slot"]}` at {loc(e)}')
     rows("Indirect calls resolved by rules", groups["indirect"],
@@ -172,7 +183,7 @@ def diagram(index, config, path):
     font = ImageFont.truetype(_font(), 24)
     comps, calls, ext, rules = summarize(index, config)
     names = [c for c in comps if comps[c]["funcs"]]
-    links = Counter()
+    links, started = Counter(), set()
     for (a, b), es in calls.items():
         if a in names and b in names:
             links[(a, b)] += len(es)
@@ -181,48 +192,104 @@ def diagram(index, config, path):
             a, b = component(e["file"], config), component(e["read_at"].rsplit(":", 1)[0], config)
             if a != b and a in names and b in names:
                 links[(a, b)] += 1
+                started.add((a, b))
+    # components that most others call (shared headers, a common library) are
+    # drawn as bars along the bottom instead of drawing every arrow into them
+    callers = defaultdict(set)
+    for a, b in links:
+        callers[b].add(a)
+    shared = []
+    while True:
+        more = [n for n in names if n not in shared and len(callers[n] - set(shared)) >= 2
+                and all(b in shared for (a, b) in links if a == n)]
+        if not more:
+            break
+        shared += sorted(more)
+    shared.reverse()                    # dependencies last, so they sit at the very bottom
+    names = [n for n in names if n not in shared]
+    links = Counter({ab: v for ab, v in links.items() if ab[0] in names and ab[1] in names})
     layer = {n: 0 for n in names}
-    for _ in names:                     # longest path, cycles broken by the iteration limit
+    for _ in names:                     # longest path; cycles stop at the iteration limit
         for (a, b) in links:
             if layer[b] < layer[a] + 1 <= len(names):
                 layer[b] = layer[a] + 1
+    links = Counter({ab: v for ab, v in links.items() if layer[ab[1]] > layer[ab[0]]})
     rows = defaultdict(list)
     for n in sorted(names):
         rows[layer[n]].append(n)
-    BH, GAP_X, PAD = 56, 48, 24
-    lane_gap = 14
-    lanes_per_row = defaultdict(int)
-    for (a, b) in links:
-        lanes_per_row[layer[a]] += 1
-    W = 2 * PAD + max(sum(font.getlength(n) + 48 for n in r) + GAP_X * (len(r) - 1) for r in rows.values())
-    y, boxes, els = PAD + 44, {}, []
-    for li in sorted(rows):
-        r = rows[li]
-        widths = [font.getlength(n) + 48 for n in r]
-        x = (W - sum(widths) - GAP_X * (len(r) - 1)) / 2
-        for n, w in zip(r, widths):
-            boxes[n] = (x, y, w)
-            x += w + GAP_X
-        y += BH + 40 + lane_gap * max(lanes_per_row[li], 1)
-    H = y - 40 - lane_gap * max(lanes_per_row[max(rows)], 1) + PAD + 2
-    for i, ((a, b), _) in enumerate(sorted(links.items(), key=lambda kv: (layer[kv[0][0]], boxes[kv[0][1]][0]))):
+    BH, GAP_X, PAD, LANE = 56, 48, 24, 16
+    layers = sorted(rows)
+    # every edge needs one lane in the gap below its source row (to turn) and,
+    # if it skips rows, one in the gap above its target row (to come back in)
+    order = sorted(links, key=lambda ab: (layer[ab[0]], layer[ab[1]], ab))
+    lanes = defaultdict(list)                      # gap index (below layer i) -> edges
+    long_edges = [ab for ab in order if layer[ab[1]] != layer[ab[0]] + 1]
+    for ab in order:
+        lanes[layer[ab[0]]].append(("out", ab))
+        if ab in long_edges and layer[ab[1]] > 0:
+            lanes[layer[ab[1]] - 1].append(("in", ab))
+    widths = {n: font.getlength(n) + 48 for n in names}
+    row_w = {li: sum(widths[n] for n in rows[li]) + GAP_X * (len(rows[li]) - 1) for li in layers}
+    channel_w = LANE * len(long_edges)
+    inner = max(row_w.values())
+    label_w = max([font.getlength("starts with env") + 24] if started else [0])
+    inner = max(inner, *[font.getlength(f"{n} used by {len(callers[n])} components") + 48 for n in shared]) if shared else inner
+    W = 2 * PAD + inner + (PAD + channel_w if long_edges else 0)
+    y, boxes, gap_top, els = PAD + 44, {}, {}, []
+    for li in layers:
+        x = PAD + (inner - row_w[li]) / 2
+        for n in rows[li]:
+            boxes[n] = (x, y, widths[n])
+            x += widths[n] + GAP_X
+        gap_top[li] = y + BH
+        y += BH + 24 + LANE * len(lanes[li]) + (48 if any(ab in started for _, ab in lanes[li]) else 0)
+    y_bar = gap_top[layers[-1]] + 48 if layers else PAD + 44
+    bars = []
+    for n in shared:
+        bars.append((n, y_bar))
+        y_bar += BH + 16
+    H = (y_bar - 16 if shared else gap_top[layers[-1]]) + PAD + 2
+    lane_y = {}
+    for li, items in lanes.items():
+        for k, item in enumerate(items):
+            lane_y[item] = gap_top[li] + 12 + LANE * k + LANE / 2
+    # spread the ports of each box so that lines leaving or entering it do not overlap
+    outs, ins = defaultdict(list), defaultdict(list)
+    for ab in order:
+        outs[ab[0]].append(ab)
+        ins[ab[1]].append(ab)
+
+    def port(n, ab, side):
+        x, _, w = boxes[n]
+        group = sorted(side[n], key=lambda e: boxes[e[1] if side is outs else e[0]][0])
+        k = group.index(ab)
+        return x + w * (k + 1) / (len(group) + 1)
+    chan_x = {ab: PAD + inner + PAD + LANE * i + LANE / 2 for i, ab in enumerate(long_edges)}
+    for ab in order:
+        a, b = ab
         ax, ay, aw = boxes[a]
         bx, by, bw = boxes[b]
-        lane = sum(1 for (p, q) in sorted(links) if layer[p] == layer[a] and (p, q) < (a, b))
-        x1 = ax + aw / 2 + (lane % 3 - 1) * 12
-        x2 = bx + bw / 2 + (lane % 3 - 1) * 12
-        if layer[b] > layer[a]:
-            mid = ay + BH + 20 + lane * lane_gap
-            pts = [(x1, ay + BH), (x1, mid), (x2, mid), (x2, by)]
-        else:                            # same layer or upward: route around the right side
-            side = W - PAD / 2 - lane * 6
-            pts = [(ax + aw, ay + BH / 2 - 8), (side, ay + BH / 2 - 8), (side, by + BH / 2 + 8), (bx + bw, by + BH / 2 + 8)]
+        x1, x2 = port(a, ab, outs), port(b, ab, ins)
+        y_out = lane_y[("out", ab)]
+        if ab not in long_edges:
+            pts = [(x1, ay + BH), (x1, y_out), (x2, y_out), (x2, by)]
+        else:
+            cx = chan_x[ab]
+            y_in = lane_y[("in", ab)] if layer[b] > 0 else by - LANE
+            pts = [(x1, ay + BH), (x1, y_out), (cx, y_out), (cx, y_in), (x2, y_in), (x2, by)]
+        if ab in started:
+            ly = (pts[-2][1] + by) / 2
+            els.append(f'<text x="{x2 + 12:.0f}" y="{ly + 8.5:.0f}" font-family="Inter" font-size="24" fill="#1a1a1a">starts with env</text>')
         els.append('<polyline points="%s" fill="none" stroke="#333333" stroke-width="2" marker-end="url(#a)"/>'
                    % " ".join(f"{px:.0f},{py:.0f}" for px, py in pts))
     for n, (x, yy, w) in boxes.items():
-        fill = "#6eea9e" if n.startswith("include") else "#adf0c7"
+        fill = "#adf0c7"
         els.append(f'<rect x="{x:.0f}" y="{yy}" width="{w:.0f}" height="{BH}" fill="{fill}" stroke="#1a1a1a" stroke-width="2"/>'
                    f'<text x="{x + w / 2:.0f}" y="{yy + BH / 2 + 8.5}" font-family="Inter" font-size="24" fill="#1a1a1a" text-anchor="middle">{html.escape(n)}</text>')
+    for n, yy in bars:
+        els.append(f'<rect x="{PAD}" y="{yy}" width="{W - 2 * PAD:.0f}" height="{BH}" fill="#6eea9e" stroke="#1a1a1a" stroke-width="2"/>'
+                   f'<text x="{W / 2:.0f}" y="{yy + BH / 2 + 8.5}" font-family="Inter" font-size="24" fill="#1a1a1a" '
+                   f'text-anchor="middle">{html.escape(n)} used by {len(callers[n])} components</text>')
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:.0f}" height="{H:.0f}" viewBox="0 0 {W:.0f} {H:.0f}">'
            f'<rect x="1" y="1" width="{W - 2:.0f}" height="{H - 2:.0f}" fill="#e7e7e7" stroke="#1a1a1a" stroke-width="2"/>'
            f'<text x="16" y="{26 + 8.5}" font-family="Inter" font-size="24" fill="#1a1a1a">Repository</text>'

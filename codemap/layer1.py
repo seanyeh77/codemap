@@ -75,6 +75,8 @@ def parse_deps(dep_path, directory):
 
 
 def rel(path, root):
+    if "<" in str(path):                 # <built-in>, <command-line>
+        return str(path)[str(path).index("<"):]
     try:
         return str(Path(path).resolve().relative_to(root))
     except ValueError:
@@ -93,7 +95,7 @@ def compile_unit(unit, root, cache):
     if meta_path.exists() and ci.exists():
         meta = json.loads(meta_path.read_text())
         if meta.get("args") == args_hash and all(file_sha(p) == h for p, h in meta["deps"].items()):
-            return dict(file=relfile, status="cached", ci=str(ci), src=str(unit["file"]))
+            return dict(file=relfile, status="cached", ci=str(ci), src=str(unit["file"]), dir=str(unit["directory"]))
 
     p = subprocess.run(args, cwd=unit["directory"], capture_output=True, text=True)
     if p.returncode != 0 or not ci.exists():
@@ -101,7 +103,7 @@ def compile_unit(unit, root, cache):
     deps = parse_deps(obj.with_suffix(".d"), unit["directory"]) or [str(unit["file"])]
     meta_path.write_text(json.dumps(dict(args=args_hash, deps={d: file_sha(d) for d in deps})))
     obj.unlink(missing_ok=True)
-    return dict(file=relfile, status="compiled", ci=str(ci), src=str(unit["file"]))
+    return dict(file=relfile, status="compiled", ci=str(ci), src=str(unit["file"]), dir=str(unit["directory"]))
 
 
 def find_definition(src_path, name):
@@ -121,7 +123,7 @@ def find_definition(src_path, name):
     return None
 
 
-def parse_ci(path, root, unit_file=None):
+def parse_ci(path, root, unit_file=None, unit_dir="."):
     nodes, edges, dropped = {}, [], 0
     for line in Path(path).read_text().splitlines():
         m = NODE_RE.match(line)
@@ -129,11 +131,11 @@ def parse_ci(path, root, unit_file=None):
             title, label, decl = m.groups()
             name, _, loc = label.partition("\\n")
             lm = LOC_RE.match(loc)
-            node = dict(name=name, file=rel(lm.group(1), root) if lm else loc,
+            node = dict(name=name, file=rel(Path(unit_dir) / lm.group(1), root) if lm else loc,
                         line=int(lm.group(2)) if lm else None, defined=decl is None)
             # GCC labels a definition with its first declaration, often a
             # prototype in a header; the body is in this unit's source file
-            if node["defined"] and unit_file and lm and Path(lm.group(1)).resolve() != Path(unit_file):
+            if node["defined"] and unit_file and lm and (Path(unit_dir) / lm.group(1)).resolve() != Path(unit_file):
                 line_no = find_definition(unit_file, name)
                 if line_no:
                     node.update(file=rel(unit_file, root), line=line_no, declared=node["file"] + f":{node['line']}")
@@ -146,7 +148,7 @@ def parse_ci(path, root, unit_file=None):
             if not lm:          # calls the compiler inserted itself, e.g. __stack_chk_fail
                 dropped += 1
                 continue
-            edges.append(dict(src=src, dst=dst, file=rel(lm.group(1), root), line=int(lm.group(2)), col=int(lm.group(3)),
+            edges.append(dict(src=src, dst=dst, file=rel(Path(unit_dir) / lm.group(1), root), line=int(lm.group(2)), col=int(lm.group(3)),
                               kind="indirect" if dst == INDIRECT else "call", source="compiler"))
     return nodes, edges, dropped
 
@@ -163,11 +165,21 @@ def build(root, scope=None, jobs=None):
     with ThreadPoolExecutor(jobs or os.cpu_count()) as ex:
         results = list(ex.map(lambda u: compile_unit(u, root, cache), units))
 
+    parsed = [parse_ci(r["ci"], root, r["src"], r["dir"]) for r in results if "ci" in r]
+    # the same global name defined in several programs (main, a helper copied
+    # into two tools) would merge into one node; qualify those with the file
+    def_files = {}
+    for n, _, _ in parsed:
+        for k, v in n.items():
+            if v["defined"] and ":" not in k:
+                def_files.setdefault(k, set()).add(v["file"])
+    dup = {k for k, fs in def_files.items() if len(fs) > 1}
     nodes, edges, dropped = {}, [], 0
-    for r in results:
-        if "ci" not in r:
-            continue
-        n, e, d = parse_ci(r["ci"], root, r["src"])
+    for n, e, d in parsed:
+        local = {k: f'{v["file"]}:{k}' for k, v in n.items() if k in dup and v["defined"]}
+        n = {local.get(k, k): v for k, v in n.items()}
+        for x in e:
+            x["src"], x["dst"] = local.get(x["src"], x["src"]), local.get(x["dst"], x["dst"])
         dropped += d
         for k, v in n.items():
             # a definition wins over a declaration seen in another unit
@@ -181,7 +193,7 @@ def build(root, scope=None, jobs=None):
             seen.add(k)
             uniq.append(e)
     edges = sorted(uniq, key=lambda e: (e["file"], e["line"], e["src"], e["dst"]))
-    units_out = [{k: v for k, v in r.items() if k not in ("ci", "src")} for r in results]
+    units_out = [{k: v for k, v in r.items() if k not in ("ci", "src", "dir")} for r in results]
     stats = dict(units=len(units), compiled=sum(r["status"] == "compiled" for r in results),
                  cached=sum(r["status"] == "cached" for r in results),
                  failed=sum(r["status"] == "failed" for r in results),

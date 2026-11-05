@@ -1,0 +1,2 @@
+CFLAGS := -O2 -Iinclude
+TEST_FLAGS := -DQUEUE_SLOTS=4u

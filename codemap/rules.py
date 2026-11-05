@@ -144,10 +144,10 @@ def rule_ctor(c):
             m = ATTR_RE.search(code)
             if not m:
                 continue
-            nxt = [nid for s, nid in defs if i <= s <= i + 3]
+            nxt = [(s, nid) for s, nid in defs if i <= s <= i + 3]
             if nxt:
                 src = c.site(f, i, "loader " + m.group(1))
-                c.add("ctor", m.group(1), src, nxt[0], f, i)
+                c.add("ctor", m.group(1), src, nxt[0][1], f, i, defined_at=nxt[0][0])
 
 
 def _literal_at(raw, code, m):
@@ -258,7 +258,7 @@ def rule_cross_lang(c, macros):
 
 def _next_assignment(src_lines, i):
     """For a mention in a comment or docstring, the module-level name assigned next."""
-    for j in range(i, min(i + 8, len(src_lines))):
+    for j in range(i - 1, min(i + 8, len(src_lines))):
         m = re.match(r"^([A-Za-z_]\w*)\s*(?::[^=]*)?=", src_lines[j])
         if m:
             return f"{m.group(1)}:{j + 1}"
