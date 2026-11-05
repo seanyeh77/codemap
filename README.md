@@ -25,8 +25,12 @@ The map has four layers:
 ## Install
 
 ```bash
-pip install -e .            # Python 3.9+, no dependencies; Pillow for the diagram
+uv tool install --editable './codemap[diagram]'   # from the directory that holds the clone
 ```
+
+Python 3.9+ and no runtime dependencies; the `diagram` extra adds Pillow for
+measuring text in the architecture diagram. `--editable` makes a `git pull`
+in the clone take effect without reinstalling.
 
 `gcc` must be on the path. `rsvg-convert` is used to also write a PNG.
 
