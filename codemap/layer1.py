@@ -169,6 +169,16 @@ def parse_ci(path, root, unit_file=None, unit_dir="."):
     return nodes, edges, dropped
 
 
+def default_jobs():
+    """CPUs this process may use, capped at 8: login nodes often report
+    every core of the machine while limiting each user to a few."""
+    try:
+        n = len(os.sched_getaffinity(0))
+    except AttributeError:
+        n = os.cpu_count() or 1
+    return max(1, min(n, 8))
+
+
 def build(root, scope=None, jobs=None, cc=None):
     root = Path(root).resolve()
     out = root / ".codemap"
@@ -178,7 +188,7 @@ def build(root, scope=None, jobs=None, cc=None):
     if scope:
         units = [u for u in units if any(rel(u["file"], root).startswith(s.rstrip("/") + "/") for s in scope)]
 
-    with ThreadPoolExecutor(jobs or os.cpu_count()) as ex:
+    with ThreadPoolExecutor(jobs or default_jobs()) as ex:
         results = list(ex.map(lambda u: compile_unit(u, root, cache, cc), units))
 
     parsed = [parse_ci(r["ci"], root, r["src"], r["dir"]) for r in results if "ci" in r]

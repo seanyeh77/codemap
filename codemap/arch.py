@@ -179,8 +179,7 @@ def write_codemap(root, text):
 
 def diagram(index, config, path):
     """Components as boxes, layered top to bottom by call direction."""
-    from PIL import ImageFont
-    font = ImageFont.truetype(_font(), 24)
+    font = _measure()
     comps, calls, ext, rules = summarize(index, config)
     names = [c for c in comps if comps[c]["funcs"]]
     links, started = Counter(), set()
@@ -301,8 +300,36 @@ def diagram(index, config, path):
     return path
 
 
-def _font():
-    for p in ("/usr/share/fonts/opentype/inter/Inter-Regular.otf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
-        if Path(p).exists():
-            return p
-    raise FileNotFoundError("no font for measuring text")
+class _Estimate:
+    """Text width without a font file: an average Inter glyph at 24 px."""
+
+    @staticmethod
+    def getlength(text):
+        return 13.2 * len(text)
+
+
+def _measure():
+    """Something with getlength(text) for 24 px text: a real font if one can be
+    found (Inter, DejaVu, whatever fontconfig picks), else an estimate."""
+    try:
+        from PIL import ImageFont
+    except ImportError:
+        return _Estimate()
+    candidates = ["/usr/share/fonts/opentype/inter/Inter-Regular.otf",
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                  "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                  "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+                  "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf"]
+    if shutil.which("fc-match"):
+        r = subprocess.run(["fc-match", "-f", "%{file}", "sans"], capture_output=True, text=True)
+        candidates.append(r.stdout.strip())
+    for p in candidates:
+        if p and Path(p).exists():
+            try:
+                return ImageFont.truetype(p, 24)
+            except OSError:
+                continue
+    try:
+        return ImageFont.load_default(size=24)      # Pillow 10.1 and later
+    except TypeError:
+        return _Estimate()
