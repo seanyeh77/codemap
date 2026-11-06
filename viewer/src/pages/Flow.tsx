@@ -87,7 +87,7 @@ export function Flow(p: FlowProps) {
   const reveal = () => setRevealed({ ...revealed, [selKey]: true })
 
   return (
-    <div className="card pane">
+    <UI.Card className="pane">
       <div className="row">
         <UI.Tabs label="方向" items={[{ id: 'down', label: '往下：呼叫的函式' }, { id: 'up', label: '往上：呼叫者' }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
       </div>
@@ -120,6 +120,6 @@ export function Flow(p: FlowProps) {
           selectedId={selKey} onSelect={(n) => { const c = t.index[n.id]; p.onSel(c.fid, c.edge, n.id) }} />
       </div>
       <p className="small muted">沒有標示的關係都由編譯器確認。</p>
-    </div>
+    </UI.Card>
   )
 }

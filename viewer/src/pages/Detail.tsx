@@ -21,17 +21,16 @@ export function Detail(p: Props) {
   const src = useFuncSource(f, p.isLive, p.sourceId)
   const { root, host } = p.ix.g
   if (!f) {
-    if (!e) return <div className="card detail"><p className="muted">選擇函式以查看原始碼。</p></div>
+    if (!e) return <UI.Card className="detail"><p className="muted">選擇函式以查看原始碼。</p></UI.Card>
     const name = p.ix.nameOf(p.sel.id, e)
     return (
-      <div className="card detail">
-        <h3 className="ttl">{name}</h3>
+      <UI.Card className="detail" title={name}>
         <UI.DetailList items={[
           { label: '種類', value: p.ix.explain(e as Edge).title },   // only the flow tree selects a non-function, with its full edge
           ...(e.ext ? [{ label: '宣告', value: <UI.InlineCode>{e.ext}</UI.InlineCode> }] : []),
           { label: '呼叫位置', value: link(e.f, e.l) },
         ]} />
-      </div>
+      </UI.Card>
     )
   }
   // the edge's line is inside this function only when looking up (it is this function's call)
@@ -42,8 +41,7 @@ export function Detail(p: Props) {
     return <UI.InlineCode href={vscodeURL(file, line, root, host) ?? undefined}>{`${file}:${line}`}</UI.InlineCode>
   }
   return (
-    <div className="card detail">
-      <h3 className="ttl ellipsis" title={f.name}>{f.name}</h3>
+    <UI.Card className="detail" title={<span title={f.name}>{f.name}</span>}>
       <UI.DetailList items={[
         { label: '定義', value: link(f.file, f.line) },
         { label: '元件', value: f.comp },
@@ -61,6 +59,6 @@ export function Detail(p: Props) {
         : !src.data ? <p className="small muted">此快照不含原始碼。</p>
         : <UI.CodeView file={src.data.file} fileHref={vscodeURL(f.file, focus, root, host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
-    </div>
+    </UI.Card>
   )
 }

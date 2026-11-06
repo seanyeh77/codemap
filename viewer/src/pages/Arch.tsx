@@ -20,16 +20,16 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void })
     ? { from: l.a, to: l.b, count: l.n }
     : { from: l.a, to: l.b, inferred: true, label: labelOf(l) })), [g])
   return (
-    <div className="card pane">
+    <UI.Card className="pane">
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         label="元件和它們之間的呼叫"
         inferredText="函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。" />
-    </div>
+    </UI.Card>
   )
 }
 
 export function CompDetail(p: { ix: Index; comp: string; onPick: (id: string) => void }) {
-  if (!p.comp) return <div className="card detail"><UI.EmptyState title="未選擇元件" description="點選圖中的元件以查看其函式。" /></div>
+  if (!p.comp) return <UI.Card className="detail"><UI.EmptyState title="未選擇元件" description="點選圖中的元件以查看其函式。" /></UI.Card>
   return <CompTree {...p} />
 }
 

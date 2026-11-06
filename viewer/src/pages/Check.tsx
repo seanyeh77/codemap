@@ -18,19 +18,19 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const cur = files.find((f) => f.file === fileSel) ?? files[0]
 
   if (p.isLive && q.isPending) {
-    return <div className="card pane" data-tour="notes"><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="80%" height={16} /></div>
+    return <UI.Card className="pane" data-tour="notes"><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="80%" height={16} /></UI.Card>
   }
   if (p.isLive && q.error) {
-    return <div className="card pane" data-tour="notes"><UI.Alert tone="danger" title="無法檢查筆記">{(q.error as Error).message}</UI.Alert></div>
+    return <UI.Card className="pane" data-tour="notes"><UI.Alert tone="danger" title="無法檢查筆記">{(q.error as Error).message}</UI.Alert></UI.Card>
   }
   if (!cur) {
     return (
-      <div className="card pane" data-tour="notes">
+      <UI.Card className="pane" data-tour="notes">
         <UI.EmptyState title="沒有可檢查的筆記"
           description="檢查 Markdown 中的 file:line 引用與呼叫關係。"
           steps={p.isLive ? ['執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記', '重新整理此頁']
             : ['以 codemap export --notes 指定筆記，重新匯出快照']} />
-      </div>
+      </UI.Card>
     )
   }
   const rows = cur.items.map((it) => ({ ...it, id: it.at }))     // in line order already
@@ -45,24 +45,18 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   return (
     <div className="pane" data-tour="notes">
       {files.length > 1 ? <UI.Tabs label="筆記檔案" items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
-      <div className="card row">
-        <span className="grow">
-          <UI.InlineCode>{cur.file}</UI.InlineCode>{` · ${cur.refs} 個引用 · ${cur.claims} 個呼叫`}
-        </span>
-        {p.isLive
-          ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? '檢查中' : '重新檢查'}</UI.Button>
-          : null}
-      </div>
-      {!p.isLive ? <p className="small muted">此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。</p> : null}
+      <UI.Card title={<><UI.InlineCode>{cur.file}</UI.InlineCode>{` · ${cur.refs} 個引用 · ${cur.claims} 個呼叫`}</>}
+        actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? '檢查中' : '重新檢查'}</UI.Button> : undefined}>
+        {!p.isLive ? <p className="small muted">此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。</p> : null}
+      </UI.Card>
       {fixes.length ? (
-        <section className="card fixes" aria-label="修正建議">
-          <h3 className="ttl">{`修正建議（${fixes.length} 個）`}</h3>
+        <UI.Card className="fixes" title={`修正建議（${fixes.length} 個）`}>
           <p className="small muted">複製後貼回筆記，取代原本那一行。</p>
           {fixes.map((r) => (
             <UI.Suggestion key={r.at} title={r.at} before={unlisted(r.fix!.before)} after={unlisted(r.fix!.after)}
               copyText={r.fix!.after} refHref={refHref} onRef={onRef} />
           ))}
-        </section>
+        </UI.Card>
       ) : null}
       <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label="檢查結果" urlSync={false} search={false} columnMenu={false}
         summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: LABEL[v] })) }}

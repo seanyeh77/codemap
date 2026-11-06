@@ -24,11 +24,11 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   const open = (r: Row) => p.onSel(r.fid, { f: r.f, l: r.l })
   return (
     <div className="pane">
-      <div className="card">
+      <UI.Card>
         {rows.length
           ? <p>修改 <UI.InlineCode>{p.ix.funcs[p.start]?.name}</UI.InlineCode>{` 影響 ${rows.length} 個函式，跨 ${comps.length} 個元件。`}</p>
           : <p>沒有其他函式呼叫 <UI.InlineCode>{p.ix.funcs[p.start]?.name}</UI.InlineCode>。</p>}
-      </div>
+      </UI.Card>
       {rows.length ? (
         <UI.DataTable resetKey={`${p.sourceId}:${p.start}`} label="受影響的函式" pageSize={10} urlSync={false}
           summary={{ key: 'kind', items: [{ value: 'direct', label: '直接' }, { value: 'indirect', label: '間接' }] }}

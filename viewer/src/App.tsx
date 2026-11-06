@@ -172,7 +172,7 @@ function Shell(p: ShellProps) {
         predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
-    : <div className="card pane"><UI.EmptyState title="索引中沒有函式" description="請確認 compile_commands.json 包含目標檔案，再執行 codemap index。" /></div>
+    : <UI.Card className="pane"><UI.EmptyState title="索引中沒有函式" description="請確認 compile_commands.json 包含目標檔案，再執行 codemap index。" /></UI.Card>
   const side = view === 'arch' ? (empty ? null : <CompDetail ix={ix} comp={selComp} onPick={goFlow} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
