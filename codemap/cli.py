@@ -60,7 +60,9 @@ def cmd_index(a):
     scope = a.scope or cfg.get("scope")
     cc = a.cc or cfg.get("cc")
     idx = layer1.build(root, scope, a.jobs, cc)
+    layer1.progress("applying rules (env, exec, function pointers, LD_PRELOAD)")
     idx = rules.run(root, idx, cfg)
+    layer1.progress("")
     idx["root"] = str(root)
     idx["scope"] = scope
     idx["cc"] = cc                             # None: the gcc or g++ each unit names

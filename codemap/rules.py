@@ -56,9 +56,10 @@ class Ctx:
             if n.get("defined"):
                 names.setdefault(n["name"], []).append(nid)
         self.by_name = names
-        self.c_files = [p for p in walk(root, C_EXT)]
-        self.py_files = [p for p in walk(root, {".py"})]
-        self.build_files = [p for p in walk(root, {".mk", ".txt", ".cmake", ""})
+        files = walk(root)                                   # one pass over the tree
+        self.c_files = [p for p in files if p.suffix in C_EXT]
+        self.py_files = [p for p in files if p.suffix == ".py"]
+        self.build_files = [p for p in files
                             if p.name in ("Makefile", "GNUmakefile", "CMakeLists.txt") or p.suffix in (".mk", ".cmake")]
 
     def rel(self, p):

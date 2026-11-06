@@ -15,7 +15,8 @@ import os
 import re
 import shlex
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 NODE_RE = re.compile(r'^node: \{ title: "([^"]*)" label: "([^"]*)"( shape : ellipse)? \}')
@@ -96,6 +97,16 @@ def rel(path, root):
         return str(path)
 
 
+COMPILE_TIMEOUT = 300   # seconds for one file
+
+
+def progress(text):
+    """One status line on a terminal, rewritten in place; nothing when output is redirected."""
+    if sys.stderr.isatty():
+        sys.stderr.write(f"\r\033[K{text}" if text else "\r\033[K")
+        sys.stderr.flush()
+
+
 def compile_unit(unit, root, cache, cc=None):
     relfile = rel(unit["file"], root)
     key = sha(relfile.encode())[:16]
@@ -111,9 +122,13 @@ def compile_unit(unit, root, cache, cc=None):
             return dict(file=relfile, status="cached", ci=str(ci), src=str(unit["file"]), dir=str(unit["directory"]))
 
     try:
-        p = subprocess.run(args, cwd=unit["directory"], capture_output=True, text=True)
+        # stdin closed: a command that reads standard input must not wait on the terminal
+        p = subprocess.run(args, cwd=unit["directory"], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=COMPILE_TIMEOUT)
     except FileNotFoundError:
         return dict(file=relfile, status="failed", error=f"{args[0]} not found: codemap needs GCC (-fcallgraph-info)")
+    except subprocess.TimeoutExpired:
+        return dict(file=relfile, status="failed", error=f"no result after {COMPILE_TIMEOUT} s")
     if p.returncode != 0 or not ci.exists():
         return dict(file=relfile, status="failed", error=p.stderr.strip()[-2000:])
     deps = parse_deps(obj.with_suffix(".d"), unit["directory"]) or [str(unit["file"])]
@@ -188,8 +203,13 @@ def build(root, scope=None, jobs=None, cc=None):
     if scope:
         units = [u for u in units if any(rel(u["file"], root).startswith(s.rstrip("/") + "/") for s in scope)]
 
+    results = [None] * len(units)
     with ThreadPoolExecutor(jobs or default_jobs()) as ex:
-        results = list(ex.map(lambda u: compile_unit(u, root, cache, cc), units))
+        todo = {ex.submit(compile_unit, u, root, cache, cc): i for i, u in enumerate(units)}
+        for n, f in enumerate(as_completed(todo), 1):
+            results[todo[f]] = f.result()
+            progress(f"compiling {n}/{len(units)}  {results[todo[f]]['file']}")
+    progress("")
 
     parsed = [parse_ci(r["ci"], root, r["src"], r["dir"]) for r in results if "ci" in r]
     # the same global name defined in several programs (main, a helper copied

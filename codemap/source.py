@@ -1,6 +1,7 @@
 """Reading sources and finding which function a line belongs to."""
 
 import ast
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -18,11 +19,14 @@ def lines(path):
 
 
 def walk(root, exts=None):
-    """Files under root (only those with a suffix in exts, if given), outside build and dependency trees."""
+    """Files under root (only those with a suffix in exts, if given). Build, dependency and hidden
+    directories are not entered at all, and directory links are not followed."""
     root = Path(root)
-    for p in sorted(root.rglob("*")):
-        if p.is_file() and (exts is None or p.suffix in exts) and not (set(p.relative_to(root).parts[:-1]) & SKIP_DIRS):
-            yield p
+    out = []
+    for d, dirs, files in os.walk(root):
+        dirs[:] = [x for x in dirs if x not in SKIP_DIRS and not x.startswith(".")]
+        out += [Path(d, f) for f in files if exts is None or Path(f).suffix in exts]
+    return sorted(out)
 
 
 def strip_c_comments(text_lines):
