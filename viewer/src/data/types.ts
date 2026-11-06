@@ -1,0 +1,119 @@
+// Shapes returned by `codemap serve` (/api/*) and stored in .codemap snapshots.
+// Keep in sync with codemap/view.py.
+
+export interface Func {
+  name: string
+  file: string
+  line: number
+  end: number
+  comp: string
+  /** Snapshot only: the function's source lines, starting at line. */
+  src?: string[]
+}
+
+export interface Edge {
+  s: string
+  d: string
+  f: string
+  l: number
+  /** call, fnptr_assign, indirect_saved, indirect_candidate, constructor, destructor, env */
+  k: string
+  src: 'compiler' | 'rule'
+  rule?: string
+  via?: string
+  slot?: string
+  saved_from?: string
+  name?: string
+  read_at?: string
+  /** Name of the target when it is not a function of the repository. */
+  dn?: string
+  /** Header that declares an external target. */
+  ext?: string
+  /** The source line at f:l, the evidence for this edge. */
+  t?: string
+}
+
+export interface Comp {
+  id: string
+  files: number
+  funcs: number
+  shared: boolean
+  layer: number | null
+  callers: number
+}
+
+export interface Link {
+  a: string
+  b: string
+  n: number
+  kind: 'call' | 'env' | 'interpose'
+  api?: string
+  names?: string[]
+}
+
+export interface CheckItem {
+  at: string
+  line: number
+  text: string
+  status: 'done' | 'fail' | 'review'
+  why: string
+  /** A corrected line when a reference is wrong; both keep their backticks. */
+  fix?: { before: string; after: string } | null
+}
+
+export interface CheckFile {
+  file: string
+  refs: number
+  claims: number
+  items: CheckItem[]
+}
+
+export interface Stats {
+  units: number | null
+  failed: number | null
+  funcs: number
+  edges: number | null
+}
+
+export interface Graph {
+  format: 'codemap-snapshot'
+  version: number
+  repo: string
+  root: string
+  host: string
+  commit: string | null
+  dirty: string[]
+  generated: number
+  stats: Stats
+  comps: Comp[]
+  links: Link[]
+  funcs: Record<string, Func>
+  edges: Edge[]
+  /** In a snapshot only; live, the Check page asks the server. */
+  checks?: CheckFile[]
+  config: { cc: string | null; scope: string[] | null }
+}
+
+export interface Capabilities {
+  rebuild: boolean
+  macro: boolean
+}
+
+export interface Meta {
+  host: string
+  root: string
+  capabilities: Capabilities
+  indexed: number
+  repo: string
+  commit: string | null
+  dirty: string[]
+}
+
+/** The selected function, and the edge it was reached through (a call site or a rule's evidence line). */
+export interface Sel { id: string; edge: Pick<Edge, 'f' | 'l'> & Partial<Edge> | null; key: string | null }
+
+export interface SourceLines {
+  file: string
+  start: number
+  lines: string[]
+}

@@ -1,7 +1,7 @@
 """Run with: python3 -m unittest discover -s tests"""
 
+import gzip
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -12,7 +12,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from codemap import arch, check, layer1, rules  # noqa: E402
+from codemap import arch, check, layer1, rules, view  # noqa: E402
 
 
 def names(idx, nid):
@@ -108,6 +108,142 @@ class Fixture(unittest.TestCase):
                       "- `src/lib/lib.c:500`\n")
         r = check.check(self.root, md, self.idx)
         self.assertEqual(len(r["problems"]), 4, r["problems"])
+        self.assertEqual([i["status"] for i in r["items"]], ["fail", "fail", "fail"])
+        self.assertEqual([i["line"] for i in r["items"]], [1, 2, 3])
+        self.assertIsNone(r["items"][2]["fix"])                        # past the end and nothing named: no guess
+        fix = r["items"][1]["fix"]
+        self.assertIsNotNone(fix)
+        self.assertTrue(fix["before"].startswith("- `install` stores"))
+
+    def test_check_messages(self):
+        md = self.root / "msg.md"
+        md.write_text("- `traced_send` and `install`; `nothing_here` at `src/lib/lib.c:5`\n- `src/lib/lib.c:3-1`\n")
+        a, b = check.check(self.root, md, self.idx)["items"]
+        self.assertNotRegex(a["why"], r"提及\s*$")
+        self.assertEqual((b["status"], b["fix"]), ("fail", None))
+        self.assertIn("顛倒", b["why"])
+
+    def test_fix_finds_the_file_and_the_line(self):
+        md = self.root / "fix.md"
+        md.write_text("- `install` 在 `lib.c:1`\n")
+        it = check.check(self.root, md, self.idx)["items"][0]
+        self.assertEqual(it["status"], "fail")
+        self.assertRegex(it["fix"]["after"], r"^- `install` 在 `src/lib/lib\.c:\d+`$")
+        n = len((self.root / "src/lib/lib.c").read_text().splitlines())
+        md.write_text("- `install` 在 `src/lib/lib.c:1-9999`\n")
+        fix = check.check(self.root, md, self.idx)["items"][0]["fix"]
+        self.assertIsNotNone(fix)                                      # only the end is wrong: still fixed
+        self.assertRegex(fix["after"], rf"`src/lib/lib\.c:\d+-{n}`")
+        md.write_text("- see `src/lib/lib.c:2-9999`\n")                     # no names: the start stays, the end is cut
+        fix = check.check(self.root, md, self.idx)["items"][0]["fix"]
+        self.assertEqual(fix["after"], f"- see `src/lib/lib.c:2-{n}`")
+
+    def test_check_items_for_the_viewer(self):
+        md = self.root / "ok.md"
+        md.write_text("| a | b |\n| --- | --- |\n| `use` | `src/lib/lib.c:24` |\n")
+        items = check.check(self.root, md, self.idx)["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["text"], "`use` · `src/lib/lib.c:24`")
+        self.assertEqual(items[0]["at"], "ok.md:3")
+
+    def test_viewer_graph(self):
+        g = view.build(self.root, self.idx, {})
+        self.assertEqual(g["format"], view.FORMAT)
+        ids = {c["id"] for c in g["comps"]}
+        self.assertTrue({"src/lib", "src/app"} <= ids, ids)
+        for e in g["edges"]:
+            self.assertTrue(e["s"] in g["funcs"] or e["d"] in g["funcs"], e)
+        for f in g["funcs"].values():
+            self.assertGreaterEqual(f["end"], f["line"])
+            self.assertNotIn("src", f)
+
+    def test_dirty_files_survive_renames(self):
+        with tempfile.TemporaryDirectory() as d:
+            run = lambda *a: subprocess.run(["git", "-C", d, *a], check=True, capture_output=True)
+            run("init", "-q"); run("config", "user.email", "t@t"); run("config", "user.name", "t")
+            for n in ("a.txt", "b.txt"):
+                Path(d, n).write_text(n)
+            run("add", "."); run("commit", "-qm", "x")
+            Path(d, "a.txt").write_text("changed")
+            Path(d, "b.txt").rename(Path(d, "c.txt")); run("add", "-N", "c.txt")
+            self.assertEqual(sorted(view.repo_info(d)["dirty"]), ["a.txt", "c.txt"])
+
+    def test_two_variables_on_one_line_stay_two_edges(self):
+        idx = json.loads(json.dumps(self.idx))
+        e = next(x for x in idx["edges"] if x.get("rule") == "env")
+        idx["edges"].append(dict(e, name=e["name"] + "_2"))
+        g = view.build(self.root, idx, {})
+        self.assertEqual(sorted(x["name"] for x in g["edges"] if x.get("rule") == "env" and x["f"] == e["file"] and x["l"] == e["line"]),
+                         sorted([e["name"], e["name"] + "_2"]))
+
+    def test_static_inline_copies_become_one_function(self):
+        idx = json.loads(json.dumps(self.idx))
+        nid, n = next((k, v) for k, v in idx["nodes"].items() if v.get("defined") and v["name"] == "install")
+        idx["nodes"]["other-unit:install"] = dict(n)                  # the same header function, from another unit
+        idx["edges"] += [dict(e, src="other-unit:install") for e in idx["edges"] if e["src"] == nid]
+        g = view.build(self.root, idx, {})
+        self.assertEqual([k for k, f in g["funcs"].items() if f["name"] == "install"], [min(nid, "other-unit:install")])
+        sigs = [(e["s"], e["d"], e["f"], e["l"], e["k"]) for e in g["edges"]]
+        self.assertEqual(len(sigs), len(set(sigs)))
+        self.assertEqual(g["links"], view.build(self.root, self.idx, {})["links"])   # calls counted once
+
+    def test_snapshot_round_trip(self):
+        data = view.snapshot(self.root, self.idx, {})
+        out = self.tmp / "s.codemap"
+        view.write_snapshot(out, data)
+        back = json.loads(gzip.decompress(out.read_bytes()))
+        self.assertEqual(back["funcs"].keys(), data["funcs"].keys())
+        f = next(iter(back["funcs"].values()))
+        self.assertTrue(f["src"])
+
+    def test_source_stays_inside_the_repo(self):
+        self.assertIsNone(view.source(self.root, "../../etc/passwd"))
+        self.assertEqual(view.source(self.root, "src/lib/lib.c", 1, 2)["start"], 1)
+
+
+class Server(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:
+            raise unittest.SkipTest("the viewer extra is not installed")
+        Fixture.setUpClass.__func__(cls)
+        (cls.root / ".codemap").mkdir(exist_ok=True)
+        (cls.root / ".codemap" / "index.json").write_text(json.dumps(cls.idx))
+        from codemap import server
+        cls.client = TestClient(server.create_app(cls.root, allowed_hosts=["testserver"]))
+        cls.other = TestClient(server.create_app(cls.root), base_url="http://evil.example")
+
+    def test_api(self):
+        c = self.client
+        meta = c.get("/api/meta").json()
+        self.assertFalse(meta["capabilities"]["rebuild"])
+        g = c.get("/api/graph").json()
+        self.assertEqual(g["format"], view.FORMAT)
+        self.assertEqual(c.get("/api/source", params={"file": "../x"}).status_code, 404)
+        self.assertEqual(c.get("/api/source", params={"file": "compile_commands.json"}).status_code, 404)   # not a source file
+        self.assertEqual(self.other.get("/api/meta").status_code, 400)                                     # DNS rebinding
+        self.assertEqual(c.get("/api/source", params={"file": "src/lib/lib.c", "start": 1, "end": 3}).json()["start"], 1)
+        r = c.get("/api/snapshot")
+        self.assertIn(".codemap", r.headers["content-disposition"])
+        self.assertEqual(r.content[:2], b"\x1f\x8b")
+        self.assertIn("<div id=\"root\">", c.get("/").text)
+
+    def test_source_follows_edits_on_disk(self):
+        f = self.root / "src" / "lib" / "lib.c"
+        before = f.read_text()
+        try:
+            self.client.get("/api/source", params={"file": "src/lib/lib.c", "start": 1, "end": 1})
+            f.write_text("/* edited */\n" + before)
+            first = self.client.get("/api/source", params={"file": "src/lib/lib.c", "start": 1, "end": 1}).json()["lines"]
+            self.assertEqual(first, ["/* edited */"])
+        finally:
+            f.write_text(before)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

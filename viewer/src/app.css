@@ -1,0 +1,72 @@
+/* Page layout for the codemap viewer. Values come from the design system tokens. */
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-sans); }
+#root { height: 100%; }
+.app { position: relative; display: flex; height: 100vh; height: 100dvh; overflow: hidden; }   /* relative: positioned parts of components stay inside */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.body { flex: 1; min-height: 0; display: flex; gap: var(--space-6); padding: var(--space-6); overflow: hidden; }
+.body.below { flex-direction: column; }
+.pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--space-4); overflow: auto; }
+.card { background: var(--surface); box-shadow: var(--shadow-card); border-radius: var(--radius-lg); padding: var(--space-5); }
+.card > p { margin: 0; }
+.detail { width: 440px; flex: 0 0 440px; display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; overflow: auto; }
+.body.below .detail { width: auto; flex: 0 0 46%; }
+.row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.row.nowrap { flex-wrap: nowrap; white-space: nowrap; gap: var(--space-2); }
+.grow { flex: 1; min-width: 0; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; }
+.muted { color: var(--ink-muted); }
+.small { font-size: 13px; line-height: 20px; }
+p.small { margin: 0; }
+h3.ttl { font-size: 16px; line-height: 24px; margin: 0; font-weight: 700; white-space: nowrap; }
+a.link { color: var(--accent-text); text-decoration: underline; }
+.brand-mark { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 6px; background: var(--accent); }
+.chips { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+.boot { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.alert-wrap { padding: var(--space-6) var(--space-6) 0; }
+
+/* open-snapshot screen */
+.open-wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: var(--space-6); box-sizing: border-box; }
+.open-card { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: var(--space-5); }
+
+/* architecture */
+.arch { overflow: hidden; }
+.canvas { flex: 1; min-height: 0; overflow: auto; }
+.canvas svg { display: block; overflow: visible; }
+.wire-label { paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+.canvas svg [role=button]:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
+.canvas svg [role=button]:focus { outline: none; }
+.legend { display: flex; gap: var(--space-5); font-size: 13px; color: var(--ink-muted); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* flow */
+.fnname { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.predict { padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-sub); display: flex; flex-direction: column; gap: var(--space-3); }
+
+.rel-tag { display: contents; }
+.fixes { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* source */
+.code { flex: 1; min-height: 160px; overflow: auto; background: var(--surface-sub); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 13px; line-height: 20px; padding: var(--space-2) 0; }
+.code > div { display: flex; white-space: pre; padding-right: var(--space-4); }
+.code > div.hl { background: var(--accent-soft); }
+.code .ln { flex: 0 0 48px; text-align: right; padding-right: var(--space-3); color: var(--ink-muted); user-select: none; }
+.code .code-pad { padding: var(--space-2) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); white-space: normal; }
+
+/* settings */
+.settings-wrap { flex: 1; min-height: 0; padding: var(--space-6); overflow: auto; }
+.set-row { display: flex; align-items: center; gap: var(--space-4); }
+
+@media (max-width: 959px) {
+  .body { flex-direction: column; overflow: auto; padding: var(--space-4); }
+  .detail, .body.below .detail { width: auto; flex: 0 0 auto; max-height: 80vh; }
+  .pane { overflow: visible; flex: 0 0 auto; }
+  .canvas { overflow: visible; }
+  .alert-wrap { padding: var(--space-4) var(--space-4) 0; }
+}
+@media (max-width: 599px) {
+  .app { flex-direction: column; }
+  .app .ui-sidenav { display: none; }
+  .main { min-height: 0; }
+  .settings-wrap { padding: var(--space-4); }
+}
+@media (min-width: 600px) { .mobile-only { display: none; } }

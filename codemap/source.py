@@ -17,10 +17,11 @@ def lines(path):
         return []
 
 
-def walk(root, exts):
+def walk(root, exts=None):
+    """Files under root (only those with a suffix in exts, if given), outside build and dependency trees."""
     root = Path(root)
     for p in sorted(root.rglob("*")):
-        if p.is_file() and p.suffix in exts and not (set(p.relative_to(root).parts[:-1]) & SKIP_DIRS):
+        if p.is_file() and (exts is None or p.suffix in exts) and not (set(p.relative_to(root).parts[:-1]) & SKIP_DIRS):
             yield p
 
 
@@ -119,3 +120,9 @@ class Functions:
 
 
 IDENT = re.compile(r"[A-Za-z_]\w*")
+
+
+def forget_files():
+    """Drop cached file contents, so a long-running process (codemap serve) sees edits on disk."""
+    lines.cache_clear()
+    code_lines.cache_clear()

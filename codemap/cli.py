@@ -7,15 +7,19 @@
   codemap relations [NAME]           rule edges: pointers, env, exec, build, cross-language
   codemap arch                       write the Architecture section of CODEMAP.md and a diagram
   codemap check [FILE ...]           validate file:line references and call claims
+  codemap serve [--port 7300]        open the viewer on the live index (needs the viewer extra)
+  codemap export [-o FILE] [--html]  write a .codemap snapshot, or one HTML file with the viewer inside
+  codemap viewer [-o DIR]            write the static viewer, which opens .codemap snapshots
 """
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
-from . import arch, check, layer1, rules
+from . import arch, check, layer1, rules, view
 
 INDEX = Path(".codemap") / "index.json"
 CALLISH = ("call", "indirect_candidate", "indirect_saved", "fnptr_assign", "constructor", "destructor")
@@ -25,7 +29,7 @@ def load(root):
     p = root / INDEX
     if not p.exists():
         sys.exit(f"{p} not found: run `codemap index` first")
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def resolve(index, name, required=True):
@@ -52,12 +56,17 @@ def edge_tag(e):
 def cmd_index(a):
     t = time.time()
     root = Path(a.root).resolve()
-    scope = a.scope or rules.load_config(root).get("scope")
-    idx = layer1.build(root, scope, a.jobs, a.cc or rules.load_config(root).get("cc"))
-    idx = rules.run(root, idx, rules.load_config(root))
+    cfg = rules.load_config(root)
+    scope = a.scope or cfg.get("scope")
+    cc = a.cc or cfg.get("cc")
+    idx = layer1.build(root, scope, a.jobs, cc)
+    idx = rules.run(root, idx, cfg)
     idx["root"] = str(root)
     idx["scope"] = scope
-    (root / INDEX).write_text(json.dumps(idx, indent=1))
+    idx["cc"] = cc                             # None: the gcc or g++ each unit names
+    tmp = (root / INDEX).with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(idx, indent=1), encoding="utf-8")
+    os.replace(tmp, root / INDEX)              # a running `codemap serve` never reads half a file
     st = idx["stats"]
     print(f'{st["units"]} units ({st["compiled"]} compiled, {st["cached"]} cached, {st["failed"]} failed) '
           f'in {time.time() - t:.2f} s')
@@ -124,6 +133,44 @@ def cmd_check(a):
     sys.exit(1 if bad else 0)
 
 
+def missing_notes(root, notes):
+    gone = [n for n in notes or [] if not (root / n).is_file()]
+    if gone:
+        sys.exit(f"--notes: {', '.join(gone)} not found")
+
+
+def cmd_serve(a):
+    from . import server
+    root = Path(a.root).resolve()
+    missing_notes(root, a.notes)
+    if not (root / INDEX).exists():
+        sys.exit(f"{root / INDEX} not found: run `codemap index` first")
+    server.serve(root, a.host, a.port, a.notes)
+
+
+def cmd_export(a):
+    from . import server
+    root = Path(a.root).resolve()
+    missing_notes(root, a.notes)
+    data = view.snapshot(root, load(root), rules.load_config(root), a.notes)
+    out = Path(a.output or view.snapshot_name(data, ".html" if a.html else ".codemap"))
+    if a.html:
+        out.write_text(server.standalone_html(data), encoding="utf-8")
+    else:
+        view.write_snapshot(out, data)
+    dirty = f', {len(data["dirty"])} uncommitted files not in the commit' if data["dirty"] else ""
+    print(f'wrote {out} ({out.stat().st_size / 1024:.0f} KB): {data["stats"]["funcs"]} functions, '
+          f'{len(data["edges"])} edges{dirty}')
+
+
+def cmd_viewer(a):
+    from . import server
+    out = Path(a.output)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "index.html").write_text(server.viewer_html(), encoding="utf-8")
+    print(f"wrote {out / 'index.html'}: open it and pick a .codemap file, or add ?snapshot=URL")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="codemap", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-C", dest="root", default=".", help="repository root (default: current directory)")
@@ -150,6 +197,19 @@ def main(argv=None):
     s = sub.add_parser("check")
     s.add_argument("files", nargs="*")
     s.set_defaults(fn=cmd_check)
+    s = sub.add_parser("serve")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=7300)
+    s.add_argument("--notes", nargs="*", help="Markdown files the check page validates (default: CODEMAP.md)")
+    s.set_defaults(fn=cmd_serve)
+    s = sub.add_parser("export")
+    s.add_argument("-o", "--output")
+    s.add_argument("--html", action="store_true", help="one HTML file with the viewer and the snapshot")
+    s.add_argument("--notes", nargs="*")
+    s.set_defaults(fn=cmd_export)
+    s = sub.add_parser("viewer")
+    s.add_argument("-o", "--output", default="codemap-viewer")
+    s.set_defaults(fn=cmd_viewer)
     a = ap.parse_args(argv)
     a.fn(a)
 

@@ -25,12 +25,13 @@ The map has four layers:
 ## Install
 
 ```bash
-uv tool install --editable './codemap[diagram]'   # from the directory that holds the clone
+uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
 ```
 
-Python 3.9+ and no runtime dependencies; the `diagram` extra adds Pillow for
-measuring text in the architecture diagram. `--editable` makes a `git pull`
-in the clone take effect without reinstalling.
+Python 3.10+. The core has no runtime dependencies; the `diagram` extra adds
+Pillow for measuring text in the architecture diagram, and the `viewer` extra
+adds FastAPI and uvicorn for `codemap serve`. The viewer itself ships prebuilt
+inside the package, so Node.js is not needed where codemap runs.
 
 GCC must be installed: `-fcallgraph-info` is a GCC option, so units are
 compiled with `gcc` (or `g++`) even when `compile_commands.json` says `cc` or
@@ -53,6 +54,24 @@ codemap relations IBTRACE_SHM        # rule edges about a name or symbol
 codemap arch                         # CODEMAP.md Architecture section + diagram
 codemap check CODEMAP.md docs/tour.md
 ```
+
+### Viewer
+
+```bash
+codemap serve                        # http://127.0.0.1:7300/, live view of the working tree
+codemap serve --notes notes.md CODEMAP.md
+codemap export                       # ibtrace-5977772.codemap, a snapshot to open elsewhere
+codemap export --html                # one HTML file with the viewer and the snapshot inside
+codemap viewer -o site/              # static viewer for a web server; open a .codemap file in it
+```
+
+`codemap serve` listens on localhost. From a laptop, forward the port
+(`ssh -L 7300:localhost:7300 HOST`); VS Code Remote-SSH does this by itself.
+The viewer shows the architecture, call trees (with a predict-then-reveal
+mode), who is affected by a change, the check results of the notes, and the
+source of every function. A snapshot has the same pages, without the live
+source. Rebuilding the index and expanding macros from the viewer are not
+wired up yet; run `codemap index` and press 「重新載入索引」.
 
 An empty `callers` result can also mean that the caller lives in a file that is
 not in `compile_commands.json` (tests often are not); the command says so.
@@ -81,13 +100,31 @@ they are worth tracking.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests               # small fixture, needs cc
+python3 -m unittest discover -s tests               # small fixture, needs cc; API tests need the viewer extra
 python3 tests/regress_ibtrace.py PATH_TO_IBTRACE    # after `codemap index` there
 ```
 
 The ibtrace regression replays twelve questions that were used to design the
 rules, so it guards against breaking them; it is not evidence that the map
 helps a reader.
+
+## Developing the viewer
+
+The viewer lives in `viewer/`: React 19.3, Vite 8 (Rolldown), TypeScript 7
+(the native compiler), TanStack Query 5, the React Compiler 1.0 through Babel,
+and Vitest 5. It uses SeanYeh's design system from `viewer/src/vendor/ui-design-system/`
+(see `VERSION` there); replace all four files together to update it.
+
+```bash
+cd viewer
+npm install
+npm run dev          # with `codemap serve` running on port 7300
+npm test
+npm run build        # writes codemap/viewer_dist/index.html; commit it
+```
+
+The build is one self-contained `index.html`, so it can be served by
+`codemap serve`, embedded by `codemap export --html`, and opened from disk.
 
 ## Limits
 
