@@ -56,7 +56,7 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void })
     wires: L.wires.filter((w) => wireOn(w.l) === on).map((w) => <path key={'w' + w.d} d={w.d} {...edge(on, w.rule)} />),
     labels: L.wires.filter((w) => wireOn(w.l) === on).map((w) => (
       <text key={'t' + w.d} className={`ui-graph-label${on ? ' is-related' : ''}`} x={w.lx} y={w.ly} textAnchor={w.anchor}>
-        {labelParts(w.label).map((x, i) => <tspan key={i} style={x.sans ? { fontFamily: 'var(--font-sans)' } : undefined}>{x.text}</tspan>)}
+        {labelParts(w.label).map((x, i) => (x.code ? <tspan key={i} className="ui-graph-code">{x.text}</tspan> : x.text))}
       </text>)),
     boxes: L.boxes.filter((b) => near.has(b.c.id) === on).map((b) => (
       <g key={b.c.id} {...pressable(b.c.id)} aria-label={`${b.c.id}，${b.c.files} 個檔案，${b.c.funcs} 個函式`}>

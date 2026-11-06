@@ -42,9 +42,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .rel-tag { display: contents; }
 .fixes { display: flex; flex-direction: column; gap: var(--space-3); }
 
-/* CodeView measures the target's offsetTop: make the scrolling box its offset parent (design-system bug, reported) */
-.ui-cv-body { position: relative; }
-
 /* side panel that is a TreeList: the list scrolls inside it */
 .detail.tree-panel { overflow: hidden; }
 

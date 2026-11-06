@@ -5,15 +5,13 @@ import type { Comp, Link } from './types'
 // Layout in CSS pixels: the SVG is drawn at the card's own width, so text keeps its real size.
 /** Fonts the box text is measured in; the drawing uses the same ones. */
 /** Fonts the drawing uses (the design system's Graph styles), for measuring text. */
-export const NAME_FONT = '13px "Geist Mono"', META_FONT = '13px Inter', LABEL_FONT = '600 12px "Geist Mono"', LABEL_SANS = '600 12px Inter'
+export const NAME_FONT = '13px "Geist Mono"', META_FONT = '13px Inter', LABEL_FONT = '600 12px Inter', LABEL_CODE = '600 12px "Geist Mono"'
 
-/** A wire label in pieces: Chinese in the text font, code and numbers in Geist Mono (the guideline keeps
- *  monospace off Chinese sentences). */
-export function labelParts(label: string): { text: string; sans: boolean }[] {
-  return label.split(/([\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+)/).filter(Boolean)
-    .map((text) => ({ text, sans: /[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/.test(text) }))
+/** A wire label in pieces: names and numbers are code (tspan.ui-graph-code), the rest is plain text. */
+export function labelParts(label: string): { text: string; code: boolean }[] {
+  return label.split(/([A-Za-z0-9_./:-]+)/).filter(Boolean).map((text) => ({ text, code: /^[A-Za-z0-9_./:-]+$/.test(text) }))
 }
-const labelWidth = (label: string) => labelParts(label).reduce((w, p) => w + textWidth(p.text, p.sans ? LABEL_SANS : LABEL_FONT), 0)
+const labelWidth = (label: string) => labelParts(label).reduce((w, p) => w + textWidth(p.text, p.code ? LABEL_CODE : LABEL_FONT), 0)
 export const BOX_H = 62, BAR_H = 54, BAR_GAP = 12
 const TOP = 16, LANE = 28
 
