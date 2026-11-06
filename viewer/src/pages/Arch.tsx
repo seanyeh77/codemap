@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { UI } from '../ui'
 import type { Index } from '../data/graph'
 import type { Link } from '../data/types'
-import { BAR_GAP, BAR_H, BOX_H, META_FONT, NAME_FONT, compMeta, layout, textWidth } from '../data/archLayout'
+import { BOX_H, compMeta, layout } from '../data/archLayout'
 
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -60,22 +60,13 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; r
               <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill={ruleColor} /></marker>
               <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)" /></marker>
             </defs>
-            {L.boxes.filter((b) => L.toShared.has(b.c.id)).map((b) => {
-              const x = L.sharedX.get(b.c.id)!
-              const t = `${L.toShared.get(b.c.id)} 次呼叫`, right = x + 8 + textWidth(t, META_FONT) < W - 4
-              return (
-                <g key={'s' + b.c.id}>
-                  <path d={`M${x},${b.y + BOX_H} V${L.barTop - 2}`} stroke="var(--line-strong)" strokeWidth="2" fill="none" markerEnd="url(#ahc)" />
-                  <text className="wire-label" x={right ? x + 8 : x - 8} textAnchor={right ? 'start' : 'end'} y={L.barTop - 12} fontSize="13" fill="var(--ink-muted)">{t}</text>
-                </g>
-              )
-            })}
+            {L.drops.map((d) => <path key={d} d={d} stroke="var(--line-strong)" strokeWidth="2" fill="none" markerEnd="url(#ahc)" />)}
             {L.wires.map((w, i) => (
               <path key={'w' + i} d={w.d} stroke={w.rule ? ruleColor : 'var(--line-strong)'} strokeWidth="2" fill="none"
                 strokeDasharray={w.rule && dash ? '7 5' : undefined} markerEnd={`url(#${w.rule ? 'ahr' : 'ahc'})`} />
             ))}
             {L.wires.map((w, i) => (
-              <text key={'t' + i} className="wire-label" x={w.lx} y={w.ly} textAnchor="middle" fontSize="13" fill={w.rule ? ruleText : 'var(--ink-muted)'}>{w.label}</text>
+              <text key={'t' + i} className="wire-label" x={w.lx} y={w.ly} textAnchor={w.anchor} fontSize="13" fill={w.rule ? ruleText : 'var(--ink-muted)'}>{w.label}</text>
             ))}
             {L.boxes.map((b) => {
               const on = p.sel === b.c.id
@@ -87,15 +78,15 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; r
                 </g>
               )
             })}
-            {L.bars.map((c, k) => {
-              const on = p.sel === c.id, y = L.barTop + k * (BAR_H + BAR_GAP)
+            {L.bars.map(({ c, y, h, inline, text, lines }) => {
+              const on = p.sel === c.id
               const full = `共用 · ${c.callers} 個元件呼叫 · ${c.files} 個檔案 · ${c.funcs} 個函式`
-              const meta = textWidth(c.id, NAME_FONT) + textWidth(full, META_FONT) + 72 < W ? full : `共用 · ${c.funcs} 個函式`
               return (
-                <g key={c.id} {...pressable(c.id)} aria-label={`${c.id}，${full}`}>
-                  <rect x="8" y={y} width={W - 16} height={BAR_H} rx="10" fill="var(--surface-sub)" stroke={on ? 'var(--accent)' : 'var(--line)'} strokeWidth={on ? 2 : 1} />
-                  <text x="24" y={y + 33} fontSize="15" fontWeight="700" fill="var(--ink)">{c.id}</text>
-                  <text x={W - 24} y={y + 33} textAnchor="end" fontSize="13" fill="var(--ink-muted)">{meta}</text>
+                <g key={c.id} {...pressable(c.id)} aria-label={`${c.id}，${full}，${text}`}>
+                  <rect x="8" y={y} width={W - 16} height={h} rx="10" fill="var(--surface-sub)" stroke={on ? 'var(--accent)' : 'var(--line)'} strokeWidth={on ? 2 : 1} />
+                  <text x="24" y={y + (inline ? 33 : 28)} fontSize="15" fontWeight="700" fill="var(--ink)">{c.id}</text>
+                  {inline ? <text x={W - 24} y={y + 33} textAnchor="end" fontSize="13" fill="var(--ink-muted)">{text}</text>
+                    : lines.map((t, i) => <text key={i} x="24" y={y + 50 + 20 * i} fontSize="13" fill="var(--ink-muted)">{t}</text>)}
                 </g>
               )
             })}
