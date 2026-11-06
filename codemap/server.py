@@ -63,6 +63,10 @@ def create_app(root, notes=None, allowed_hosts=None):
     def home():
         return viewer_html()
 
+    if (ASSETS / "assets").is_dir():               # the Chinese font, in pieces the page asks for by need
+        from fastapi.staticfiles import StaticFiles
+        app.mount("/assets", StaticFiles(directory=ASSETS / "assets"), name="assets")
+
     @app.get("/api/meta")
     def meta():
         """Repository, commit, uncommitted files and what this server can do."""

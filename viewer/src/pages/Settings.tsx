@@ -86,7 +86,6 @@ export function Settings(p: Props) {
   const display = (
     <>
       <UI.SettingsSection title="架構圖與流程">
-        {radios('規則推出的關係', 'ruleStyle', [['dash', '虛線'], ['color', '橘色實線']])}
         <div className="set-row">
           <div className="grow"><div>流程預設顯示外部函式</div><div className="small muted">例如 libc、UCX 的函式。</div></div>
           <UI.Switch label="流程預設顯示外部函式" checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />

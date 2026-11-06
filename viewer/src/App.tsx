@@ -166,7 +166,7 @@ function Shell(p: ShellProps) {
     <Detail ix={ix} sel={sel} isLive={isLive} sourceId={p.sourceId} canMacro={!!caps?.macro} goFlow={goFlow} goImpact={goImpact} />
   ) : null
   const empty = !p.graph.comps.length
-  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={setSelComp} ruleStyle={pr.ruleStyle} />
+  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={setSelComp} />
     : view === 'flow' && start ? <Flow key={start + dir} ix={ix} start={start} dir={dir} setDir={setDir}
         predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} />

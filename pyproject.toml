@@ -20,4 +20,4 @@ codemap = "codemap.cli:main"
 packages = ["codemap"]
 
 [tool.setuptools.package-data]
-codemap = ["viewer_dist/index.html"]
+codemap = ["viewer_dist/index.html", "viewer_dist/assets/*"]

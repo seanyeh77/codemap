@@ -4,7 +4,16 @@ import type { Comp, Link } from './types'
 
 // Layout in CSS pixels: the SVG is drawn at the card's own width, so text keeps its real size.
 /** Fonts the box text is measured in; the drawing uses the same ones. */
-export const NAME_FONT = '700 15px Inter', META_FONT = '13px Inter'
+/** Fonts the drawing uses (the design system's Graph styles), for measuring text. */
+export const NAME_FONT = '13px "Geist Mono"', META_FONT = '13px Inter', LABEL_FONT = '600 12px "Geist Mono"', LABEL_SANS = '600 12px Inter'
+
+/** A wire label in pieces: Chinese in the text font, code and numbers in Geist Mono (the guideline keeps
+ *  monospace off Chinese sentences). */
+export function labelParts(label: string): { text: string; sans: boolean }[] {
+  return label.split(/([\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+)/).filter(Boolean)
+    .map((text) => ({ text, sans: /[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]/.test(text) }))
+}
+const labelWidth = (label: string) => labelParts(label).reduce((w, p) => w + textWidth(p.text, p.sans ? LABEL_SANS : LABEL_FONT), 0)
 export const BOX_H = 62, BAR_H = 54, BAR_GAP = 12
 const TOP = 16, LANE = 28
 
@@ -148,19 +157,19 @@ export function layout(comps: Comp[], links: Link[], card: number, labelOf: (l: 
         }
       })
     }
-    const drops: string[] = []
+    const drops: { from: string; d: string }[] = []
     for (const b of boxes) {
       const x = sharedX.get(b.c.id)
       if (x === undefined) continue
-      if (!blocked.has(b.c.id)) { drops.push(`M${x},${b.y + BOX_H} V${barTop - 2}`); continue }
+      if (!blocked.has(b.c.id)) { drops.push({ from: b.c.id, d: `M${x},${b.y + BOX_H} V${barTop - 2}` }); continue }
       const cx = right + 20 + 14 * side++
-      drops.push(`M${x},${b.y + BOX_H} V${gapTop[b.row] + 6} H${cx} V${barTop - 2}`)
+      drops.push({ from: b.c.id, d: `M${x},${b.y + BOX_H} V${gapTop[b.row] + 6} H${cx} V${barTop - 2}` })
       W = Math.max(W, cx + 8)
     }
     // a label goes over its lane, or beside the line leaving the box, wherever it crosses no line, box or other label
-    const taken: Rect[] = [...wires.flatMap((w) => pieces(w.d)), ...drops.flatMap(pieces), ...boxes.map((b): Rect => [b.x, b.y, b.x + b.w, b.y + BOX_H])]
+    const taken: Rect[] = [...wires.flatMap((w) => pieces(w.d)), ...drops.flatMap((x) => pieces(x.d)), ...boxes.map((b): Rect => [b.x, b.y, b.x + b.w, b.y + BOX_H])]
     for (const w of wires) {
-      const tw = textWidth(w.label, META_FONT), top = w.ly - 13, bottom = w.ly + 3
+      const tw = labelWidth(w.label), top = w.ly - 12, bottom = w.ly + 3
       const x1 = Number(/^M([\d.-]+)/.exec(w.d)![1])
       const tries: [number, Wire['anchor'], Rect][] = [
         [w.lx, 'middle', [w.lx - tw / 2, top, w.lx + tw / 2, bottom]],

@@ -15,6 +15,7 @@
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -170,7 +171,9 @@ def cmd_viewer(a):
     out = Path(a.output)
     out.mkdir(parents=True, exist_ok=True)
     (out / "index.html").write_text(server.viewer_html(), encoding="utf-8")
-    print(f"wrote {out / 'index.html'}: open it and pick a .codemap file, or add ?snapshot=URL")
+    if (server.ASSETS / "assets").is_dir():
+        shutil.copytree(server.ASSETS / "assets", out / "assets", dirs_exist_ok=True)   # the Chinese font
+    print(f"wrote {out / 'index.html'} and its fonts: open it and pick a .codemap file, or add ?snapshot=URL")
 
 
 def main(argv=None):

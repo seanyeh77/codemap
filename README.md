@@ -112,8 +112,11 @@ helps a reader.
 
 The viewer lives in `viewer/`: React 19.3, Vite 8 (Rolldown), TypeScript 7
 (the native compiler), TanStack Query 5, the React Compiler 1.0 through Babel,
-and Vitest 5. It uses SeanYeh's design system from `viewer/src/vendor/ui-design-system/`
-(see `VERSION` there); replace all four files together to update it.
+and Vitest 5. It uses SeanYeh's design system as the package `@seanyeh77/ui`, pinned to a
+commit in `package.json`; `npm i github:seanyeh77/ui-design-system#<commit>` updates it.
+The build puts the code, styles and Latin fonts inside `codemap/viewer_dist/index.html`; the
+Chinese font stays in `codemap/viewer_dist/assets/`, which `codemap serve` serves and
+`codemap viewer` copies.
 
 ```bash
 cd viewer

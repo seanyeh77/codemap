@@ -3,7 +3,6 @@
 
 export interface Prefs {
   theme: 'auto' | 'light' | 'dark'
-  ruleStyle: 'dash' | 'color'
   panel: 'right' | 'below'
   showExtDefault: boolean
   editor: 'ssh' | 'local' | 'none'
@@ -12,7 +11,7 @@ export interface Prefs {
 }
 
 const KEY = 'codemap.prefs.v1'
-const DEFAULTS: Prefs = { theme: 'auto', ruleStyle: 'dash', panel: 'right', showExtDefault: false, editor: 'ssh', sshHost: '', clone: '' }
+const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'ssh', sshHost: '', clone: '' }
 
 function read(): Prefs {
   try {

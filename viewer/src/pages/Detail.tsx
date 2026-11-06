@@ -38,16 +38,12 @@ export function Detail(p: Props) {
   const inside = !!e && e.f === f.file && f.line <= e.l && e.l <= f.end
   const focus = inside ? e!.l : f.line
   const nCallers = p.ix.callerCount(p.sel.id), nCallees = p.ix.calleeCount(p.sel.id)
-  const open = vscodeURL(f.file, focus, root, host)
   function link(file: string, line: number) {
     return <UI.InlineCode href={vscodeURL(file, line, root, host) ?? undefined}>{`${file}:${line}`}</UI.InlineCode>
   }
   return (
     <div className="card detail">
-      <div className="row nowrap">
-        <h3 className="ttl grow ellipsis" title={f.name}>{f.name}</h3>
-        {open ? <UI.IconButton label="在 VS Code 開啟" icon="arrow-square-out" onClick={() => { location.href = open }} /> : null}
-      </div>
+      <h3 className="ttl ellipsis" title={f.name}>{f.name}</h3>
       <UI.DetailList items={[
         { label: '定義', value: link(f.file, f.line) },
         { label: '元件', value: f.comp },
@@ -60,15 +56,11 @@ export function Detail(p: Props) {
         { label: '看影響', onClick: () => p.goImpact(p.sel.id) },
         { label: '展開 macro', disabled: !p.canMacro },
       ]} />
-      <div className="code" aria-label={`${f.name} 的原始碼`}>
-        {src.isPending ? <div className="code-pad"><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
-          : src.error ? <p className="code-pad small">{`無法讀取原始碼：${(src.error as Error).message}`}</p>
-          : !src.data ? <p className="code-pad small muted">此快照不含原始碼。</p>
-          : src.data.lines.map((t, i) => {
-              const ln = src.data!.start + i
-              return <div key={i} className={ln === focus ? 'hl' : ''}><span className="ln">{ln}</span>{t || ' '}</div>
-            })}
-      </div>
+      {src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
+        : src.error ? <UI.Alert tone="danger" title="無法讀取原始碼">{(src.error as Error).message}</UI.Alert>
+        : !src.data ? <p className="small muted">此快照不含原始碼。</p>
+        : <UI.CodeView file={src.data.file} fileHref={vscodeURL(f.file, focus, root, host) ?? undefined}
+            code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
     </div>
   )
 }

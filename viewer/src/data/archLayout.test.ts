@@ -45,7 +45,7 @@ describe('architecture layout', () => {
       { a: 'src/ibmon', b: 'include/ibtrace', n: 13, kind: 'call' }, { a: 'src/libibtrace', b: 'include/ibtrace', n: 8, kind: 'call' }]
     const L = layout(comps, links, 300, () => '')
     expect(L.drops).toHaveLength(2)
-    for (const d of L.drops) {
+    for (const { d } of L.drops) {
       const pts: [number, number][] = []
       let x = 0, y = 0
       for (const [, c, v] of d.matchAll(/([MVH])([\d.,-]+)/g)) {

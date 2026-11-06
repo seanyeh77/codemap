@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { UI } from '../ui'
 import type { Index } from '../data/graph'
 import type { Edge, Sel } from '../data/types'
-import type { TreeNode } from '../vendor/ui-design-system/index'
+import type { TreeNode } from '@seanyeh77/ui'
 
 /** open: its next level can be shown (it has calls, and it is not already on the path). */
 interface Entry { fid: string; edge: Edge | null; names: string[]; open: boolean; kids: Edge[]; path: string[] }
@@ -20,7 +20,8 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
     if (e) {
       // the call is in the parent (looking down) or in this node's function (looking up)
       const where = dir === 'down' ? parent : key
-      n.tags = [<RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
+      // only inferred relations carry a tag; the note under the tree says the rest are the compiler's
+      if (e.src === 'rule') n.tags = [<RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
       if (!f) n.muted = true
     }
     const open = kids.length > 0 && !path.includes(nid)
@@ -46,8 +47,8 @@ function RelationTag(p: { ix: Index; e: Edge; open: () => void }) {
   const stop = (ev: { stopPropagation: () => void }) => ev.stopPropagation()
   return (
     <span className="rel-tag" onClick={stop} onKeyDown={stop}>
-      <UI.Term title={x.title} text={x.text} code={p.e.t ? `${String(p.e.l).padStart(4)} │ ${p.e.t}` : undefined}
-        action={{ label: '看這一行', onClick: p.open }}>{x.label}</UI.Term>
+      <UI.Tag><UI.Term title={x.title} text={x.text} code={p.e.t ? `${String(p.e.l).padStart(4)} │ ${p.e.t}` : undefined}
+        action={{ label: '看這一行', onClick: p.open }}>{x.label}</UI.Term></UI.Tag>
     </span>
   )
 }
@@ -118,6 +119,7 @@ export function Flow(p: FlowProps) {
           items={t.items} defaultOpen={openKeys} loadChildren={(n) => t.children(n.id)}
           selectedId={selKey} onSelect={(n) => { const c = t.index[n.id]; p.onSel(c.fid, c.edge, n.id) }} />
       </div>
+      <p className="small muted">沒有標示的關係都由編譯器確認。</p>
     </div>
   )
 }

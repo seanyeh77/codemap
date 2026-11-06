@@ -32,11 +32,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .arch { overflow: hidden; }
 .canvas { flex: 1; min-height: 0; overflow: auto; }
 .canvas svg { display: block; overflow: visible; }
-.wire-label { paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
 .canvas svg [role=button]:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
 .canvas svg [role=button]:focus { outline: none; }
-.legend { display: flex; gap: var(--space-5); font-size: 13px; color: var(--ink-muted); flex-wrap: wrap; }
-.legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
 
 /* flow */
 .fnname { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
@@ -45,12 +42,11 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .rel-tag { display: contents; }
 .fixes { display: flex; flex-direction: column; gap: var(--space-3); }
 
-/* source */
-.code { flex: 1; min-height: 160px; overflow: auto; background: var(--surface-sub); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 13px; line-height: 20px; padding: var(--space-2) 0; }
-.code > div { display: flex; white-space: pre; padding-right: var(--space-4); }
-.code > div.hl { background: var(--accent-soft); }
-.code .ln { flex: 0 0 48px; text-align: right; padding-right: var(--space-3); color: var(--ink-muted); user-select: none; }
-.code .code-pad { padding: var(--space-2) var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); white-space: normal; }
+/* CodeView measures the target's offsetTop: make the scrolling box its offset parent (design-system bug, reported) */
+.ui-cv-body { position: relative; }
+
+/* side panel that is a TreeList: the list scrolls inside it */
+.detail.tree-panel { overflow: hidden; }
 
 /* settings */
 .settings-wrap { flex: 1; min-height: 0; padding: var(--space-6); overflow: auto; }
@@ -59,6 +55,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 @media (max-width: 959px) {
   .body { flex-direction: column; overflow: auto; padding: var(--space-4); }
   .detail, .body.below .detail { width: auto; flex: 0 0 auto; max-height: 80vh; }
+  .detail.tree-panel { height: 70vh; }
   .pane { overflow: visible; flex: 0 0 auto; }
   .canvas { overflow: visible; }
   .alert-wrap { padding: var(--space-4) var(--space-4) 0; }
