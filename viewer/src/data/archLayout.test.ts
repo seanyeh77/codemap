@@ -68,11 +68,23 @@ describe('architecture layout', () => {
     expect(L.callersOf.get('include/ibtrace')).toEqual([{ id: 'src/ibmon', n: 13 }, { id: 'src/libibtrace', n: 8 }])
   })
 
-  it('widens the drawing when a layer does not fit the card', () => {
+  it('wraps a layer that does not fit the card onto more rows', () => {
     const comps = Array.from({ length: 8 }, (_, i) => comp('component-' + i, 0))
     const L = layout(comps, [], 400, () => '')
-    const right = Math.max(...L.boxes.map((b) => b.x + b.w))
-    expect(L.width).toBeGreaterThan(400)
-    expect(right).toBeLessThanOrEqual(L.width - 8)
+    expect(L.width).toBeLessThanOrEqual(500)                              // scaled down at most to 80 %
+    expect(new Set(L.boxes.map((b) => b.row)).size).toBeGreaterThan(1)
+    for (const b of L.boxes) expect(b.x + b.w).toBeLessThanOrEqual(L.width - 8)
+  })
+
+  it('keeps a phone-width drawing inside the card', () => {
+    const comps = [comp('src/ibmon', 0), comp('src/ucx_ib_test', 0), comp('src/libibtrace', 1),
+      { ...comp('src/common', 2), shared: true }, { ...comp('include/ibtrace', 3), shared: true }]
+    const links: Link[] = [{ a: 'src/ibmon', b: 'src/libibtrace', n: 1, kind: 'env', names: ['IBTRACE_SHM'] },
+      { a: 'src/ucx_ib_test', b: 'src/libibtrace', n: 17, kind: 'interpose', api: 'ucp' },
+      ...['src/ibmon', 'src/ucx_ib_test', 'src/libibtrace'].map((a): Link => ({ a, b: 'src/common', n: 3, kind: 'call' }))]
+    const L = layout(comps, links, 340, (l) => `${l.n} 次`)
+    expect(L.width).toBeLessThanOrEqual(340 * 1.25)
+    expect(new Set(L.boxes.map((b) => b.row)).size).toBe(2)               // the two top boxes stay side by side
+    expect(layout(comps.slice(0, 1), [], 1000, () => '').width).toBe(1000)    // room to spare: drawn at full size
   })
 })

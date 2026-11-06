@@ -37,7 +37,7 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; r
   const [fontsReady, setFontsReady] = useState(false)
   useEffect(() => { let on = true; document.fonts?.ready.then(() => on && setFontsReady(true)); return () => { on = false } }, [])
   const L = useMemo(() => layout(g.comps, g.links, card, labelOf, fontsReady), [g, card, fontsReady])
-  const W = L.width
+  const W = L.width, scale = Math.min(1, card / W)       // a slightly wide drawing shrinks to the card
   const pressable = (id: string) => ({
     role: 'button', tabIndex: 0, 'aria-pressed': p.sel === id, style: { cursor: 'pointer' },
     onClick: () => p.onSel(id), onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.onSel(id) } },
@@ -55,7 +55,7 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; r
       </div>
       <div className="canvas" ref={ref}>
         {width ? (
-          <svg width={W} height={L.height} viewBox={`0 0 ${W} ${L.height}`} role="img" aria-label="元件和它們之間的呼叫">
+          <svg width={W * scale} height={L.height * scale} viewBox={`0 0 ${W} ${L.height}`} role="img" aria-label="元件和它們之間的呼叫">
             <defs>
               <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill={ruleColor} /></marker>
               <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-strong)" /></marker>
