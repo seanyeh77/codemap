@@ -3,6 +3,8 @@
 import ast
 import os
 import re
+import subprocess
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,15 +20,36 @@ def lines(path):
         return []
 
 
+def git_files(root):
+    """The repository's files as git sees them (tracked, plus new ones .gitignore lets in), or None
+    outside a git repository. Data and build output that .gitignore leaves out are never touched."""
+    try:
+        p = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "-co", "--exclude-standard"],
+                           capture_output=True, stdin=subprocess.DEVNULL, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if p.returncode != 0:
+        return None
+    return [Path(root, f) for f in p.stdout.decode(errors="replace").split("\0") if f]
+
+
 def walk(root, exts=None):
-    """Files under root (only those with a suffix in exts, if given). Build, dependency and hidden
-    directories are not entered at all, and directory links are not followed."""
+    """Files under root (only those with a suffix in exts, if given), without build, dependency and
+    hidden directories. In a git repository the list comes from git; otherwise the directory is walked,
+    without following directory links."""
     root = Path(root)
-    out = []
-    for d, dirs, files in os.walk(root):
-        dirs[:] = [x for x in dirs if x not in SKIP_DIRS and not x.startswith(".")]
-        out += [Path(d, f) for f in files if exts is None or Path(f).suffix in exts]
-    return sorted(out)
+    found = git_files(root)
+    if found is None:
+        found, n = [], 0
+        for d, dirs, files in os.walk(root):
+            dirs[:] = [x for x in dirs if x not in SKIP_DIRS and not x.startswith(".")]
+            found += [Path(d, f) for f in files]
+            n += 1
+            if n % 500 == 0 and sys.stderr.isatty():
+                sys.stderr.write(f"\r\033[Kscanning {root}: {n} directories (not a git repository)")
+                sys.stderr.flush()
+    skip = lambda p: any(x in SKIP_DIRS or x.startswith(".") for x in p.relative_to(root).parts[:-1])
+    return sorted(p for p in found if (exts is None or p.suffix in exts) and not skip(p) and p.is_file())
 
 
 def strip_c_comments(text_lines):
