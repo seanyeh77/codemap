@@ -116,7 +116,8 @@ function Shell(p: ShellProps) {
   const [chosenStart, setStart] = useState<string | null>(first)
   const [chosenSel, setSel] = useState<Sel>({ id: first ?? '', edge: null, key: 'root' })
   // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
-  const selComp = p.graph.comps.some((c) => c.id === chosenComp) ? chosenComp : firstComp
+  // '' : nothing selected (clicked again in the graph); a component the new index lacks falls back to the first
+  const selComp = chosenComp === '' || p.graph.comps.some((c) => c.id === chosenComp) ? chosenComp : firstComp
   const start = chosenStart && ix.funcs[chosenStart] ? chosenStart : first
   const sel: Sel = ix.funcs[chosenSel.id] || ix.inn.has(chosenSel.id) || ix.out.has(chosenSel.id) ? chosenSel : { id: start ?? '', edge: null, key: 'root' }
   const [dir, setDir] = useState<'down' | 'up'>('down')

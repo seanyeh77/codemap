@@ -28,13 +28,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .open-wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: var(--space-6); box-sizing: border-box; }
 .open-card { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: var(--space-5); }
 
-/* architecture */
-.arch { overflow: hidden; }
-.canvas { flex: 1; min-height: 0; overflow: auto; }
-.canvas svg { display: block; overflow: visible; }
-.canvas svg [role=button]:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
-.canvas svg [role=button]:focus { outline: none; }
-
 /* flow */
 .fnname { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .predict { padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-sub); display: flex; flex-direction: column; gap: var(--space-3); }
@@ -54,7 +47,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
   .detail, .body.below .detail { width: auto; flex: 0 0 auto; max-height: 80vh; }
   .detail.tree-panel { height: 70vh; }
   .pane { overflow: visible; flex: 0 0 auto; }
-  .canvas { overflow: visible; }
   .alert-wrap { padding: var(--space-4) var(--space-4) 0; }
 }
 @media (max-width: 599px) {
