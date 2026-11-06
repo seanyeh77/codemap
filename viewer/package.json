@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@seanyeh77/ui": "github:seanyeh77/ui-design-system#7a5e50f",
+    "@seanyeh77/ui": "github:seanyeh77/ui-design-system#90aa13c",
     "@tanstack/react-query": "5.106.1",
     "react": "19.3.1",
     "react-dom": "19.3.1"
