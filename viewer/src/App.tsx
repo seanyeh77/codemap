@@ -14,7 +14,7 @@ import { Detail } from './pages/Detail'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 
 type View = 'arch' | 'flow' | 'impact' | 'check' | 'settings'
-const PAGES: Record<View, { title: string; icon: string; detail: string }> = {
+const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> = {
   arch: { title: '架構', icon: 'squares-four', detail: '元件與其間的呼叫' },
   flow: { title: '流程', icon: 'share-network', detail: '追蹤函式的呼叫' },
   impact: { title: '影響範圍', icon: 'pulse', detail: '修改函式的影響範圍' },
@@ -140,7 +140,7 @@ function Shell(p: ShellProps) {
 
   function select(item: PaletteItem) {
     setRecent((r) => [item, ...r.filter((x) => x.id !== item.id)].slice(0, 6))
-    const t = item.target as Target
+    const t = item.target
     if (t.type === 'func') goFlow(t.id)
     else if (t.type === 'comp') { setSelComp(t.id); setView('arch') }
     else if (t.type === 'page') setView(t.id)
@@ -219,7 +219,8 @@ function Shell(p: ShellProps) {
 }
 
 type Target = { type: 'func'; id: string } | { type: 'comp'; id: string } | { type: 'page'; id: View } | { type: 'line'; fid: string; f: string; l: number }
-type PaletteItem = Parameters<typeof UI.CommandPalette>[0]['items'][number]
+/** A search result, with where it leads (onSelect gets the same type back). */
+type PaletteItem = UI.PaletteItem & { target: Target }
 
 /** Everything the search finds: functions, files, components, environment variables and pages. */
 function paletteItems(ix: Index): PaletteItem[] {

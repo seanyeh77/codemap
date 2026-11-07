@@ -15,14 +15,14 @@ function labelOf(l: Link) {
 /** Components in layers with the calls between them, drawn by UI.LayerGraph; shared ones are listed under it. */
 export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void }) {
   const g = p.ix.g
-  const nodes = useMemo(() => g.comps.map((c) => ({ id: c.id, name: c.id, layer: c.layer ?? 0, fns: c.funcs, shared: c.shared })), [g])
+  const nodes = useMemo(() => g.comps.map((c) => ({ id: c.id, name: c.id, layer: c.layer ?? 0, size: c.funcs, shared: c.shared })), [g])
   const edges = useMemo(() => g.links.map((l) => (l.kind === 'call'
     ? { from: l.a, to: l.b, count: l.n }
     : { from: l.a, to: l.b, inferred: true, label: labelOf(l) })), [g])
   return (
     <UI.Card className="pane">
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
-        label="元件和它們之間的呼叫"
+        label="元件和它們之間的呼叫" sizeLabel="{n} 個函式" sharedLabel="共用元件" sharedMeta="{a} 個元件使用，共 {b} 次"
         inferredText="函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。" />
     </UI.Card>
   )
@@ -37,7 +37,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void }) 
   const items = useMemo(() => {
     const files = [...p.ix.byFile()].filter(([, ids]) => p.ix.funcs[ids[0]].comp === p.comp).sort(([a], [b]) => a.localeCompare(b))
     return files.map(([f, ids]) => ({
-      id: 'file:' + f, name: f.split('/').pop()!, path: f, icon: 'file-text',
+      id: 'file:' + f, name: f.split('/').pop()!, path: f, icon: 'file-text' as const,
       children: ids.map((id) => ({
         id, name: p.ix.funcs[id].name, meta: `${p.ix.callerCount(id)} 個 caller`,
       })),
