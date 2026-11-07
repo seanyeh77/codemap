@@ -115,7 +115,10 @@ def build(root, index, config=None):
     names = {c["id"] for c in comps}
     for (a, b, api), es in sorted(lay["interposed"].items()):
         if a in names and b in names:
-            links.append(dict(a=a, b=b, n=len(es), kind="interpose", api=api))
+            # where each hooked call is made, for the viewer's line detail
+            sites = sorted({(e["src"], e["file"], e["line"], nodes.get(e["dst"], {}).get("name", e["dst"])) for e in es})
+            links.append(dict(a=a, b=b, n=len(es), kind="interpose", api=api,
+                              sites=[dict(s=s, f=f, l=l, name=nm) for s, f, l, nm in sites]))
     st = index.get("stats", {})
     out = dict(format=FORMAT, version=VERSION, **repo_info(root), root=str(root.resolve()), generated=int(time.time()),
                stats=dict(units=st.get("units"), failed=st.get("failed"), funcs=len(funcs),

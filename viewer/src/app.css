@@ -34,6 +34,10 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .rel-tag { display: contents; }
 .fixes { display: flex; flex-direction: column; gap: var(--space-3); }
 
+/* edge detail: one group per environment variable */
+.edge-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.edge-group h3 { margin: 0; }
+
 /* side panel that is a TreeList: the list scrolls inside it */
 .detail.tree-panel { overflow: hidden; }
 

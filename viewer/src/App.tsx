@@ -5,7 +5,7 @@ import { Index, isEnv, push } from './data/graph'
 import { usePrefs } from './data/hooks'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import type { Graph, Meta, Sel } from './data/types'
-import { Arch, CompDetail } from './pages/Arch'
+import { Arch, CompDetail, EdgeDetail } from './pages/Arch'
 import { Flow } from './pages/Flow'
 import { Impact } from './pages/Impact'
 import { Check } from './pages/Check'
@@ -113,6 +113,7 @@ function Shell(p: ShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const firstComp = p.graph.comps.find((c) => !c.shared)?.id ?? p.graph.comps[0]?.id ?? ''
   const [chosenComp, setSelComp] = useState<string>(firstComp)
+  const [selEdge, setSelEdge] = useState('')        // a line of the architecture diagram; '' when a box or nothing is selected
   const [chosenStart, setStart] = useState<string | null>(first)
   const [chosenSel, setSel] = useState<Sel>({ id: first ?? '', edge: null, key: 'root' })
   // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
@@ -142,7 +143,7 @@ function Shell(p: ShellProps) {
     setRecent((r) => [item, ...r.filter((x) => x.id !== item.id)].slice(0, 6))
     const t = item.target
     if (t.type === 'func') goFlow(t.id)
-    else if (t.type === 'comp') { setSelComp(t.id); setView('arch') }
+    else if (t.type === 'comp') { setSelComp(t.id); setSelEdge(''); setView('arch') }
     else if (t.type === 'page') setView(t.id)
     else if (t.type === 'line') goFlow(t.fid, { f: t.f, l: t.l })
   }
@@ -167,13 +168,13 @@ function Shell(p: ShellProps) {
     <Detail ix={ix} sel={sel} isLive={isLive} sourceId={p.sourceId} canMacro={!!caps?.macro} goFlow={goFlow} goImpact={goImpact} />
   ) : null
   const empty = !p.graph.comps.length
-  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={setSelComp} />
+  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={setSelComp} edge={selEdge} onEdge={setSelEdge} />
     : view === 'flow' && start ? <Flow key={start + dir} ix={ix} start={start} dir={dir} setDir={setDir}
         predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
     : <UI.Card className="pane"><UI.EmptyState title="索引中沒有函式" description="請確認 compile_commands.json 包含目標檔案，再執行 codemap index。" /></UI.Card>
-  const side = view === 'arch' ? (empty ? null : <CompDetail ix={ix} comp={selComp} onPick={goFlow} />) : view === 'check' ? null : detail
+  const side = view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} open={goFlow} /> : <CompDetail ix={ix} comp={selComp} onPick={goFlow} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
     <div className="alert-wrap">

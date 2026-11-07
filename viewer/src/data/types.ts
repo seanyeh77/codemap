@@ -49,6 +49,8 @@ export interface Link {
   kind: 'call' | 'env' | 'interpose'
   api?: string
   names?: string[]
+  /** interpose: each hooked call, by caller and line. */
+  sites?: { s: string; f: string; l: number; name: string }[]
 }
 
 export interface CheckItem {
