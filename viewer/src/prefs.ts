@@ -8,10 +8,12 @@ export interface Prefs {
   editor: 'ssh' | 'local' | 'none'
   sshHost: string
   clone: string
+  /** interface language */
+  lang: 'zh-TW' | 'en'
 }
 
 const KEY = 'codemap.prefs.v1'
-const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'none', sshHost: '', clone: '' }
+const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'none', sshHost: '', clone: '', lang: 'zh-TW' }
 
 function read(): Prefs {
   try {

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { UI } from '../ui'
+import { setLang, t } from '../i18n'
 import { usePrefs } from '../data/hooks'
 import { live } from '../data/load'
 import type { Graph, Meta } from '../data/types'
@@ -32,6 +33,7 @@ export function Settings(p: Props) {
   function save<K extends keyof Prefs>(k: K, v: Prefs[K]) {
     prefs.set(k, v)
     if (k === 'theme') UI.setTheme(v as Prefs['theme'])
+    if (k === 'lang') setLang(v as Prefs['lang'])
     if (k === 'showExtDefault') p.onShowExtDefault(v as boolean)
     setToast('已儲存')
     clearTimeout(timer.current)
@@ -46,66 +48,70 @@ export function Settings(p: Props) {
 
   const source = (
     <>
-      <UI.SettingsSection title="目前的資料來源">
+      <UI.SettingsSection title={t('目前的資料來源')}>
         <UI.DetailList items={[
-          { label: '模式', value: isLive ? <span><UI.Term text="由 codemap serve 提供，讀的是目前磁碟上的程式碼，可以重新檢查筆記。">即時</UI.Term>（codemap serve）</span> : <span><UI.Term text="匯出當時的索引與原始碼，只能瀏覽。">快照</UI.Term>（.codemap 檔）</span> },
-          isLive ? { label: '主機', value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: '檔案', value: <UI.InlineCode>{p.snapName ?? '此頁面'}</UI.InlineCode> },
-          { label: '路徑', value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
-          { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : '無'}{dirty.length ? `（另有 ${dirty.length} 個檔案未 commit）` : ''}</span> },
-          { label: '索引', value: <span><UI.Term text="codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。">索引</UI.Term>{'：'}{`${st.units ?? 0} 個 `}<UI.Term text="一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。">translation unit</UI.Term>{` · ${st.funcs} 個函式 · ${(st.edges ?? 0).toLocaleString()} 條編譯器確認的呼叫`}</span> },
-          isLive ? { label: '索引建立時間', value: when(p.meta!.indexed) } : { label: '匯出時間', value: when(g.generated) },
+          { label: t('模式'), value: isLive ? <span><UI.Term text={t('由 codemap serve 提供，讀的是目前磁碟上的程式碼，可以重新檢查筆記。')}>{t('即時')}</UI.Term>{t('（codemap serve）')}</span> : <span><UI.Term text={t('匯出當時的索引與原始碼，只能瀏覽。')}>{t('快照')}</UI.Term>{t('（.codemap 檔）')}</span> },
+          isLive ? { label: t('主機'), value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: t('檔案'), value: <UI.InlineCode>{p.snapName ?? t('此頁面')}</UI.InlineCode> },
+          { label: t('路徑'), value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
+          { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
+          { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。')}>translation unit</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: (st.edges ?? 0).toLocaleString() })}</span> },
+          isLive ? { label: t('索引建立時間'), value: when(p.meta!.indexed) } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [
-          { label: '匯出快照', primary: true, icon: 'download-simple', onClick: download },
-          { label: '開啟快照', onClick: p.openSnapshot },
-          { label: '重新載入索引', onClick: p.refresh },
+          { label: t('匯出快照'), primary: true, icon: 'download-simple', onClick: download },
+          { label: t('開啟快照'), onClick: p.openSnapshot },
+          { label: t('重新載入索引'), onClick: p.refresh },
         ] : [
-          ...(p.hasLive ? [{ label: '回到即時', primary: true, onClick: p.backLive }] : []),
-          { label: '開啟其他快照', primary: !p.hasLive, onClick: p.openSnapshot },
+          ...(p.hasLive ? [{ label: t('回到即時'), primary: true, onClick: p.backLive }] : []),
+          { label: t('開啟其他快照'), primary: !p.hasLive, onClick: p.openSnapshot },
         ]} />
-        {isLive ? <p className="small muted">重建索引：在 build 環境執行 <UI.InlineCode>codemap index</UI.InlineCode> 後重新載入。</p> : null}
-        {p.openError ? <UI.Alert tone="danger" title="無法開啟此檔案">{p.openError}</UI.Alert> : null}
+        {isLive ? <p className="small muted">{t('重建索引：在 build 環境執行')} <UI.InlineCode>codemap index</UI.InlineCode> {t('後重新載入。')}</p> : null}
+        {p.openError ? <UI.Alert tone="danger" title={t('無法開啟此檔案')}>{p.openError}</UI.Alert> : null}
       </UI.SettingsSection>
-      <UI.SettingsSection title="建立索引" description="設定檔：.codemap/rules.json">
+      <UI.SettingsSection title={t('建立索引')} description={t('設定檔：.codemap/rules.json')}>
         <UI.DetailList items={[
-          { label: '編譯資料庫', value: <UI.InlineCode>compile_commands.json</UI.InlineCode> },
-          { label: '編譯器', value: g.config.cc ? <UI.InlineCode>{g.config.cc}</UI.InlineCode> : '依 compile_commands.json（gcc 或 g++）' },
-          { label: '範圍', value: g.config.scope?.length ? <span className="chips">{g.config.scope.map((s) => <UI.InlineCode key={s}>{s}</UI.InlineCode>)}</span> : '整個 repo' },
-          { label: '失敗的檔案', value: `${st.failed ?? 0} 個` },
+          { label: t('編譯資料庫'), value: <UI.InlineCode>compile_commands.json</UI.InlineCode> },
+          { label: t('編譯器'), value: g.config.cc ? <UI.InlineCode>{g.config.cc}</UI.InlineCode> : t('依 compile_commands.json（gcc 或 g++）') },
+          { label: t('範圍'), value: g.config.scope?.length ? <span className="chips">{g.config.scope.map((s) => <UI.InlineCode key={s}>{s}</UI.InlineCode>)}</span> : t('整個 repo') },
+          { label: t('失敗的檔案'), value: t('{v1} 個', { v1: st.failed ?? 0 }) },
         ]} />
       </UI.SettingsSection>
     </>
   )
   const open = (
-    <UI.SettingsSection title="在 VS Code 開啟">
-      {radios('開啟方式', 'editor', [['ssh', 'Remote-SSH（build 環境的檔案）'], ['local', '本機 clone'], ['none', '不使用 VS Code']])}
-      {pr.editor === 'ssh' ? <UI.TextField label="Remote-SSH 主機名稱" value={pr.sshHost} placeholder={g.host} hint="與 ~/.ssh/config 的 Host 相同。留空時使用伺服器主機名稱。" onChange={(e) => save('sshHost', e.target.value)} /> : null}
-      {pr.editor === 'local' ? <UI.TextField label="本機 clone 路徑" value={pr.clone} placeholder={'/Users/you/src/' + g.repo} hint="commit 須與索引相同，行號才會一致。" onChange={(e) => save('clone', e.target.value)} /> : null}
+    <UI.SettingsSection title={t('在 VS Code 開啟')}>
+      {radios(t('開啟方式'), 'editor', [['ssh', t('Remote-SSH（build 環境的檔案）')], ['local', t('本機 clone')], ['none', t('不使用 VS Code')]])}
+      {pr.editor === 'ssh' ? <UI.TextField label={t('Remote-SSH 主機名稱')} value={pr.sshHost} placeholder={g.host} hint={t('與 ~/.ssh/config 的 Host 相同。留空時使用伺服器主機名稱。')} onChange={(e) => save('sshHost', e.target.value)} /> : null}
+      {pr.editor === 'local' ? <UI.TextField label={t('本機 clone 路徑')} value={pr.clone} placeholder={'/Users/you/src/' + g.repo} hint={t('commit 須與索引相同，行號才會一致。')} onChange={(e) => save('clone', e.target.value)} /> : null}
     </UI.SettingsSection>
   )
   const display = (
     <>
-      <UI.SettingsSection title="架構圖與流程">
+      <UI.SettingsSection title={t('架構圖與流程')}>
         <div className="set-row">
-          <div className="grow"><div>流程預設顯示外部函式</div><div className="small muted">例如 libc、UCX 的函式。</div></div>
-          <UI.Switch label="流程預設顯示外部函式" checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
+          <div className="grow"><div>{t('流程預設顯示外部函式')}</div><div className="small muted">{t('例如 libc、UCX 的函式。')}</div></div>
+          <UI.Switch label={t('流程預設顯示外部函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
         </div>
       </UI.SettingsSection>
-      <UI.SettingsSection title="版面">{radios('原始碼面板', 'panel', [['right', '右側'], ['below', '下方']])}</UI.SettingsSection>
+      <UI.SettingsSection title={t('版面')}>{radios(t('原始碼面板'), 'panel', [['right', t('右側')], ['below', t('下方')]])}</UI.SettingsSection>
     </>
   )
   const look = (
-    <UI.SettingsSection title="主題">
-      <UI.ThemePicker value={pr.theme} onChange={(v) => save('theme', v)} />
-    </UI.SettingsSection>
+    <>
+      <UI.SettingsSection title={t('主題')}>
+        <UI.ThemePicker value={pr.theme} onChange={(v) => save('theme', v)} />
+      </UI.SettingsSection>
+      {/* each option in its own language, so it can be found whichever is on screen */}
+      <UI.SettingsSection title={t('語言')}>{radios(t('介面語言'), 'lang', [['zh-TW', '繁體中文'], ['en', 'English']])}</UI.SettingsSection>
+    </>
   )
   return (
     <div className="settings-wrap">
       <UI.SettingsLayout value={p.cat} onChange={p.setCat} toast={toast} categories={[
-        { id: 'source', label: '資料來源', content: source },
-        { id: 'open', label: '開啟原始碼', content: open },
-        { id: 'display', label: '顯示', content: display },
-        { id: 'look', label: '外觀', content: look },
+        { id: 'source', label: t('資料來源'), content: source },
+        { id: 'open', label: t('開啟原始碼'), content: open },
+        { id: 'display', label: t('顯示'), content: display },
+        { id: 'look', label: t('外觀'), content: look },
       ]} />
     </div>
   )

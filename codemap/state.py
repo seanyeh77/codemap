@@ -13,7 +13,7 @@ from .source import code_lines
 
 QUAL = r"(?:(?:const|volatile|unsigned|signed|long|short|struct|enum|union|_Thread_local|__thread)\s+)*"
 DECL_RE = re.compile(r"^\s*(static\s+)?" + QUAL + r"[A-Za-z_]\w*[\s\*]+(?:const\s+)?\**\s*([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*(?:=|;)")
-SKIP = re.compile(r"^\s*(typedef|extern|return|#)\b")
+SKIP = re.compile(r"^\s*(typedef|extern|return|#)\b|^\s*(struct|union|enum)\s+\w+\s*;")   # a forward declaration names a type
 STRINGS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 
 

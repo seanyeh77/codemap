@@ -47,7 +47,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 
 @media (max-width: 959px) {
   .body { flex-direction: column; overflow: auto; padding: var(--space-4); }
-  .detail, .body.below .detail { width: auto; flex: 0 0 auto; max-height: 80vh; }
+  /* stacked: the page scrolls as one, rather than a short box scrolling inside it */
+  .detail, .body.below .detail { width: auto; flex: 0 0 auto; max-height: none; overflow: visible; }
   .detail.tree-panel { height: 70vh; }
   .pane { overflow: visible; flex: 0 0 auto; }
   .alert-wrap { padding: var(--space-4) var(--space-4) 0; }
@@ -63,7 +64,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* cards as tall as their content in a row layout, so a short diagram leaves no white block below it */
 .pane.fit, .detail.fit { align-self: flex-start; max-height: 100%; }
 .body.below .fit { align-self: stretch; }
-@media (max-width: 959px) { .pane.fit, .detail.fit { align-self: stretch; } }
+@media (max-width: 959px) { .pane.fit, .detail.fit { align-self: stretch; max-height: none; } }
 .edge-code { display: flex; flex-direction: column; gap: var(--space-3); align-items: flex-start; }
 .edge-code > :first-child { align-self: stretch; }
 .stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
@@ -71,5 +72,24 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .detail.split > .grow-panel { flex: 1; min-height: 0; overflow: hidden; }
 @media (max-width: 959px) { .detail.split > .grow-panel { flex: 0 0 60vh; } }
 .overview section { display: flex; flex-direction: column; gap: var(--space-2); }
+.overview h4 { margin: var(--space-2) 0 0; }
+/* code opened from a row shows under that row */
+.row-code { margin-top: var(--space-2); }
 .linklike { all: unset; position: relative; cursor: pointer; color: var(--accent-text); text-decoration: underline; }
 .linklike:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 2px; }
+/* a button under a scrolling code block keeps its height when the panel is short */
+.keep { flex-shrink: 0; }
+/* impact table: one link per call line, wrapping between links rather than inside one */
+.locs { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+.entry-list { display: block; margin-top: var(--space-1); }
+.toc { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+
+/* side by side with a draggable divider (SplitPane): each area fills its column and scrolls inside */
+.split-body > .split { flex: 1; min-width: 0; min-height: 0; }
+.split:not(.is-stacked) { height: 100%; }
+.split:not(.is-stacked) > .ui-split-a, .split:not(.is-stacked) > .ui-split-b { display: flex; min-height: 0; }
+.split .ui-split-a > *, .split .ui-split-b > * { flex: 1 1 auto; min-width: 0; }
+.split .detail { width: auto; }
+/* stacked by its own width (a narrow window with the sidebar open): the page scrolls as one */
+.split-body:has(.is-stacked) { overflow: auto; }
+.split.is-stacked .detail { flex: 0 0 auto; max-height: none; overflow: visible; }

@@ -88,6 +88,7 @@ Optional `.codemap/rules.json`:
   "scope": ["src/libibtrace", "src/ibmon"],
   "disable": ["exec"],
   "components": {"src/libibtrace/hooks": "hooks"},
+  "describe": {"src/libibtrace": "Preloaded into the traced program; records each verbs, UCP and UCT call into the ring."},
   "channels": [
     {"from": "src/libibtrace", "to": "src/ibmon", "via": "src/common", "label": "ring"}
   ],
@@ -99,6 +100,10 @@ Optional `.codemap/rules.json`:
 
 Custom rules are where project-specific patterns go once someone has agreed
 they are worth tracking.
+
+`describe` says what a component is for, in the project's own words. Without
+it the overview shows the top comment of the component's main file and says
+which file it came from.
 
 `channels` declares data that one component hands to another through a shared
 one (a shared-memory ring, a queue) without any call between them. The

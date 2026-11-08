@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { UI } from '../ui'
+import { t } from '../i18n'
 import type { Index } from '../data/graph'
 import { live } from '../data/load'
 import type { CheckFile, CheckItem, Sel } from '../data/types'
@@ -21,15 +22,15 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
     return <UI.Card className="pane" data-tour="notes"><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="80%" height={16} /></UI.Card>
   }
   if (p.isLive && q.error) {
-    return <UI.Card className="pane" data-tour="notes"><UI.Alert tone="danger" title="無法檢查筆記">{(q.error as Error).message}</UI.Alert></UI.Card>
+    return <UI.Card className="pane" data-tour="notes"><UI.Alert tone="danger" title={t('無法檢查筆記')}>{(q.error as Error).message}</UI.Alert></UI.Card>
   }
   if (!cur) {
     return (
       <UI.Card className="pane" data-tour="notes">
-        <UI.EmptyState title="沒有可檢查的筆記"
-          description="檢查 Markdown 中的 file:line 引用與呼叫關係。"
-          steps={p.isLive ? ['執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記', '重新整理此頁']
-            : ['以 codemap export --notes 指定筆記，重新匯出快照']} />
+        <UI.EmptyState title={t('沒有可檢查的筆記')}
+          description={t('檢查 Markdown 中的 file:line 引用與呼叫關係。')}
+          steps={p.isLive ? [t('執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記'), t('重新整理此頁')]
+            : [t('以 codemap export --notes 指定筆記，重新匯出快照')]} />
       </UI.Card>
     )
   }
@@ -44,26 +45,26 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const fixes = rows.filter((r) => r.fix)
   return (
     <div className="pane" data-tour="notes">
-      {files.length > 1 ? <UI.Tabs label="筆記檔案" unit="行" items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
+      {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={t('行')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
       <UI.Card title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
-        actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? '檢查中' : '重新檢查'}</UI.Button> : undefined}>
-        <p className="small muted">{`比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。共 ${rows.length} 行，含 ${cur.refs} 個引用、${cur.claims} 個呼叫。`}</p>
-        {p.isLive && q.dataUpdatedAt ? <p className="small muted" aria-live="polite">{`檢查時間：${UI.format.dateTime(new Date(q.dataUpdatedAt))}，${rows.filter((r) => r.status === 'fail').length} 行錯誤。`}</p> : null}
-        <p className="small muted">「相符」表示引用的那一行出現筆記裡的名稱，或呼叫經編譯器確認，不代表整句的意思都對；「待確認」表示工具無法判斷，說明欄寫了要對照的位置和建議的寫法。</p>
-        {!p.isLive ? <p className="small muted">此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。</p> : null}
+        actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
+        <p className="small muted">{t('比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。共 {v1} 行，含 {v2} 個引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
+        {p.isLive && q.dataUpdatedAt ? <p className="small muted" aria-live="polite">{t('檢查時間：{v1}，{v2} 行錯誤。', { v1: UI.format.dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length })}</p> : null}
+        <p className="small muted">{t('「相符」表示引用的那一行出現筆記裡的名稱，或呼叫經編譯器確認，不代表整句的意思都對；「待確認」表示工具無法判斷，說明欄寫了要對照的位置和建議的寫法。')}</p>
+        {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
-      <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label="檢查結果" urlSync={false} search={false} columnMenu={false}
-        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: LABEL[v] })), unit: '行' }}
+      <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
+        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: t('行') }}
         columns={[
-          { key: 'at', label: '位置', width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode>{r.at}</UI.InlineCode> },
-          { key: 'text', label: '筆記內容', width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
-          { key: 'status', label: '結果', width: 110, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{LABEL[r.status]}</UI.Badge> },
-          { key: 'why', label: '說明', width: 280, grow: 3, long: true, searchText: (r: CheckItem) => r.why, render: (r: CheckItem) => code(r.why) },
+          { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode>{r.at}</UI.InlineCode> },
+          { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
+          { key: 'status', label: t('結果'), width: 110, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{t(LABEL[r.status])}</UI.Badge> },
+          { key: 'why', label: t('說明'), width: 280, grow: 3, long: true, searchText: (r: CheckItem) => r.why, render: (r: CheckItem) => code(r.why) },
         ]}
         rows={rows} />
       {fixes.length ? (
-        <UI.Card className="fixes" title={`修正建議（${fixes.length} 個）`}>
-          <p className="small muted">複製後貼回筆記，取代原本的該行。</p>
+        <UI.Card className="fixes" title={t('修正建議（{v1} 個）', { v1: fixes.length })}>
+          <p className="small muted">{t('複製後貼回筆記，取代原本的該行。')}</p>
           {fixes.map((r) => (
             <UI.Suggestion key={r.at} title={r.at} before={unlisted(r.fix!.before)} after={unlisted(r.fix!.after)}
               copyText={r.fix!.after} refHref={refHref} onRef={onRef} />

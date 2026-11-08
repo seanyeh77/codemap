@@ -155,6 +155,70 @@ def rule_fnptr_pass(c):
             depth = max(0, depth + cl.count("{") - cl.count("}"))
 
 
+STRUCT_RE = re.compile(r"\bstruct\s+([A-Za-z_]\w*)\s*\{")
+FIELD_RE = re.compile(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(|([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*;")
+VAR_TYPE_RE = re.compile(r"\bstruct\s+([A-Za-z_]\w*)\s*(?:const\s*)?\**\s*(?:const\s+)?([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*[;=,)]")
+INSTALL_RE = re.compile(r"(?:^|[;{(]|\bif\b|\belse\b)\s*((?:\*\s*)?[A-Za-z_][\w.\->\[\] ]*?)\s*(?<![=!<>+\-*/%&|^])=(?!=)\s*"
+                        r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*;")
+
+
+def rule_table_install(c):
+    """A function pointer copied out of a table entry into some other slot, as in
+    `slot[i] = g_ops[op].wrapper;`. The functions it can install are the ones listed in that
+    field of every table of the same struct type (found by rule_fnptr_pass)."""
+    fields, var_type = {}, {}
+    files = {c.rel(p): code_lines(p) for p in c.c_files}
+    for f, code in files.items():
+        text = "\n".join(code)
+        for m in STRUCT_RE.finditer(text):
+            depth, i = 1, m.end()
+            while i < len(text) and depth:
+                depth += {"{": 1, "}": -1}.get(text[i], 0)
+                i += 1
+            names = []
+            for decl in text[m.end():i - 1].split(";"):
+                fm = FIELD_RE.search(decl + ";")
+                if fm:
+                    names.append(fm.group(1) or fm.group(2))
+            fields.setdefault(m.group(1), names)
+        for i, cl in enumerate(code, 1):
+            for m in VAR_TYPE_RE.finditer(cl):
+                var_type[(f, m.group(2))] = m.group(1)
+                var_type.setdefault((None, m.group(2)), m.group(1))
+    # which function sits in which field of which table type
+    in_field = {}
+    for e in [e for e in c.edges if e["kind"] == "fnptr_table"]:
+        table, f = c.nodes[e["src"]]["name"], e["file"]
+        t = var_type.get((f, table)) or var_type.get((None, table))
+        if not t or t not in fields:
+            continue
+        cl = files[f][e["line"] - 1]
+        name = c.nodes[e["dst"]]["name"]
+        dm = re.search(r"\.([A-Za-z_]\w*)\s*=\s*&?\s*" + re.escape(name) + r"\b", cl)
+        if dm:
+            field = dm.group(1)
+        else:
+            at = re.search(r"\b" + re.escape(name) + r"\b", cl)
+            if not at:
+                continue
+            start = cl.rfind("{", 0, at.start())
+            pos = cl[start + 1:at.start()].count(",") if start >= 0 else None
+            if pos is None or pos >= len(fields[t]):
+                continue
+            field = fields[t][pos]
+        in_field.setdefault((t, field), []).append((e["dst"], table))
+    for f, code in files.items():
+        for i, cl in enumerate(code, 1):
+            for m in INSTALL_RE.finditer(cl):
+                lhs, var, field = m.groups()
+                if not re.search(r"\[|->|\.|^\*", lhs):
+                    continue                          # a plain local variable, not a slot
+                t = var_type.get((f, var)) or var_type.get((None, var))
+                for dst, table in in_field.get((t, field), []):
+                    c.add("table_install", "fnptr_assign", c.where(f, i), dst, f, i, slot=lhs.strip(), via=f"{var}.{field}",
+                          table=table, key=slot_key(lhs))
+
+
 def slot_key(expr):
     """Compare pointer slots without the base variable when the path is long
     enough: ctx->ops.post_send and dev->ops.post_send are the same slot, while
@@ -361,7 +425,7 @@ def run(root, index, config=None):
     c = Ctx(root, index, config)
     macros = _macro_sites(c)
     steps = [("fnptr_assign", lambda: rule_fnptr_assign(c)), ("indirect", lambda: rule_indirect(c)),
-             ("fnptr_pass", lambda: rule_fnptr_pass(c)), ("ctor", lambda: rule_ctor(c)), ("env", lambda: rule_env(c)), ("exec", lambda: rule_exec(c)),
+             ("fnptr_pass", lambda: rule_fnptr_pass(c)), ("table_install", lambda: rule_table_install(c)), ("ctor", lambda: rule_ctor(c)), ("env", lambda: rule_env(c)), ("exec", lambda: rule_exec(c)),
              ("build_define", lambda: rule_build_define(c, macros)), ("cross_lang", lambda: rule_cross_lang(c, macros)),
              ("custom", lambda: rule_custom(c))]
     for name, fn in steps:

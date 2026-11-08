@@ -1,4 +1,5 @@
 import type { Edge, Func, Graph } from './types'
+import { list, t } from '../i18n'
 
 /** How deep the impact list goes. */
 export const MAX_DEPTH = 6
@@ -9,8 +10,9 @@ export const isEnv = (e: Edge) => e.k === 'env'
 /** Lookups over one graph: callers, callees and names. */
 /** The rules of codemap/rules.py, as the explanations name them. */
 const RULE_NAME: Record<string, string> = {
-  fnptr_assign: '函式指標賦值', fnptr_pass: '函式當作參數或表格內容', indirect: '經由函式指標呼叫', ctor: 'constructor / destructor', env: '環境變數',
+  fnptr_assign: '函式指標賦值', table_install: '從表格取出函式指標再寫入', fnptr_pass: '函式當作參數或表格內容', indirect: '經由函式指標呼叫', ctor: 'constructor / destructor', env: '環境變數',
 }
+const ruleName = (r?: string) => (RULE_NAME[r ?? ''] ? t(RULE_NAME[r ?? '']) : r ?? '')
 
 export class Index {
   readonly funcs: Record<string, Func>
@@ -30,7 +32,7 @@ export class Index {
 
   nameOf(id: string, e?: Partial<Edge> | null): string {
     const bare = this.bareName(id, e)
-    return !this.funcs[id] && e?.saved_from ? '原本的 ' + bare : bare
+    return !this.funcs[id] && e?.saved_from ? t('原本的 {name}', { name: bare }) : bare
   }
 
   /** The name alone, without 原本的 before a replaced function. */
@@ -38,9 +40,9 @@ export class Index {
     const f = this.funcs[id]
     if (f) return f.name
     if (e?.saved_from) return e.saved_from.split(/->|\./).pop()!
-    if (e?.k === 'constructor') return '程式載入時'   // run by the loader, not called by a function
-    if (e?.k === 'destructor') return '程式結束時'
-    if (e?.k === 'fnptr_table' && id === e.s) return `表格 ${e.slot}`   // a file-scope table, not a function
+    if (e?.k === 'constructor') return t('程式載入時')   // run by the loader, not called by a function
+    if (e?.k === 'destructor') return t('程式結束時')
+    if (e?.k === 'fnptr_table' && id === e.s) return t('表格 {name}', { name: e.slot ?? '' })   // a file-scope table, not a function
     return e?.dn || id
   }
 
@@ -72,6 +74,30 @@ export class Index {
     return new Set(this.callers(id).filter((e) => this.funcs[e.s]).map((e) => e.s)).size
   }
 
+  /** Who calls a function, split the same way on every page: functions the compiler saw, functions a
+   *  rule inferred, inferred sources that are not functions (a table, the loader), and the loader. */
+  callerInfo(id: string): { sure: number; guessed: number; others: string[]; load: 'constructor' | 'destructor' | null } {
+    const sure = new Set<string>(), guessed = new Set<string>(), others = new Set<string>()
+    let load: 'constructor' | 'destructor' | null = null
+    for (const e of this.callers(id)) {
+      if (e.k === 'constructor' || e.k === 'destructor') load = e.k
+      else if (!this.funcs[e.s]) others.add(this.nameOf(e.s, e))
+      else (e.src === 'rule' ? guessed : sure).add(e.s)
+    }
+    for (const s of guessed) if (sure.has(s)) guessed.delete(s)
+    return { sure: sure.size, guessed: guessed.size, others: [...others], load }
+  }
+
+  /** The caller count as one short phrase: 「2 個 caller，其中 1 個是推測」. */
+  callerText(id: string): string {
+    const c = this.callerInfo(id)
+    const n = c.sure + c.guessed
+    const parts = [t('{n} 個 caller', { n }) + (c.guessed ? (c.guessed === n ? t('（推測）') : t('，其中 {n} 個是推測', { n: c.guessed })) : '')]
+    if (c.others.length) parts.push(t('另有推測的來源：{names}', { names: list(c.others.slice(0, 2)) }))
+    if (c.load) parts.push(c.load === 'constructor' ? t('程式載入時自動執行') : t('程式結束時自動執行'))
+    return parts.join(t('；'))
+  }
+
   /** How many different functions in the repo this one calls. */
   calleeCount(id: string): number {
     return new Set(this.callees(id, false).filter((e) => this.funcs[e.d]).map((e) => e.d)).size
@@ -92,22 +118,24 @@ export class Index {
     const id = e.d, to = '`' + this.bareName(id, e) + '`'
     if (e.src === 'compiler') {
       if (!this.funcs[id]) {
-        return { label: '外部', title: '外部函式', text: `不在此 repo 中${e.ext ? `，宣告於 \`${e.ext}\`` : ''}。` }
+        return { label: t('外部'), title: t('外部函式'), text: e.ext ? t('不在此 repo 中，宣告於 `{file}`。', { file: e.ext }) : t('不在此 repo 中。') }
       }
-      return { label: '編譯器確認', title: '編譯器確認', text: '重新編譯時記錄到的呼叫，存在於目前的 build。' }
+      return { label: t('編譯器確認'), title: t('編譯器確認'), text: t('重新編譯時記錄到的呼叫，存在於目前的 build。') }
     }
-    const tail = `由規則「${RULE_NAME[e.rule ?? ''] ?? e.rule}」推得，編譯器無法確認。`
+    const tail = t('由規則「{rule}」推得，編譯器無法確認。', { rule: ruleName(e.rule) })
     let text: string
-    if (e.k === 'fnptr_pass') text = `${this.bareName(e.s)} 把 ${to} 當作參數傳給 \`${e.slot}()\`，可能由它呼叫。${tail}`
-    else if (e.k === 'fnptr_table') text = `${to} 列在表格 \`${e.slot}\` 裡，可能經由這張表被呼叫。${tail}`
-    else if (e.k === 'fnptr_assign') text = `${to} 存入 \`${e.slot ?? '函式指標'}\`，可能經由此指標被呼叫。${tail}`
-    else if (e.k === 'indirect_saved') text = `經由 \`${e.via}\` 呼叫替換前的 \`${e.saved_from}\`。${tail}`
-    else if (e.k === 'indirect_candidate') text = `經由 \`${e.via ?? '函式指標'}\` 呼叫 ${to}。${tail}`
+    const from = this.bareName(e.s), slot = e.slot ?? t('函式指標'), via = e.via ?? t('函式指標')
+    if (e.k === 'fnptr_pass') text = t('{from} 把 {to} 當作參數傳給 `{slot}()`，可能由它呼叫。', { from, to, slot }) + tail
+    else if (e.k === 'fnptr_table') text = t('{to} 列在表格 `{slot}` 裡，可能經由這張表被呼叫。', { to, slot }) + tail
+    else if (e.rule === 'table_install') text = t('{to} 列在表格 `{table}` 裡；{from} 把 `{via}` 寫入 `{slot}`，所以這裡可能裝上 {to}。', { to, table: e.table ?? '', from, via, slot }) + tail
+    else if (e.k === 'fnptr_assign') text = t('{to} 存入 `{slot}`，可能經由此指標被呼叫。', { to, slot }) + tail
+    else if (e.k === 'indirect_saved') text = t('經由 `{via}` 呼叫替換前的 `{name}`。', { via, name: e.saved_from ?? '' }) + tail
+    else if (e.k === 'indirect_candidate') text = t('經由 `{via}` 呼叫 {to}。', { via, to }) + tail
     else if (e.k === 'constructor' || e.k === 'destructor') text = e.k === 'constructor'
-      ? '標記為 `constructor`：dynamic loader 載入程式或程式庫時，在 main 之前自動執行。以 LD_PRELOAD 載入的程式庫常用它做初始化。'
-      : '標記為 `destructor`：程式結束或程式庫卸載時自動執行。'
-    else text = `由規則「${e.rule}」推得，編譯器無法確認。`
-    return { label: '推測（規則）', title: '推測（規則）', text }
+      ? t('標記為 `constructor`：dynamic loader 載入程式或程式庫時，在 main 之前自動執行。以 LD_PRELOAD 載入的程式庫常用它做初始化。')
+      : t('標記為 `destructor`：程式結束或程式庫卸載時自動執行。')
+    else text = t('由規則「{rule}」推得，編譯器無法確認。', { rule: e.rule ?? '' })
+    return { label: t('推測（規則）'), title: t('推測（規則）'), text }
   }
 
   /** The function a file:line falls in, for links in notes such as `ops.c:175`. */

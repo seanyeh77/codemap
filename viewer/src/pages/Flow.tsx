@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from '../ui'
+import { t } from '../i18n'
 import type { Index } from '../data/graph'
 import type { Edge, Sel } from '../data/types'
 import type { TreeNode } from '@seanyeh77/ui'
@@ -13,17 +14,22 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
   openLine: (fid: string, e: Edge, key: string) => void) {
   const index: Record<string, Entry> = {}
   const kidsOf = (fid: string) => (dir === 'down' ? ix.callees(fid, showExt) : ix.callers(fid))
-  function node(nid: string, e: Edge | null, key: string, path: string[], parent: string): TreeNode {
+  function node(nid: string, e: Edge | null, key: string, path: string[], parent: string, sites: Edge[] = []): TreeNode {
     const f = ix.funcs[nid]
     const kids = f ? kidsOf(nid) : []
-    const n: TreeNode = { id: key, name: ix.nameOf(nid, e), path: e ? `${e.f}:${e.l}` : f ? `${f.file}:${f.line}` : undefined }
+    // called from several lines of the parent: one row, its lines listed ("main.c:183、205、214")
+    const at = e ? (sites.length > 1 ? t('{v1}:{v2}', { v1: e.f, v2: sites.map((s) => s.l).join(t('、')) }) : `${e.f}:${e.l}`) : f ? `${f.file}:${f.line}` : undefined
+    const n: TreeNode = { id: key, name: ix.nameOf(nid, e), path: at }
+    if (sites.length > 1) n.tags = [<UI.Tag key="n">{`×${sites.length}`}</UI.Tag>]
     if (e) {
       // the call is in the parent (looking down) or in this node's function (looking up)
       const where = dir === 'down' ? parent : key
       // only inferred relations carry a tag; the note under the tree says the rest are the compiler's
-      if (e.src === 'rule') n.tags = [<RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
+      if (e.src === 'rule') n.tags = [...(n.tags ?? []), <RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
       if (!f) n.muted = true
     }
+    // read aloud as 「name，推測（規則），called 3 times，file:lines」: the tags are elements, so say them in words
+    if (n.tags?.length) n.ariaLabel = [n.name, e?.src === 'rule' ? ix.explain(e).label : '', sites.length > 1 ? t('呼叫 {n} 次', { n: sites.length }) : '', at ?? ''].filter(Boolean).join(t('，'))
     const open = kids.length > 0 && !path.includes(nid)
     index[key] = { fid: nid, edge: e, names: [...new Set(kids.map((k) => dir === 'down' ? ix.bareName(k.d, k) : ix.bareName(k.s, k)))], open, kids, path }
     if (open && (predict ? revealed[key] : key === 'root')) n.children = children(key)     // shown open from the start
@@ -32,10 +38,15 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
   }
   function children(key: string): TreeNode[] {
     const c = index[key]
-    return c.kids.map((k) => {
+    // one row per function, at its first call; the other calls of the same function are listed on it
+    const groups = new Map<string, Edge[]>()
+    for (const k of c.kids) {
       const cid = dir === 'down' ? k.d : k.s
-      return node(cid, k, `${key}/${cid}@${k.l}`, [...c.path, c.fid], key)
-    })
+      const g = groups.get(cid)
+      if (g) g.push(k)
+      else groups.set(cid, [k])
+    }
+    return [...groups].map(([cid, ks]) => node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks))
   }
   return { items: [node(start, null, 'root', [], 'root')], index, children }
 }
@@ -48,7 +59,7 @@ function RelationTag(p: { ix: Index; e: Edge; open: () => void }) {
   return (
     <span className="rel-tag" onClick={stop} onKeyDown={stop}>
       <UI.Tag><UI.Term title={x.title} text={x.text} code={p.e.t ? `${String(p.e.l).padStart(4)} │ ${p.e.t}` : undefined}
-        action={{ label: '看這一行', onClick: p.open }}>{x.label}</UI.Term></UI.Tag>
+        action={{ label: t('看這一行'), onClick: p.open }}>{x.label}</UI.Term></UI.Tag>
     </span>
   )
 }
@@ -63,6 +74,8 @@ interface FlowProps {
   start: string
   dir: 'down' | 'up'
   setDir: (d: 'down' | 'up') => void
+  /** set when the direction was just changed: focus returns to the tabs */
+  dirMoved: { current: boolean }
   predict: boolean
   setPredict: (v: boolean) => void
   showExt: boolean
@@ -75,62 +88,75 @@ interface FlowProps {
 export function Flow(p: FlowProps) {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [guesses, setGuesses] = useState<Record<string, string>>({})
-  const t = useMemo(() => buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.onSel), [p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.onSel])
-  const selKey = p.selKey && t.index[p.selKey] ? p.selKey : 'root'
+  const tree = useMemo(() => buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.onSel), [p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.onSel])
+  const selKey = p.selKey && tree.index[p.selKey] ? p.selKey : 'root'
   const { onSel, start } = p
   // a selection made on another page is not in this tree: select the start, so the tree and Detail agree
   useEffect(() => { if (selKey !== p.selKey) onSel(start, null, 'root') }, [selKey, p.selKey, onSel, start])
-  const cur = t.index[selKey]
+  const cur = tree.index[selKey]
   const needGuess = p.predict && cur && cur.open && !revealed[selKey]
   const res = p.predict && revealed[selKey] && guesses[selKey] ? guessHits(guesses[selKey], cur.names) : null
+  const resultRef = useRef<HTMLDivElement>(null)
+  // guesses that are functions outside the repo, left out of the tree while 外部函式 is off
+  const hidden = res && cur && p.dir === 'down' && !p.showExt
+    ? res.miss.filter((m) => p.ix.callees(cur.fid, true).some((e) => !p.ix.funcs[e.d] && p.ix.bareName(e.d, e) === m)) : []
+  const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!p.dirMoved.current) return
+    p.dirMoved.current = false
+    cardRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
+  }, [p.dirMoved])
   // guess mode keeps even the start closed until its level is revealed
   const openKeys = [...(p.predict ? [] : ['root']), ...Object.keys(revealed)]
   const reveal = () => {
     setRevealed({ ...revealed, [selKey]: true })
+    requestAnimationFrame(() => resultRef.current?.focus())       // the field and button are gone: keep the keyboard here
     // the result is on screen at once; screen readers hear it too
     const r = guesses[selKey] ? guessHits(guesses[selKey], cur.names) : null
-    UI.announce(r ? `預測正確 ${r.hit.length} / ${cur.names.length} 個` : `已揭曉：${cur.names.length} 個函式`)
+    UI.announce(r ? t('預測正確 {v1} / {v2} 個', { v1: r.hit.length, v2: cur.names.length }) : t('已揭曉：{v1} 個函式', { v1: cur.names.length }))
   }
 
   return (
     <UI.Card className="pane">
-      <div className="row">
-        <UI.Tabs label="方向" items={[{ id: 'down', label: '往下：callee' }, { id: 'up', label: '往上：caller' }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
+      <div className="row" ref={cardRef}>
+        <UI.Tabs label={t('方向')} items={[{ id: 'down', label: t('往下：callee') }, { id: 'up', label: t('往上：caller') }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
       </div>
       <div className="row">
-        <UI.Button icon="magnifying-glass" onClick={p.openSearch}>更換起點函式</UI.Button>
+        <UI.Button icon="magnifying-glass" onClick={p.openSearch}>{t('更換起點函式')}</UI.Button>
         <div className="grow" />
-        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label="自我測驗" /><UI.Term text="先寫下你認為下一層會呼叫哪些函式，再按「揭曉」比對。用來練習讀懂程式，不是工具的推測。">自我測驗</UI.Term></label>
-        {p.dir === 'down' ? <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label="顯示外部函式" /><span>外部函式</span></label> : null}
+        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下你認為下一層會呼叫哪些函式，再按「揭曉」比對。用來練習讀懂程式，不是工具的推測。')}>{t('自我測驗')}</UI.Term></label>
+        <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label={t('顯示外部函式')} disabled={p.dir !== 'down'} /><span>{t('外部函式')}</span></label>
       </div>
       {p.predict && cur ? (
         <div className="predict">
           {needGuess ? (
             <>
-              <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{` 的下一層有 ${cur.names.length} 個函式。請先寫下預測再揭曉。`}</div>
-              <UI.TextField label="預測" hint="函式名稱，以空白分隔" value={guesses[selKey] ?? ''}
+              <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{t(' 的下一層有 {v1} 個函式。請先寫下預測再揭曉。', { v1: cur.names.length })}</div>
+              <UI.TextField label={t('預測')} hint={t('函式名稱，以空白分隔')} value={guesses[selKey] ?? ''}
                 onChange={(e) => setGuesses({ ...guesses, [selKey]: e.target.value })}
                 onKeyDown={(e) => { if (e.key === 'Enter') reveal() }} />
-              <UI.ActionBar actions={[{ label: '揭曉', primary: true, onClick: reveal }]} />
+              <UI.ActionBar actions={[{ label: t('揭曉'), primary: true, onClick: reveal }]} />
             </>
           ) : res ? (
-            <div>{`預測正確 ${res.hit.length} / ${cur.names.length} 個${res.hit.length ? '：' + res.hit.join('、') : ''}${res.miss.length ? '。不在此層：' + res.miss.join('、') : ''}`}</div>
+            <div ref={resultRef} tabIndex={-1}>{t('預測正確 {v1} / {v2} 個{v3}', { v1: res.hit.length, v2: cur.names.length, v3: res.hit.length ? t('：') + res.hit.join(t('、')) : '' })}
+              {hidden.length ? t('。{v1} 是 repo 外的函式，目前沒有顯示，所以不計入', { v1: hidden.join(t('、')) }) : ''}
+              {res.miss.filter((m) => !hidden.includes(m)).length ? t('。不在這一層：{v1}', { v1: res.miss.filter((m) => !hidden.includes(m)).join(t('、')) }) : ''}</div>
           ) : (
-            <div className="muted">{cur.open ? '選擇未展開的函式繼續預測。' : '此函式沒有下一層。'}</div>
+            <div className="muted">{cur.open ? t('選擇未展開的函式繼續預測。') : t('此函式沒有下一層。')}</div>
           )}
         </div>
       ) : null}
       <div data-tour="tree">
-        <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label="呼叫流程"
-          items={t.items} defaultOpen={openKeys} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : t.children(n.id))}
-          selectedId={selKey} onSelect={(n) => { const c = t.index[n.id]; p.onSel(c.fid, c.edge, n.id) }} />
+        <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
+          items={tree.items} defaultOpen={openKeys} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
+          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; p.onSel(c.fid, c.edge, n.id) }} />
       </div>
-      {p.dir === 'up' && !t.index.root?.kids.length ? (
+      {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api
-          ? `找不到 caller：它是外部進入點，呼叫者是呼叫 ${p.ix.funcs[p.start].api} 同名函式的程式，不在 repo 內。`
-          : '找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。'}</p>
+          ? t('找不到 caller：它是外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
+          : t('找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。')}</p>
       ) : null}
-      <p className="small muted">沒有標示的關係都由編譯器確認；標示「推測（規則）」的由 codemap 的文字規則（例如函式指標、環境變數、constructor）從原始碼推得。</p>
+      <p className="small muted">{t('沒有標示的關係都由編譯器確認；標示「推測（規則）」的由 codemap 的文字規則（例如函式指標、環境變數、constructor）從原始碼推得。')}</p>
     </UI.Card>
   )
 }

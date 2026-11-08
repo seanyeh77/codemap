@@ -16,7 +16,7 @@ from . import rules, view
 from .source import forget_files
 
 ASSETS = Path(__file__).parent / "viewer_dist"
-CAPABILITIES = dict(rebuild=False, macro=False)
+CAPABILITIES = dict(rebuild=False, macro=False, grep=True)
 
 
 def viewer_html():
@@ -52,7 +52,11 @@ def create_app(root, notes=None, allowed_hosts=None):
                 forget_files()
                 idx = json.loads(index_path.read_text(encoding="utf-8"))
                 g = view.build(root, idx, rules.load_config(root))
-                files = {f["file"] for f in g["funcs"].values()}      # the viewer asks only for function source
+                files = set(g.get("readable", ())) | {f["file"] for f in g["funcs"].values()}   # source, headers, build files
+                for n in notes or ():                                       # the notes being checked, to read whole
+                    rel = Path(n).resolve()
+                    if root.resolve() in rel.parents:
+                        files.add(str(rel.relative_to(root.resolve())))
                 c = state["cache"] = dict(mtime=mtime, index=idx, graph=g, files=files)
             return c
 
@@ -85,6 +89,11 @@ def create_app(root, notes=None, allowed_hosts=None):
         if r is None:
             raise HTTPException(404, f"{file} 不在 {root.name} 的索引裡，請重新執行 codemap index。")
         return r
+
+    @app.get("/api/grep")
+    def grep(q: str = Query(..., min_length=2, max_length=200), limit: int = Query(40, ge=1, le=200)):
+        """Lines of the readable files and the notes that contain q (case ignored)."""
+        return view.grep(root, index()["files"], q, limit)
 
     @app.get("/api/checks")
     def checks():

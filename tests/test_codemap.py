@@ -173,6 +173,19 @@ class Fixture(unittest.TestCase):
         attach = [f for f in g["funcs"].values() if f["name"] == "attach"][0]
         self.assertLess(attach["top"], attach["line"])          # the constructor attribute above it
 
+    def test_symbols_and_readable_files(self):
+        g = view.build(self.root, self.idx, {})
+        self.assertIn("include/api.h", g["readable"])
+        names = {(s["name"], s["kind"]) for s in g["symbols"]}
+        self.assertIn(("saved_send_value", "var"), names)
+        self.assertTrue(any(k == "macro" for _, k in names))
+        self.assertFalse(any(n.endswith("_H") for n, k in names if k == "macro"))   # include guards left out
+
+    def test_component_description_from_config(self):
+        g = view.build(self.root, self.idx, {"describe": {"src/lib": "The library."}})
+        doc = next(c["doc"] for c in g["comps"] if c["id"] == "src/lib")
+        self.assertEqual((doc["text"], doc["file"], doc.get("own")), ("The library.", ".codemap/rules.json", True))
+
     def test_check_items_for_the_viewer(self):
         md = self.root / "ok.md"
         md.write_text("| a | b |\n| --- | --- |\n| `use` | `src/lib/lib.c:24` |\n")
@@ -264,6 +277,9 @@ class Server(unittest.TestCase):
         self.assertIn(".codemap", r.headers["content-disposition"])
         self.assertEqual(r.content[:2], b"\x1f\x8b")
         self.assertIn("<div id=\"root\">", c.get("/").text)
+        hits = c.get("/api/grep", params={"q": "RETURN"}).json()                  # case ignored
+        self.assertTrue(hits and all(h["file"] in g["readable"] and "return" in h["text"].lower() for h in hits))
+        self.assertEqual(c.get("/api/grep", params={"q": "x"}).status_code, 422)   # too short
 
     def test_source_follows_edits_on_disk(self):
         f = self.root / "src" / "lib" / "lib.c"

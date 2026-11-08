@@ -1,4 +1,5 @@
-import type { Graph, Meta, SourceLines, CheckFile } from './types'
+import { t } from '../i18n'
+import type { Graph, Meta, SourceLines, CheckFile, GrepHit } from './types'
 
 async function gunzipJSON<T>(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Promise<T> {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
@@ -10,7 +11,7 @@ async function gunzipJSON<T>(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Prom
 }
 
 function checkSnapshot(g: Graph, from: string): Graph {
-  if (g?.format !== 'codemap-snapshot') throw new Error(`${from} 不是 codemap 快照，請改用 codemap export 產生的 .codemap 檔。`)
+  if (g?.format !== 'codemap-snapshot') throw new Error(t('{from} 不是 codemap 快照，請改用 codemap export 產生的 .codemap 檔。', { from }))
   return g
 }
 
@@ -19,12 +20,12 @@ export async function embeddedSnapshot(): Promise<Graph | null> {
   const el = document.getElementById('codemap-snapshot')
   if (!el?.textContent) return null
   const bin = Uint8Array.from(atob(el.textContent.trim()), (c) => c.charCodeAt(0))
-  return checkSnapshot(await gunzipJSON<Graph>(bin), '此頁面的資料')
+  return checkSnapshot(await gunzipJSON<Graph>(bin), t('此頁面的資料'))
 }
 
 export async function snapshotFromURL(url: string): Promise<Graph> {
   const r = await fetch(url)
-  if (!r.ok) throw new Error(`無法下載 ${url}（HTTP ${r.status}），請確認網址。`)
+  if (!r.ok) throw new Error(t('無法下載 {url}（HTTP {status}），請確認網址。', { url, status: r.status }))
   return checkSnapshot(await gunzipJSON<Graph>(await r.arrayBuffer()), url)
 }
 
@@ -35,11 +36,11 @@ export async function snapshotFromFile(file: File): Promise<Graph> {
 /** The server's own message for a failed request (FastAPI's detail), or the status. */
 async function errorOf(r: Response, path: string) {
   const d = await r.json().then((b) => b?.detail, () => null)
-  return new Error(typeof d === 'string' ? d : `${path} 回傳 HTTP ${r.status}，請確認 codemap serve 仍在執行。`)
+  return new Error(typeof d === 'string' ? d : t('{path} 回傳 HTTP {status}，請確認 codemap serve 仍在執行。', { path, status: r.status }))
 }
 
 async function api<T>(path: string): Promise<T> {
-  const r = await fetch(path).catch(() => { throw new Error('無法連線到 codemap serve，請確認它仍在執行，再重新整理此頁。') })
+  const r = await fetch(path).catch(() => { throw new Error(t('無法連線到 codemap serve，請確認它仍在執行，再重新整理此頁。')) })
   if (!r.ok) throw await errorOf(r, path)
   return r.json() as Promise<T>
 }
@@ -57,6 +58,7 @@ export async function liveMeta(): Promise<Meta | null> {
 export const live = {
   graph: () => api<Graph>('api/graph'),
   checks: () => api<CheckFile[]>('api/checks'),
+  grep: (q: string) => api<GrepHit[]>(`api/grep?q=${encodeURIComponent(q)}`),
   source: (file: string, start: number, end: number) =>
     api<SourceLines>(`api/source?file=${encodeURIComponent(file)}&start=${start}&end=${end}`),
   snapshotURL: 'api/snapshot',

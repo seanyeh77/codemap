@@ -28,6 +28,8 @@ export interface Edge {
   rule?: string
   via?: string
   slot?: string
+  /** table_install: the table the function is listed in */
+  table?: string
   saved_from?: string
   name?: string
   read_at?: string
@@ -54,6 +56,8 @@ export interface Doc {
   text: string
   file: string
   line: number
+  /** written for the component in .codemap/rules.json (describe), not taken from a file's comment */
+  own?: boolean
 }
 
 export interface Link {
@@ -113,7 +117,25 @@ export interface Graph {
   files?: Record<string, Doc>
   /** Every environment variable the rules found: where it is set and where it is read. */
   env?: Record<string, { set: string[]; get: string[] }>
+  /** Files the server may show whole: sources, headers, Makefiles, linker maps. */
+  readable?: string[]
+  /** Macros and file-scope variables, to search by name. */
+  symbols?: { name: string; kind: 'macro' | 'var'; file: string; line: number; text: string }[]
   state?: { name: string; file: string; line: number; static: boolean; users: [string, number][] }[]
+  /** What the Makefile builds and installs, read from `make -n`. Null when there is no Makefile. */
+  build?: BuildInfo | null
+  /** Calls that create or write a file. */
+  writes?: FileWrite[]
+  /** Facts worth a look: calls that end the process, fixed-size global arrays, getenv results used unchecked. */
+  worth?: {
+    stops: { fid: string; f: string; l: number; name: string }[]
+    arrays: { name: string; file: string; line: number; size: string; text: string; value?: string }[]
+    env: { fid: string; f: string; l: number; use: number; name: string | null }[]
+    /** variables set only when not set already */
+    env_if_unset?: { name: string; fid: string; f: string; l: number; check: number }[]
+    /** fixed error codes handed back: return ENOSYS, errno = EAGAIN */
+    errors?: { code: string; fid: string; f: string; l: number; how: 'return' | 'errno' }[]
+  }
   /** In a snapshot only; live, the Check page asks the server. */
   checks?: CheckFile[]
   config: { cc: string | null; scope: string[] | null }
@@ -122,7 +144,12 @@ export interface Graph {
 export interface Capabilities {
   rebuild: boolean
   macro: boolean
+  /** /api/grep: search the text of the source files */
+  grep?: boolean
 }
+
+/** A line of source text that contains the search words. */
+export interface GrepHit { file: string; line: number; text: string }
 
 export interface Meta {
   host: string
@@ -141,4 +168,43 @@ export interface SourceLines {
   file: string
   start: number
   lines: string[]
+}
+
+export interface BuildProduct {
+  name: string
+  path: string
+  /** exec: executable, shared / static: library, generated: a file made by a command (sed, a script) */
+  kind: 'exec' | 'shared' | 'static' | 'generated'
+  /** the make goal that builds it: the default goal first */
+  goal: string
+  comps: string[]
+  files: string[]
+  libs: string[]
+  /** version scripts that decide what a library exports */
+  exports: string[]
+  /** other products and libraries linked in */
+  uses: string[]
+}
+
+export interface BuildInfo {
+  goal: string
+  built: BuildProduct[]
+  install: { what: string[]; to: string; link?: boolean }[]
+}
+
+export interface FileWrite {
+  fid: string
+  f: string
+  l: number
+  call: string
+  /** the file name, when the code writes it out */
+  name?: string
+  /** the name is only known when the program runs */
+  runtime?: boolean
+  /** the format the name is built from */
+  format?: string
+  /** the function's parameter the name comes in */
+  param?: string
+  /** the expression that holds the name */
+  expr?: string
 }

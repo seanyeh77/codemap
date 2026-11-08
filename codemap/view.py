@@ -4,15 +4,16 @@ server's answers plus the source lines of every function, so that the viewer
 can open it without the repository."""
 
 import gzip
+import re
 import socket
 import json
 import subprocess
 import time
 from pathlib import Path
 
-from . import arch, check, docs, rules, state
+from . import arch, check, docs, facts, rules, state
 from .arch import in_repo, repo_func
-from .source import c_body_end, lines
+from .source import c_body_end, code_lines, lines
 
 FORMAT = "codemap-snapshot"
 VERSION = 1
@@ -41,11 +42,44 @@ def repo_info(root):
                 dirty=dirty)
 
 
+BUILD_NAMES = re.compile(r"^(Makefile|GNUmakefile|CMakeLists\.txt|meson\.build)$|\.(mk|cmake|map|ld|lds)$")
+
+
 def header_files(root):
     """Repository headers: a .c file without its own top comment borrows the one of its header."""
     from .source import walk
     root = Path(root)
     return {str(p.relative_to(root)) for p in walk(root, {".h"})}
+
+
+def build_files(root):
+    """Makefiles, linker scripts and version maps: how the code is built and what it exports."""
+    from .source import walk
+    root = Path(root)
+    return {str(p.relative_to(root)) for p in walk(root) if BUILD_NAMES.search(p.name)}
+
+
+DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)(\([^)]*\))?\s*(.*)")
+
+
+def symbols(root, files):
+    """Macros and file-scope variables of C files and headers, to search by name:
+    [{name, kind: macro | var, file, line, text}]. Include guards are left out."""
+    from . import state
+    out = []
+    for f in sorted(files):
+        if not f.endswith((".c", ".h")):
+            continue
+        raw = lines(Path(root) / f)
+        for i, ln in enumerate(raw, 1):
+            m = DEFINE_RE.match(ln)
+            if m and (m.group(2) or m.group(3).strip()):
+                out.append(dict(name=m.group(1), kind="macro", file=f, line=i,
+                                text=(m.group(1) + (m.group(2) or "") + " " + m.group(3).strip().rstrip("\\").strip())[:120]))
+        code = [state.STRINGS.sub('""', ln) for ln in code_lines(Path(root) / f)]
+        for i, name, static in state._file_scope(code):
+            out.append(dict(name=name, kind="var", file=f, line=i, text=raw[i - 1].strip()[:120]))
+    return out
 
 
 def build(root, index, config=None):
@@ -103,7 +137,7 @@ def build(root, index, config=None):
         src_lines = lines(root / e["file"]) if in_repo(e["file"]) else []
         if 1 <= (e["line"] or 0) <= len(src_lines):
             x["t"] = src_lines[e["line"] - 1].strip()[:160]          # the evidence line, for the viewer's explanations
-        for k in ("rule", "via", "slot", "saved_from", "name", "read_at"):
+        for k in ("rule", "via", "slot", "saved_from", "name", "read_at", "table"):
             if e.get(k) is not None:
                 x[k] = e[k]
         if e["dst"] not in funcs:
@@ -112,9 +146,13 @@ def build(root, index, config=None):
             if dn and dn.get("file") and not in_repo(dn["file"]):
                 x["ext"] = dn["file"]
         edges.append(x)
-    fdocs = docs.files_docs(root, sorted({f["file"] for f in funcs.values()}
-                                        | {p for p in index.get("files", []) if p.endswith(".h") and in_repo(p)}
-                                        | header_files(root)))
+    headers = header_files(root)
+    fdocs = docs.files_docs(root, sorted({f["file"] for f in funcs.values()} | headers))
+    # scripts that read or set an environment variable can be opened from the search too
+    env_files = {r.rsplit(":", 1)[0] for v in index.get("env", {}).values() for r in v.get("get", []) + v.get("set", [])}
+    env_files = {f for f in env_files if (root / f).is_file()}
+    readable = sorted({f["file"] for f in funcs.values()} | headers | build_files(root) | env_files)
+    syms = symbols(root, readable)
     comps = []
     for cid, c in lay["comps"].items():
         if not c["funcs"]:
@@ -128,7 +166,11 @@ def build(root, index, config=None):
         main = [f for f in mine if Path(f).name == "main.c"] \
             + [f for f in mine if base in (fdocs.get(f) or {}).get("text", "")] \
             + sorted(mine, key=lambda f: -sum(1 for g in funcs.values() if g["file"] == f))
-        doc = next((fdocs[f] for f in main if f in fdocs), None)
+        # a component's own comment; one borrowed from a header of another component would describe that one
+        doc = next((fdocs[f] for f in main if f in fdocs and arch.component(fdocs[f]["file"], config) == cid), None)
+        # what the project says the component is for wins over any file's comment
+        if config.get("describe", {}).get(cid):
+            doc = dict(text=config["describe"][cid], file=".codemap/rules.json", line=0, own=True)
         if doc:
             comp["doc"] = doc
         comps.append(comp)
@@ -160,7 +202,9 @@ def build(root, index, config=None):
                           edges=sum(1 for x in edges if x["src"] == "compiler")),
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),
                files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},
-               env=index.get("env", {}),
+               env=index.get("env", {}), readable=readable, symbols=syms,
+               build=facts.products(root, config), writes=facts.writes(root, funcs),
+               worth=facts.worth_checking(root, funcs, edges, readable, syms),
                config=dict(cc=index.get("cc"), scope=index.get("scope")))
     return out
 
@@ -189,6 +233,32 @@ def source(root, file, start=1, end=None):
     src = p.read_text(errors="replace").splitlines()     # not cached: the viewer shows the file as it is now
     end = min(end or len(src), len(src))
     return dict(file=file, start=start, lines=src[start - 1:end])
+
+
+def grep(root, files, query, limit=40):
+    """[{file, line, text}]: lines of the given files that contain query (case ignored), in file
+    order, at most limit. For words the graph has no name for: overrun, SIGTERM, ENOSYS."""
+    q = query.strip().lower()
+    if len(q) < 2:
+        return []
+    root = Path(root).resolve()
+    out = []
+    for f in sorted(files, key=lambda f: (not f.endswith((".c", ".h")), f)):    # the C sources first
+        p = (root / f).resolve()
+        if root not in p.parents or not p.is_file():
+            continue
+        try:
+            text = p.read_text(errors="replace")
+        except OSError:
+            continue
+        if q not in text.lower():
+            continue
+        for i, ln in enumerate(text.splitlines(), 1):
+            if q in ln.lower():
+                out.append(dict(file=f, line=i, text=ln.strip()[:200]))
+                if len(out) >= limit:
+                    return out
+    return out
 
 
 def with_sources(root, graph):
