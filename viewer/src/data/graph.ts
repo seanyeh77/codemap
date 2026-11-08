@@ -7,6 +7,11 @@ export const MAX_DEPTH = 6
 export const isEnv = (e: Edge) => e.k === 'env'
 
 /** Lookups over one graph: callers, callees and names. */
+/** The rules of codemap/rules.py, as the explanations name them. */
+const RULE_NAME: Record<string, string> = {
+  fnptr_assign: '函式指標賦值', fnptr_pass: '函式當作參數或表格內容', indirect: '經由函式指標呼叫', ctor: 'constructor / destructor', env: '環境變數',
+}
+
 export class Index {
   readonly funcs: Record<string, Func>
   readonly out = new Map<string, Edge[]>()
@@ -35,6 +40,7 @@ export class Index {
     if (e?.saved_from) return e.saved_from.split(/->|\./).pop()!
     if (e?.k === 'constructor') return '程式載入時'   // run by the loader, not called by a function
     if (e?.k === 'destructor') return '程式結束時'
+    if (e?.k === 'fnptr_table' && id === e.s) return `表格 ${e.slot}`   // a file-scope table, not a function
     return e?.dn || id
   }
 
@@ -90,12 +96,16 @@ export class Index {
       }
       return { label: '編譯器確認', title: '編譯器確認', text: '重新編譯時記錄到的呼叫，存在於目前的 build。' }
     }
-    const tail = '由規則推得，編譯器無法確認。'
+    const tail = `由規則「${RULE_NAME[e.rule ?? ''] ?? e.rule}」推得，編譯器無法確認。`
     let text: string
-    if (e.k === 'fnptr_assign') text = `${to} 存入 \`${e.slot ?? '函式指標'}\`，可能經由此指標被呼叫。${tail}`
+    if (e.k === 'fnptr_pass') text = `${this.bareName(e.s)} 把 ${to} 當作參數傳給 \`${e.slot}()\`，可能由它呼叫。${tail}`
+    else if (e.k === 'fnptr_table') text = `${to} 列在表格 \`${e.slot}\` 裡，可能經由這張表被呼叫。${tail}`
+    else if (e.k === 'fnptr_assign') text = `${to} 存入 \`${e.slot ?? '函式指標'}\`，可能經由此指標被呼叫。${tail}`
     else if (e.k === 'indirect_saved') text = `經由 \`${e.via}\` 呼叫替換前的 \`${e.saved_from}\`。${tail}`
     else if (e.k === 'indirect_candidate') text = `經由 \`${e.via ?? '函式指標'}\` 呼叫 ${to}。${tail}`
-    else if (e.k === 'constructor' || e.k === 'destructor') text = `標記為 \`${e.k}\`，程式${e.k === 'constructor' ? '載入' : '結束'}時自動執行。`
+    else if (e.k === 'constructor' || e.k === 'destructor') text = e.k === 'constructor'
+      ? '標記為 `constructor`：dynamic loader 載入程式或程式庫時，在 main 之前自動執行。以 LD_PRELOAD 載入的程式庫常用它做初始化。'
+      : '標記為 `destructor`：程式結束或程式庫卸載時自動執行。'
     else text = `由規則「${e.rule}」推得，編譯器無法確認。`
     return { label: '推測（規則）', title: '推測（規則）', text }
   }

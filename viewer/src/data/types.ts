@@ -7,6 +7,12 @@ export interface Func {
   line: number
   end: number
   comp: string
+  /** It has the name of this external library's function and replaces it (LD_PRELOAD): entered from outside the repo. */
+  api?: string
+  /** First line of the comment and attributes right above the definition, when there are any. */
+  top?: number
+  /** Atomic operations in its body, e.g. 'fetch_add acq_rel'. */
+  atomics?: string[]
   /** Snapshot only: the function's source lines, starting at line. */
   src?: string[]
 }
@@ -16,7 +22,7 @@ export interface Edge {
   d: string
   f: string
   l: number
-  /** call, fnptr_assign, indirect_saved, indirect_candidate, constructor, destructor, env */
+  /** call, fnptr_assign, fnptr_pass, fnptr_table, indirect_saved, indirect_candidate, constructor, destructor, env */
   k: string
   src: 'compiler' | 'rule'
   rule?: string
@@ -40,14 +46,25 @@ export interface Comp {
   shared: boolean
   layer: number | null
   callers: number
+  /** What it is for: the top comment of its main file, and where that comment is. */
+  doc?: Doc
+}
+
+export interface Doc {
+  text: string
+  file: string
+  line: number
 }
 
 export interface Link {
   a: string
   b: string
   n: number
-  kind: 'call' | 'env' | 'interpose'
+  kind: 'call' | 'env' | 'interpose' | 'channel'
   api?: string
+  /** channel: the shared component the data goes through, and the name given in rules.json. */
+  via?: string
+  label?: string
   names?: string[]
   /** interpose: each hooked call, by caller and line. */
   sites?: { s: string; f: string; l: number; name: string }[]
@@ -91,6 +108,12 @@ export interface Graph {
   links: Link[]
   funcs: Record<string, Func>
   edges: Edge[]
+  /** File-scope variables used by two or more functions: [function id, first line that uses it]. Older graphs lack it. */
+  /** Each file's top comment (or its header's). Older graphs lack it. */
+  files?: Record<string, Doc>
+  /** Every environment variable the rules found: where it is set and where it is read. */
+  env?: Record<string, { set: string[]; get: string[] }>
+  state?: { name: string; file: string; line: number; static: boolean; users: [string, number][] }[]
   /** In a snapshot only; live, the Check page asks the server. */
   checks?: CheckFile[]
   config: { cc: string | null; scope: string[] | null }

@@ -6,9 +6,11 @@ node whose id is "file:line".
 
 Rules:
   fnptr_assign   a function stored into a pointer: s.f = fn; p->f = fn; .f = fn,
+  fnptr_pass     a function used as a value: an argument (pthread_create, a macro) or a table entry
   indirect       an __indirect_call whose called field matches a fnptr_assign
   ctor           __attribute__((constructor|destructor)): called by the loader
-  env            setenv/putenv and getenv on the same name, C and Python
+  env            setenv/putenv and getenv on the same name, C and Python, also through a wrapper
+                 such as env_flag("NAME") that passes its argument to getenv
   exec           execvp/posix_spawn in C, subprocess/os.exec in Python
   build_define   -DNAME in a Makefile or CMake file, linked to #define/#ifndef NAME
   cross_lang     a C macro or header path mentioned in a Python file
@@ -29,6 +31,7 @@ CALLEXPR_RE = re.compile(r"\(?\s*\*?\s*((?:[A-Za-z_]\w*(?:\[[^\]]*\])?(?:->|\.))
 ATTR_RE = re.compile(r"__attribute__\s*\(\(\s*(constructor|destructor)")
 C_ENV_SET = re.compile(r"\b(setenv|putenv)\s*\(\s*\"")
 C_ENV_GET = re.compile(r"\b(getenv|secure_getenv)\s*\(\s*\"")
+C_ENV_ARG = re.compile(r"\b(?:getenv|secure_getenv)\s*\(\s*[A-Za-z_]\w*\s*\)")
 PY_ENV_GET = [re.compile(r"os\.environ\[\s*['\"](\w+)['\"]\s*\](?!\s*=[^=])"),
               re.compile(r"os\.environ\.get\(\s*['\"](\w+)['\"]"),
               re.compile(r"os\.getenv\(\s*['\"](\w+)['\"]")]
@@ -96,6 +99,60 @@ def rule_fnptr_assign(c):
                     c.add("fnptr_assign", "fnptr_assign", c.where(f, i), dst, f, i, slot=slot, key=slot_key(slot))
             for m in COPY_RE.finditer(code):
                 c.copies.append(dict(dst=m.group(1), src=m.group(2), file=f, line=i))
+
+
+IDENT_RE = re.compile(r"(?<![\w.>])&?\s*([A-Za-z_]\w*)\b(?!\s*\()")
+OPEN_CALL = re.compile(r"([A-Za-z_]\w*)\s*\($")
+TABLE_RE = re.compile(r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*=\s*\{")
+
+
+def rule_fnptr_pass(c):
+    """A function used as a value without being called: passed to another call (pthread_create,
+    sigaction, a macro such as STEAL(field, fn)) or listed in a table initializer. Something
+    may call it through that pointer later; the compiler sees no call."""
+    stored = {(e["file"], e["line"], e["dst"]) for e in c.edges if e["kind"] == "fnptr_assign"}
+    for p in c.c_files:
+        f = c.rel(p)
+        code = code_lines(p)
+        defs = {s for s, _ in c.funcs.by_file.get(f, [])}
+        table, depth = None, 0
+        for i, cl in enumerate(code, 1):
+            if depth == 0:
+                table = None
+            if (m := TABLE_RE.search(cl)) and depth == 0:
+                table = (m.group(1), i)
+            if not cl.lstrip().startswith("#") and i not in defs:
+                for m in IDENT_RE.finditer(cl):
+                    name = m.group(1)
+                    dst = c.fn(name, f)
+                    if not dst or (f, i, dst) in stored or c.nodes[dst].get("file") == f and c.nodes[dst].get("line") == i:
+                        continue
+                    before = cl[:m.start()]
+                    # the innermost call still open before the name: its argument
+                    opened, k = 0, len(before)
+                    callee = None
+                    while k > 0:
+                        k -= 1
+                        ch = before[k]
+                        if ch == ")":
+                            opened += 1
+                        elif ch == "(":
+                            if opened:
+                                opened -= 1
+                            else:
+                                mm = OPEN_CALL.search(before[:k + 1])
+                                callee = mm.group(1) if mm else None
+                                break
+                    src = c.where(f, i)
+                    if src == dst:
+                        continue                     # IBT_REAL(ibv_open_device) inside ibv_open_device names the real one
+                    if callee and callee not in ("sizeof", "if", "while", "for", "switch", "return"):
+                        c.add("fnptr_pass", "fnptr_pass", src, dst, f, i, slot=callee)
+                        stored.add((f, i, dst))
+                    elif table and depth > 0 or table and "{" in cl:
+                        c.add("fnptr_pass", "fnptr_table", c.site(f, table[1], table[0]), dst, f, i, slot=table[0])
+                        stored.add((f, i, dst))
+            depth = max(0, depth + cl.count("{") - cl.count("}"))
 
 
 def slot_key(expr):
@@ -185,6 +242,24 @@ def rule_env(c):
                             setters.setdefault(k, []).append((f, i))
                     else:
                         setters.setdefault(m.group(1), []).append((f, i))
+    # a wrapper that reads the variable named by its argument, env_flag("IBTRACE_X") -> getenv(name):
+    # its calls with a literal name are reads too, attributed to the line of the call
+    wrappers = set()
+    for p in c.c_files:
+        f = c.rel(p)
+        for i, cl in enumerate(code_lines(p), 1):
+            if C_ENV_ARG.search(cl) and (nid := c.funcs.enclosing(f, i)) and c.nodes.get(nid, {}).get("name"):
+                wrappers.add(c.nodes[nid]["name"])
+    if wrappers:
+        call = re.compile(r"\b(" + "|".join(map(re.escape, sorted(wrappers))) + r")\s*\(\s*\"")
+        for p in c.c_files:
+            f = c.rel(p)
+            raw_lines, code = lines(p), code_lines(p)
+            for i, (raw, cl) in enumerate(zip(raw_lines, code), 1):
+                for m in call.finditer(cl):
+                    name = _literal_at(raw, cl, m)
+                    if name:
+                        getters.setdefault(name, []).append((f, i))
     for name in sorted(set(setters) & set(getters)):
         for sf, sl in setters[name]:
             for gf, gl in getters[name]:
@@ -286,7 +361,7 @@ def run(root, index, config=None):
     c = Ctx(root, index, config)
     macros = _macro_sites(c)
     steps = [("fnptr_assign", lambda: rule_fnptr_assign(c)), ("indirect", lambda: rule_indirect(c)),
-             ("ctor", lambda: rule_ctor(c)), ("env", lambda: rule_env(c)), ("exec", lambda: rule_exec(c)),
+             ("fnptr_pass", lambda: rule_fnptr_pass(c)), ("ctor", lambda: rule_ctor(c)), ("env", lambda: rule_env(c)), ("exec", lambda: rule_exec(c)),
              ("build_define", lambda: rule_build_define(c, macros)), ("cross_lang", lambda: rule_cross_lang(c, macros)),
              ("custom", lambda: rule_custom(c))]
     for name, fn in steps:

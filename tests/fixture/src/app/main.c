@@ -1,3 +1,6 @@
+/*
+ * app - starts the program under test with the fixture library loaded.
+ */
 #include <stdlib.h>
 #include <unistd.h>
 #include "api.h"

@@ -48,12 +48,12 @@ export function Settings(p: Props) {
     <>
       <UI.SettingsSection title="目前的資料來源">
         <UI.DetailList items={[
-          { label: '模式', value: isLive ? '即時（codemap serve）' : '快照（.codemap 檔）' },
+          { label: '模式', value: isLive ? <span><UI.Term text="由 codemap serve 提供，讀的是目前磁碟上的程式碼，可以重新檢查筆記。">即時</UI.Term>（codemap serve）</span> : <span><UI.Term text="匯出當時的索引與原始碼，只能瀏覽。">快照</UI.Term>（.codemap 檔）</span> },
           isLive ? { label: '主機', value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: '檔案', value: <UI.InlineCode>{p.snapName ?? '此頁面'}</UI.InlineCode> },
           { label: '路徑', value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : '無'}{dirty.length ? `（另有 ${dirty.length} 個檔案未 commit）` : ''}</span> },
-          { label: '索引', value: <span>{`${st.units ?? 0} 個 `}<UI.Term text="一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。">translation unit</UI.Term>{` · ${st.funcs} 個函式 · ${(st.edges ?? 0).toLocaleString()} 條編譯器確認的呼叫`}</span> },
-          { label: '更新時間', value: isLive ? `索引建立於 ${when(p.meta!.indexed)}` : `匯出於 ${when(g.generated)}` },
+          { label: '索引', value: <span><UI.Term text="codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。">索引</UI.Term>{'：'}{`${st.units ?? 0} 個 `}<UI.Term text="一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。">translation unit</UI.Term>{` · ${st.funcs} 個函式 · ${(st.edges ?? 0).toLocaleString()} 條編譯器確認的呼叫`}</span> },
+          isLive ? { label: '索引建立時間', value: when(p.meta!.indexed) } : { label: '匯出時間', value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [
           { label: '匯出快照', primary: true, icon: 'download-simple', onClick: download },
@@ -78,7 +78,7 @@ export function Settings(p: Props) {
   )
   const open = (
     <UI.SettingsSection title="在 VS Code 開啟">
-      {radios('開啟方式', 'editor', [['ssh', 'Remote-SSH（build 環境的檔案）'], ['local', '本機 clone'], ['none', '不建立連結']])}
+      {radios('開啟方式', 'editor', [['ssh', 'Remote-SSH（build 環境的檔案）'], ['local', '本機 clone'], ['none', '不使用 VS Code']])}
       {pr.editor === 'ssh' ? <UI.TextField label="Remote-SSH 主機名稱" value={pr.sshHost} placeholder={g.host} hint="與 ~/.ssh/config 的 Host 相同。留空時使用伺服器主機名稱。" onChange={(e) => save('sshHost', e.target.value)} /> : null}
       {pr.editor === 'local' ? <UI.TextField label="本機 clone 路徑" value={pr.clone} placeholder={'/Users/you/src/' + g.repo} hint="commit 須與索引相同，行號才會一致。" onChange={(e) => save('clone', e.target.value)} /> : null}
     </UI.SettingsSection>

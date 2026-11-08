@@ -8,7 +8,7 @@ import type { TreeNode } from '@seanyeh77/ui'
 interface Entry { fid: string; edge: Edge | null; names: string[]; open: boolean; kids: Edge[]; path: string[] }
 
 /** The call tree handed to TreeList. Only the start's level is built; TreeList loads a node's
- *  children when it is opened (loadChildren). Predict mode: a node opens only once revealed. */
+ *  children when it is opened (loadChildren). Guess mode: a node, the start included, opens only once revealed. */
 function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolean, predict: boolean, revealed: Record<string, boolean>,
   openLine: (fid: string, e: Edge, key: string) => void) {
   const index: Record<string, Entry> = {}
@@ -26,7 +26,7 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
     }
     const open = kids.length > 0 && !path.includes(nid)
     index[key] = { fid: nid, edge: e, names: [...new Set(kids.map((k) => dir === 'down' ? ix.bareName(k.d, k) : ix.bareName(k.s, k)))], open, kids, path }
-    if (open && (key === 'root' || (predict && revealed[key]))) n.children = children(key)     // shown open from the start
+    if (open && (predict ? revealed[key] : key === 'root')) n.children = children(key)     // shown open from the start
     else if (open && !predict) n.hasChildren = true
     return n
   }
@@ -83,8 +83,14 @@ export function Flow(p: FlowProps) {
   const cur = t.index[selKey]
   const needGuess = p.predict && cur && cur.open && !revealed[selKey]
   const res = p.predict && revealed[selKey] && guesses[selKey] ? guessHits(guesses[selKey], cur.names) : null
-  const openKeys = ['root', ...Object.keys(revealed)]
-  const reveal = () => setRevealed({ ...revealed, [selKey]: true })
+  // guess mode keeps even the start closed until its level is revealed
+  const openKeys = [...(p.predict ? [] : ['root']), ...Object.keys(revealed)]
+  const reveal = () => {
+    setRevealed({ ...revealed, [selKey]: true })
+    // the result is on screen at once; screen readers hear it too
+    const r = guesses[selKey] ? guessHits(guesses[selKey], cur.names) : null
+    UI.announce(r ? `預測正確 ${r.hit.length} / ${cur.names.length} 個` : `已揭曉：${cur.names.length} 個函式`)
+  }
 
   return (
     <UI.Card className="pane">
@@ -94,7 +100,7 @@ export function Flow(p: FlowProps) {
       <div className="row">
         <UI.Button icon="magnifying-glass" onClick={p.openSearch}>更換起點函式</UI.Button>
         <div className="grow" />
-        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label="預測模式" /><span>預測模式</span></label>
+        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label="自我測驗" /><UI.Term text="先寫下你認為下一層會呼叫哪些函式，再按「揭曉」比對。用來練習讀懂程式，不是工具的推測。">自我測驗</UI.Term></label>
         {p.dir === 'down' ? <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label="顯示外部函式" /><span>外部函式</span></label> : null}
       </div>
       {p.predict && cur ? (
@@ -116,10 +122,15 @@ export function Flow(p: FlowProps) {
       ) : null}
       <div data-tour="tree">
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label="呼叫流程"
-          items={t.items} defaultOpen={openKeys} loadChildren={(n) => t.children(n.id)}
+          items={t.items} defaultOpen={openKeys} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : t.children(n.id))}
           selectedId={selKey} onSelect={(n) => { const c = t.index[n.id]; p.onSel(c.fid, c.edge, n.id) }} />
       </div>
-      <p className="small muted">沒有標示的關係都由編譯器確認。</p>
+      {p.dir === 'up' && !t.index.root?.kids.length ? (
+        <p className="small">{p.ix.funcs[p.start]?.api
+          ? `找不到 caller：它是外部進入點，呼叫者是呼叫 ${p.ix.funcs[p.start].api} 同名函式的程式，不在 repo 內。`
+          : '找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。'}</p>
+      ) : null}
+      <p className="small muted">沒有標示的關係都由編譯器確認；標示「推測（規則）」的由 codemap 的文字規則（例如函式指標、環境變數、constructor）從原始碼推得。</p>
     </UI.Card>
   )
 }

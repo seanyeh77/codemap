@@ -88,6 +88,9 @@ Optional `.codemap/rules.json`:
   "scope": ["src/libibtrace", "src/ibmon"],
   "disable": ["exec"],
   "components": {"src/libibtrace/hooks": "hooks"},
+  "channels": [
+    {"from": "src/libibtrace", "to": "src/ibmon", "via": "src/common", "label": "ring"}
+  ],
   "custom": [
     {"name": "real_symbol", "pattern": "IBT_REAL\\(", "files": ["src/**/*.c"], "kind": "dlsym"}
   ]
@@ -96,6 +99,11 @@ Optional `.codemap/rules.json`:
 
 Custom rules are where project-specific patterns go once someone has agreed
 they are worth tracking.
+
+`channels` declares data that one component hands to another through a shared
+one (a shared-memory ring, a queue) without any call between them. The
+architecture diagram draws each as a dashed line labelled 「經由 `src/common`
+傳資料」, and clicking it lists where each side uses the shared component.
 
 ## Tests
 

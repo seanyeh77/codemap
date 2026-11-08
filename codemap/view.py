@@ -10,7 +10,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import arch, check, rules
+from . import arch, check, docs, rules, state
 from .arch import in_repo, repo_func
 from .source import c_body_end, lines
 
@@ -39,6 +39,13 @@ def repo_info(root):
         skip = bool({"R", "C"} & set(entry[:2]))      # renamed or copied, in the index or the worktree
     return dict(repo=root.name, host=socket.gethostname(), commit=git(root, "rev-parse", "--short", "HEAD").strip() or None,
                 dirty=dirty)
+
+
+def header_files(root):
+    """Repository headers: a .c file without its own top comment borrows the one of its header."""
+    from .source import walk
+    root = Path(root)
+    return {str(p.relative_to(root)) for p in walk(root, {".h"})}
 
 
 def build(root, index, config=None):
@@ -73,6 +80,17 @@ def build(root, index, config=None):
         end = max(c_body_end(root / n["file"], n["line"]), n["line"])   # 0 when the file is gone
         funcs[nid] = dict(name=n["name"], file=n["file"], line=n["line"], end=end,
                           comp=arch.component(n["file"], config))
+        # a repo function with the name of an external library's function replaces it for whoever
+        # loads this code first (LD_PRELOAD): it is entered from outside the repo
+        api = arch.external((n.get("declared") or "").rsplit(":", 1)[0])
+        if api:
+            funcs[nid]["api"] = api.removeprefix("external ")
+        if end:
+            top = docs.lead_line(root, n["file"], n["line"])   # the comment and attributes above it
+            if top < n["line"]:
+                funcs[nid]["top"] = top
+            if at := docs.atomics(root, n["file"], n["line"], end):
+                funcs[nid]["atomics"] = at
     edges = []
     for e in raw:
         if e["source"] == "compiler" and e["src"] not in funcs:
@@ -94,13 +112,26 @@ def build(root, index, config=None):
             if dn and dn.get("file") and not in_repo(dn["file"]):
                 x["ext"] = dn["file"]
         edges.append(x)
+    fdocs = docs.files_docs(root, sorted({f["file"] for f in funcs.values()}
+                                        | {p for p in index.get("files", []) if p.endswith(".h") and in_repo(p)}
+                                        | header_files(root)))
     comps = []
     for cid, c in lay["comps"].items():
         if not c["funcs"]:
             continue
-        comps.append(dict(id=cid, files=len(c["files"]), funcs=len(c["funcs"]),
-                          shared=cid in lay["shared"], layer=lay["layer"].get(cid),
-                          callers=len(lay["callers"].get(cid, ()))))
+        comp = dict(id=cid, files=len(c["files"]), funcs=len(c["funcs"]),
+                    shared=cid in lay["shared"], layer=lay["layer"].get(cid),
+                    callers=len(lay["callers"].get(cid, ())))
+        # what the component is for: the top comment of its main.c, else of its file with most functions
+        mine = sorted({f["file"] for f in funcs.values() if f["comp"] == cid})
+        base = Path(cid).name
+        main = [f for f in mine if Path(f).name == "main.c"] \
+            + [f for f in mine if base in (fdocs.get(f) or {}).get("text", "")] \
+            + sorted(mine, key=lambda f: -sum(1 for g in funcs.values() if g["file"] == f))
+        doc = next((fdocs[f] for f in main if f in fdocs), None)
+        if doc:
+            comp["doc"] = doc
+        comps.append(comp)
     shared_order = {cid: i for i, cid in enumerate(lay["shared"])}       # dependencies last
     comps.sort(key=lambda c: (c["shared"], shared_order[c["id"]] if c["shared"] else c["layer"] or 0, c["id"]))
     # a pair can have compiler calls and an environment variable: two links, counted apart
@@ -119,11 +150,17 @@ def build(root, index, config=None):
             sites = sorted({(e["src"], e["file"], e["line"], nodes.get(e["dst"], {}).get("name", e["dst"])) for e in es})
             links.append(dict(a=a, b=b, n=len(es), kind="interpose", api=api,
                               sites=[dict(s=s, f=f, l=l, name=nm) for s, f, l, nm in sites]))
+    # data passed through a shared component, as declared in .codemap/rules.json "channels"
+    for ch in config.get("channels", []):
+        if ch.get("from") in names and ch.get("to") in names:
+            links.append(dict(a=ch["from"], b=ch["to"], n=0, kind="channel", via=ch.get("via"), label=ch.get("label")))
     st = index.get("stats", {})
     out = dict(format=FORMAT, version=VERSION, **repo_info(root), root=str(root.resolve()), generated=int(time.time()),
                stats=dict(units=st.get("units"), failed=st.get("failed"), funcs=len(funcs),
                           edges=sum(1 for x in edges if x["src"] == "compiler")),
-               comps=comps, links=links, funcs=funcs, edges=edges,
+               comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),
+               files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},
+               env=index.get("env", {}),
                config=dict(cc=index.get("cc"), scope=index.get("scope")))
     return out
 
@@ -156,7 +193,7 @@ def source(root, file, start=1, end=None):
 
 def with_sources(root, graph):
     """A copy of the graph with each function's source lines, as a snapshot stores it."""
-    funcs = {k: dict(f, src=lines(Path(root) / f["file"])[f["line"] - 1:f["end"]])
+    funcs = {k: dict(f, src=lines(Path(root) / f["file"])[f.get("top", f["line"]) - 1:f["end"]])
              for k, f in graph["funcs"].items()}
     return dict(graph, funcs=funcs)
 

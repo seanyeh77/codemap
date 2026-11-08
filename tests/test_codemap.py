@@ -138,6 +138,41 @@ class Fixture(unittest.TestCase):
         fix = check.check(self.root, md, self.idx)["items"][0]["fix"]
         self.assertEqual(fix["after"], f"- see `src/lib/lib.c:2-{n}`")
 
+    def test_check_short_path_and_shared_callee(self):
+        md = self.root / "soft.md"
+        md.write_text("- `install` at `lib.c:17`\n- `peek_a -> peek_b`\n")
+        a, b = check.check(self.root, md, self.idx)["items"]
+        self.assertEqual(a["status"], "done")                          # right, only the path is short
+        self.assertEqual(a["fix"]["after"], "- `install` at `src/lib/lib.c:17`")
+        self.assertEqual(b["status"], "review")                        # no call, but both call last_send
+        self.assertIn("last_send", b["why"])
+
+    def test_shared_state_and_entry_points(self):
+        g = view.build(self.root, self.idx, {})
+        st = {s["name"]: s for s in g["state"]}
+        users = {g["funcs"][u]["name"] for u, _ in st["saved_send_value"]["users"]}
+        self.assertEqual(users, {"log_event", "last_send"})
+        self.assertTrue(st["saved_send_value"]["static"])
+
+    def test_definition_line_skips_comments(self):
+        n = [n for n in self.idx["nodes"].values() if n["name"] == "fixture_debug" and n.get("defined")][0]
+        self.assertTrue((self.root / n["file"]).read_text().splitlines()[n["line"] - 1].startswith("int fixture_debug"))
+
+    def test_env_read_through_a_wrapper(self):
+        self.assertIn("FIXTURE_DEBUG", self.idx["env"])
+        self.assertTrue(self.idx["env"]["FIXTURE_DEBUG"]["get"][0].startswith("src/lib/lib.c:"))
+
+    def test_function_passed_as_argument(self):
+        e = [e for e in self.edges(rule="fnptr_pass") if names(self.idx, e["dst"]) == "cmp"]
+        self.assertEqual([(names(self.idx, x["src"]), x["slot"]) for x in e], [("sort_it", "qsort")])
+
+    def test_docs_in_the_graph(self):
+        g = view.build(self.root, self.idx, {})
+        app = [c for c in g["comps"] if c["id"] == "src/app"][0]
+        self.assertTrue(app["doc"]["text"].startswith("app - starts"))
+        attach = [f for f in g["funcs"].values() if f["name"] == "attach"][0]
+        self.assertLess(attach["top"], attach["line"])          # the constructor attribute above it
+
     def test_check_items_for_the_viewer(self):
         md = self.root / "ok.md"
         md.write_text("| a | b |\n| --- | --- |\n| `use` | `src/lib/lib.c:24` |\n")

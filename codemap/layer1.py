@@ -19,6 +19,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from .source import strip_c_comments
+
 NODE_RE = re.compile(r'^node: \{ title: "([^"]*)" label: "([^"]*)"( shape : ellipse)? \}')
 EDGE_RE = re.compile(r'^edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"(?: label: "([^"]*)")? \}')
 LOC_RE = re.compile(r"^(.*):(\d+):(\d+)$")
@@ -140,7 +142,8 @@ def compile_unit(unit, root, cache, cc=None):
 def find_definition(src_path, name):
     """Line of `name(` that opens a definition, not a prototype or a call."""
     try:
-        text = Path(src_path).read_text(errors="replace").splitlines()
+        # comments blanked: a header comment naming `uct_iface_open()` is not its definition
+        text = strip_c_comments(Path(src_path).read_text(errors="replace").splitlines())
     except OSError:
         return None
     rx = re.compile(r"^(?!\s*(?:return|if|while|for|switch)\b)[\w\s\*]*\b" + re.escape(name) + r"\s*\(")

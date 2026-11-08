@@ -8,7 +8,7 @@ import type { CheckFile, CheckItem, Sel } from '../data/types'
 /** A Markdown line without its list marker (「- 」), as the suggestion shows it; the copy keeps the line whole. */
 const unlisted = (md: string) => md.replace(/^\s*[-*+]\s+/, '')
 
-const LABEL: Record<CheckItem['status'], string> = { done: '正確', fail: '錯誤', review: '待確認' }
+const LABEL: Record<CheckItem['status'], string> = { done: '相符', fail: '錯誤', review: '待確認' }
 
 export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (id: string, edge: Sel['edge']) => void }) {
   // a snapshot carries its checks; live, the notes may have changed since indexing, so they are checked again on open
@@ -44,12 +44,23 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const fixes = rows.filter((r) => r.fix)
   return (
     <div className="pane" data-tour="notes">
-      {files.length > 1 ? <UI.Tabs label="筆記檔案" items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
-      <UI.Card title={<><UI.InlineCode>{cur.file}</UI.InlineCode>{` · ${cur.refs} 個引用 · ${cur.claims} 個呼叫`}</>}
+      {files.length > 1 ? <UI.Tabs label="筆記檔案" unit="行" items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
+      <UI.Card title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? '檢查中' : '重新檢查'}</UI.Button> : undefined}>
-        <p className="small muted">比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。</p>
+        <p className="small muted">{`比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。共 ${rows.length} 行，含 ${cur.refs} 個引用、${cur.claims} 個呼叫。`}</p>
+        {p.isLive && q.dataUpdatedAt ? <p className="small muted" aria-live="polite">{`檢查時間：${UI.format.dateTime(new Date(q.dataUpdatedAt))}，${rows.filter((r) => r.status === 'fail').length} 行錯誤。`}</p> : null}
+        <p className="small muted">「相符」表示引用的那一行出現筆記裡的名稱，或呼叫經編譯器確認，不代表整句的意思都對；「待確認」表示工具無法判斷，說明欄寫了要對照的位置和建議的寫法。</p>
         {!p.isLive ? <p className="small muted">此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。</p> : null}
       </UI.Card>
+      <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label="檢查結果" urlSync={false} search={false} columnMenu={false}
+        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: LABEL[v] })), unit: '行' }}
+        columns={[
+          { key: 'at', label: '位置', width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode>{r.at}</UI.InlineCode> },
+          { key: 'text', label: '筆記內容', width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
+          { key: 'status', label: '結果', width: 110, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{LABEL[r.status]}</UI.Badge> },
+          { key: 'why', label: '說明', width: 280, grow: 3, long: true, searchText: (r: CheckItem) => r.why, render: (r: CheckItem) => code(r.why) },
+        ]}
+        rows={rows} />
       {fixes.length ? (
         <UI.Card className="fixes" title={`修正建議（${fixes.length} 個）`}>
           <p className="small muted">複製後貼回筆記，取代原本的該行。</p>
@@ -59,15 +70,6 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
           ))}
         </UI.Card>
       ) : null}
-      <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label="檢查結果" urlSync={false} search={false} columnMenu={false}
-        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: LABEL[v] })) }}
-        columns={[
-          { key: 'at', label: '位置', width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode>{r.at}</UI.InlineCode> },
-          { key: 'text', label: '筆記內容', width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
-          { key: 'status', label: '結果', width: 110, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{LABEL[r.status]}</UI.Badge> },
-          { key: 'why', label: '說明', width: 280, grow: 3, long: true, searchText: (r: CheckItem) => r.why, render: (r: CheckItem) => code(r.why) },
-        ]}
-        rows={rows} />
     </div>
   )
 }

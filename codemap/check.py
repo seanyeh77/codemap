@@ -99,11 +99,14 @@ def check(root, md_path, index):
     call exists only as a rule edge, so a person should confirm it)."""
     root = Path(root)
     nodes = index["nodes"]
-    pairs = {}
+    pairs, callees = {}, {}               # pairs: (a, b) -> compiler-confirmed?, and the first rule edge
     for e in index["edges"]:
         a = nodes.get(e["src"], {}).get("name", e["src"])
         b = nodes.get(e["dst"], {}).get("name", e["dst"])
-        pairs[(a, b)] = pairs.get((a, b)) or e["source"] == "compiler"
+        ok, rule = pairs.get((a, b), (False, None))
+        pairs[(a, b)] = (ok or e["source"] == "compiler", rule or (e if e["source"] == "rule" else None))
+        if e["source"] == "compiler" and e["kind"] == "call" and nodes.get(e["dst"], {}).get("defined"):
+            callees.setdefault(a, set()).add(b)
     defs = {(n["file"], n["name"]): n["line"] for n in nodes.values()
             if n.get("defined") and n.get("file") and n.get("line")}
     problems, items, refs, claims = [], [], 0, 0
@@ -124,11 +127,22 @@ def check(root, md_path, index):
         for m in CLAIM.finditer(md):
             claims += 1
             a, b = m.group(1).split(".")[-1], m.group(2).split(".")[-1]
-            if (a, b) not in pairs:
+            common = sorted(callees.get(a, set()) & callees.get(b, set()))
+            if (a, b) not in pairs and common:
+                # not a call, but both use the same functions: likely data passed through them
+                review.append(f"`{a}` 沒有直接呼叫 `{b}`；兩者都呼叫 " + "、".join(f"`{c}`" for c in common[:3])
+                              + "，可能經由共用的資料相連。若筆記要說的是資料流向，請改寫成文字說明")
+            elif (a, b) not in pairs:
                 problems.append(f"{md_path}:{n}: no edge {a} -> {b} in the index")
-                bad.append(f"索引中沒有 `{a} -> {b}`")
-            elif not pairs[(a, b)]:
-                review.append(f"`{a} -> {b}` 由規則推得，編譯器無法確認")
+                bad.append(f"程式碼中找不到 `{a}` 呼叫 `{b}`，請確認函式名稱與呼叫方向")
+            elif not pairs[(a, b)][0]:
+                e = pairs[(a, b)][1]
+                at = f"`{e['file']}:{e['line']}`"
+                if e.get("rule") == "fnptr_assign":
+                    review.append(f"`{a}` 沒有直接呼叫 `{b}`：它在 {at} 把 `{b}` 存入 `{e.get('slot') or '函式指標'}`，"
+                                  "之後經由該指標呼叫。可改寫成「`" + a + "` 註冊 `" + b + "`」")
+                else:
+                    review.append(f"`{a} -> {b}` 由規則「{e.get('rule')}」推得，編譯器無法確認；請對照 {at} 確認")
             else:
                 why.append(f"`{a} -> {b}` 經編譯器確認")
         whole = words_in(md)
@@ -141,30 +155,41 @@ def check(root, md_path, index):
                 ref = m.group(0).strip("`")
                 src = lines(root / f)
                 want = local or whole
+                short = None                     # `child.c:86` for the one src/ibmon/child.c: right, but incomplete
+                if not src and (short := find_file(files(), f)):
+                    src = lines(root / short)
                 if not src:
                     problems.append(f"{md_path}:{n}: {f} does not exist")
-                    bad.append(f"`{f}` 不存在")
-                    fixes.append((ref, fix_ref(root, f, lo, hi, want, defs, files)))
+                    new = fix_ref(root, f, lo, hi, want, defs, files)
+                    bad.append(f"repo 中沒有 `{f}`，" + (f"應為 `{new}`" if new else "請改用從 repo 根目錄算起的路徑"))
+                    fixes.append((ref, new))
                     continue
                 if hi < lo:
                     problems.append(f"{md_path}:{n}: {ref} ends before it starts")
-                    bad.append(f"`{ref}` 的範圍起訖顛倒")
+                    bad.append(f"`{ref}` 的範圍起訖顛倒，請對調前後兩個行號")
                     continue
                 if hi > len(src) or lo < 1:
                     problems.append(f"{md_path}:{n}: {f}:{lo} is past the end ({len(src)} lines)")
-                    bad.append(f"`{ref}` 超出檔案範圍（共 {len(src)} 行）")
-                    fixes.append((ref, fix_ref(root, f, lo, hi, want, defs, files)))
+                    new = fix_ref(root, f, lo, hi, want, defs, files)
+                    bad.append(f"`{ref}` 超出檔案範圍（共 {len(src)} 行），" + (f"應為 `{new}`" if new else "請確認行號"))
+                    fixes.append((ref, new))
                     continue
                 span = "\n".join(src[lo - 1:hi])
                 if want and not mentions(span, whole):          # a clause's words are among the line's
                     problems.append(f"{md_path}:{n}: {ref} mentions none of {', '.join(sorted(want))}")
-                    bad.append(f"`{ref}` 未提及 " + "、".join(f"`{w}`" for w in sorted(want)))
-                    fixes.append((ref, fix_ref(root, f, lo, hi, want, defs, files)))
+                    new = fix_ref(root, f, lo, hi, want, defs, files)
+                    bad.append(f"`{ref}` 沒有出現 " + "、".join(f"`{w}`" for w in sorted(want))
+                               + (f"，行號可能已移動，應為 `{new}`" if new else "，請確認行號"))
+                    fixes.append((ref, new))
                 elif want:
                     hit = sorted(w for w in whole if mentions(span, [w]))
                     why.append(f"`{ref}` 提及 " + "、".join(f"`{w}`" for w in hit))
                 else:
                     why.append(f"`{ref}` 存在")
+                if short and not (want and not mentions(span, whole)):
+                    full = ref.replace(f, short, 1)
+                    why.append(f"`{f}` 指 `{short}`，建議寫完整路徑")
+                    fixes.append((ref, full))
         if bad or why or review:
             status = "fail" if bad else "review" if review else "done"
             fixed = md
