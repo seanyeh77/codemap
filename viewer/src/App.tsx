@@ -23,7 +23,7 @@ const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> 
 }
 const nav = (id: View) => ({ id, label: PAGES[id].title, icon: PAGES[id].icon })
 // the tour shows the flow tree and the check page, so it moves between pages and returns afterwards
-const TOUR_VIEWS: (View | null)[] = [null, 'flow', 'check']
+const TOUR_VIEWS: (View | null)[] = ['arch', null, 'flow', 'check']
 const NAV = (['arch', 'flow', 'impact', 'check'] as const).map(nav)
 const SETTINGS_NAV = nav('settings')
 
@@ -111,14 +111,14 @@ function Shell(p: ShellProps) {
   const first = useMemo(() => ix.firstFunc(), [ix])
   const [view, setView] = useState<View>(() => Object.hasOwn(PAGES, location.hash.slice(1)) ? (location.hash.slice(1) as View) : 'arch')
   const [collapsed, setCollapsed] = useState(false)
-  const firstComp = p.graph.comps.find((c) => !c.shared)?.id ?? p.graph.comps[0]?.id ?? ''
-  const [chosenComp, setSelComp] = useState<string>(firstComp)
+  // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
+  const [chosenComp, setSelComp] = useState('')
   const [selEdge, setSelEdge] = useState('')        // a line of the architecture diagram; '' when a box or nothing is selected
   const [chosenStart, setStart] = useState<string | null>(first)
   const [chosenSel, setSel] = useState<Sel>({ id: first ?? '', edge: null, key: 'root' })
   // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
-  // '' : nothing selected (clicked again in the graph); a component the new index lacks falls back to the first
-  const selComp = chosenComp === '' || p.graph.comps.some((c) => c.id === chosenComp) ? chosenComp : firstComp
+  // '' : nothing selected; a component the new index lacks falls back to nothing
+  const selComp = p.graph.comps.some((c) => c.id === chosenComp) ? chosenComp : ''
   const start = chosenStart && ix.funcs[chosenStart] ? chosenStart : first
   const sel: Sel = ix.funcs[chosenSel.id] || ix.inn.has(chosenSel.id) || ix.out.has(chosenSel.id) ? chosenSel : { id: start ?? '', edge: null, key: 'root' }
   const [dir, setDir] = useState<'down' | 'up'>('down')
@@ -207,8 +207,9 @@ function Shell(p: ShellProps) {
         <UI.CommandPalette open={searchOpen} onOpenChange={setSearchOpen} items={palette} recent={recent}
           placeholder="搜尋函式、檔案、元件、環境變數" onSelect={select} />
         <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
-          { target: 'search', title: '搜尋', text: '搜尋函式、檔案、元件與環境變數。快捷鍵 Ctrl K。' },
-          { target: 'tree', title: '流程樹', text: '名稱旁的標籤是關係的來源，點選問號查看依據。' },
+          { target: 'arch', title: '架構圖', text: '方塊是元件，線是元件之間的關係。' },
+          { target: 'search', title: '搜尋', text: 'Ctrl K：搜尋函式、檔案、元件與環境變數。' },
+          { target: 'tree', title: '流程樹', text: '有標籤的關係由規則推得，點選問號查看依據。' },
           { target: 'notes', title: '檢查筆記', text: '錯誤的位置附有修正建議，可直接複製。' },
         ]} />
         <div className="mobile-only">

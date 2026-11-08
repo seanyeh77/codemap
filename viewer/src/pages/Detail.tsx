@@ -45,18 +45,18 @@ export function Detail(p: Props) {
       <UI.DetailList items={[
         { label: '定義', value: link(f.file, f.line) },
         { label: '元件', value: f.comp },
-        { label: '關係', value: <span>{`${nCallers} 個 `}<UI.Term text="呼叫此函式的函式。">caller</UI.Term>{` · 呼叫 ${nCallees} 個 repo 內的函式`}</span> },
+        { label: '關係', value: <span>{`${nCallers} 個 `}<UI.Term text="呼叫此函式的函式。">caller</UI.Term>{` · ${nCallees} 個 `}<UI.Term text="此函式呼叫的 repo 內函式。">callee</UI.Term></span> },
         ...(e && !inside ? [{ label: '呼叫位置', value: link(e.f, e.l) }] : []),
         ...(e && (e.via || e.slot) ? [{ label: '經由', value: <UI.InlineCode>{e.via || e.slot}</UI.InlineCode> }] : []),
       ]} />
       <UI.ActionBar actions={[
-        { label: '追流程', primary: true, onClick: () => p.goFlow(p.sel.id) },
-        { label: '看影響', onClick: () => p.goImpact(p.sel.id) },
+        { label: '追蹤流程', primary: true, onClick: () => p.goFlow(p.sel.id) },
+        { label: '查看影響範圍', onClick: () => p.goImpact(p.sel.id) },
         { label: '展開 macro', disabled: !p.canMacro },
       ]} />
       {src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title="無法讀取原始碼">{(src.error as Error).message}</UI.Alert>
-        : !src.data ? <p className="small muted">此快照不含原始碼。</p>
+        : !src.data ? <p className="small muted">匯出快照時讀不到這個檔案。請在 build 環境重新執行 codemap export。</p>
         : <UI.CodeView file={src.data.file} fileHref={vscodeURL(f.file, focus, root, host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
     </UI.Card>

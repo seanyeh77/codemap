@@ -35,11 +35,11 @@ export async function snapshotFromFile(file: File): Promise<Graph> {
 /** The server's own message for a failed request (FastAPI's detail), or the status. */
 async function errorOf(r: Response, path: string) {
   const d = await r.json().then((b) => b?.detail, () => null)
-  return new Error(typeof d === 'string' ? d : `${path} 回傳 HTTP ${r.status}`)
+  return new Error(typeof d === 'string' ? d : `${path} 回傳 HTTP ${r.status}，請確認 codemap serve 仍在執行。`)
 }
 
 async function api<T>(path: string): Promise<T> {
-  const r = await fetch(path)
+  const r = await fetch(path).catch(() => { throw new Error('無法連線到 codemap serve，請確認它仍在執行，再重新整理此頁。') })
   if (!r.ok) throw await errorOf(r, path)
   return r.json() as Promise<T>
 }

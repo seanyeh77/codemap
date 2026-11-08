@@ -89,10 +89,10 @@ export function Flow(p: FlowProps) {
   return (
     <UI.Card className="pane">
       <div className="row">
-        <UI.Tabs label="方向" items={[{ id: 'down', label: '往下：呼叫的函式' }, { id: 'up', label: '往上：呼叫者' }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
+        <UI.Tabs label="方向" items={[{ id: 'down', label: '往下：callee' }, { id: 'up', label: '往上：caller' }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
       </div>
       <div className="row">
-        <UI.Button icon="magnifying-glass" onClick={p.openSearch}>換起點函式</UI.Button>
+        <UI.Button icon="magnifying-glass" onClick={p.openSearch}>更換起點函式</UI.Button>
         <div className="grow" />
         <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label="預測模式" /><span>預測模式</span></label>
         {p.dir === 'down' ? <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label="顯示外部函式" /><span>外部函式</span></label> : null}
@@ -108,7 +108,7 @@ export function Flow(p: FlowProps) {
               <UI.ActionBar actions={[{ label: '揭曉', primary: true, onClick: reveal }]} />
             </>
           ) : res ? (
-            <div>{`猜中 ${res.hit.length} / ${cur.names.length} 個${res.hit.length ? '：' + res.hit.join('、') : ''}${res.miss.length ? '。不在此層：' + res.miss.join('、') : ''}`}</div>
+            <div>{`預測正確 ${res.hit.length} / ${cur.names.length} 個${res.hit.length ? '：' + res.hit.join('、') : ''}${res.miss.length ? '。不在此層：' + res.miss.join('、') : ''}`}</div>
           ) : (
             <div className="muted">{cur.open ? '選擇未展開的函式繼續預測。' : '此函式沒有下一層。'}</div>
           )}

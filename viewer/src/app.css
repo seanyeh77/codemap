@@ -59,3 +59,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
   .settings-wrap { padding: var(--space-4); }
 }
 @media (min-width: 600px) { .mobile-only { display: none; } }
+
+/* cards as tall as their content in a row layout, so a short diagram leaves no white block below it */
+.pane.fit, .detail.fit { align-self: flex-start; max-height: 100%; }
+.body.below .fit { align-self: stretch; }
+@media (max-width: 959px) { .pane.fit, .detail.fit { align-self: stretch; } }

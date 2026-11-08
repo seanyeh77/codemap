@@ -44,7 +44,7 @@ def create_app(root, notes=None, allowed_hosts=None):
     def index():
         """The index and the viewer graph, rebuilt when index.json changes."""
         if not index_path.exists():
-            raise HTTPException(404, f"{index_path} not found: run `codemap index` first")
+            raise HTTPException(404, f"找不到 {index_path}，請先執行 codemap index。")
         with lock:
             mtime = index_path.stat().st_mtime
             c = state["cache"]
@@ -83,7 +83,7 @@ def create_app(root, notes=None, allowed_hosts=None):
         """Lines of a source file the index knows (1-based, inclusive)."""
         r = view.source(root, file, start, end) if file in index()["files"] else None
         if r is None:
-            raise HTTPException(404, f"{file} is not a file in {root.name}")
+            raise HTTPException(404, f"{file} 不在 {root.name} 的索引裡，請重新執行 codemap index。")
         return r
 
     @app.get("/api/checks")

@@ -24,11 +24,13 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
     ? { id: edgeId(l), from: l.a, to: l.b, count: l.n }
     : { id: edgeId(l), from: l.a, to: l.b, inferred: true, label: labelOf(l) })), [g])
   return (
-    <UI.Card className="pane">
+    <UI.Card className="pane fit">
+      <div data-tour="arch">
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')}
         label="元件和它們之間的呼叫" sizeLabel="{n} 個函式" sharedLabel="共用元件" sharedMeta="{a} 個元件使用，共 {b} 次"
         inferredText="函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。" />
+      </div>
     </UI.Card>
   )
 }
@@ -90,7 +92,7 @@ export function EdgeDetail(p: { ix: Index; id: string; open: (fid: string, edge:
 }
 
 export function CompDetail(p: { ix: Index; comp: string; onPick: (id: string) => void }) {
-  if (!p.comp) return <UI.Card className="detail"><UI.EmptyState title="未選擇元件" description="點選圖中的元件以查看其函式。" /></UI.Card>
+  if (!p.comp) return <UI.Card className="detail fit"><UI.EmptyState title="未選擇元件" description="點選方塊查看函式，點選線查看依據。" /></UI.Card>
   return <CompTree {...p} />
 }
 

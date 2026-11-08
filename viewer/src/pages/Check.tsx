@@ -47,11 +47,12 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       {files.length > 1 ? <UI.Tabs label="筆記檔案" items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
       <UI.Card title={<><UI.InlineCode>{cur.file}</UI.InlineCode>{` · ${cur.refs} 個引用 · ${cur.claims} 個呼叫`}</>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? '檢查中' : '重新檢查'}</UI.Button> : undefined}>
+        <p className="small muted">比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。</p>
         {!p.isLive ? <p className="small muted">此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。</p> : null}
       </UI.Card>
       {fixes.length ? (
         <UI.Card className="fixes" title={`修正建議（${fixes.length} 個）`}>
-          <p className="small muted">複製後貼回筆記，取代原本那一行。</p>
+          <p className="small muted">複製後貼回筆記，取代原本的該行。</p>
           {fixes.map((r) => (
             <UI.Suggestion key={r.at} title={r.at} before={unlisted(r.fix!.before)} after={unlisted(r.fix!.after)}
               copyText={r.fix!.after} refHref={refHref} onRef={onRef} />
