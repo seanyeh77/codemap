@@ -420,7 +420,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             label: e.name,
             // the link goes to the check: the set is a few lines below it, in view
             value: e.check !== e.l
-              ? <span>{fn(e.fid)}{t(' 先檢查是否已設定：')}{at(`unset${i}`, e.f, e.check)}{t('；未設定時才設定：')}{at(`unset${i}s`, e.f, e.l)}</span>
+              ? <span>{fn(e.fid)}{t(' 先檢查是否已設定：')}{at(`unset${i}`, e.f, e.check)}{t('；未設定時才設定：')}{at(`unset${i}s`, e.f, e.l)}{e.says === false ? t('。已設定時沿用原值，不印訊息。') : ''}</span>
               : <span>{fn(e.fid)}{t(' 以 setenv 的第三個參數 0 設定，已設定時就不改：')}{at(`unset${i}`, e.f, e.check)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           <h4 className="small" id="ov-errors" tabIndex={-1}>{t('回傳固定錯誤碼的地方')}</h4>
@@ -428,6 +428,16 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             label: e.code,
             value: <span>{fn(e.fid)}{p.ix.funcs[e.fid]?.api ? t('（外部進入點）') : p.ix.callers(e.fid).some((x) => x.k === 'fnptr_assign' || x.k === 'fnptr_table') ? t('（裝進函式指標）') : ''}{e.how === 'errno' ? t(' 設定 errno：') : t(' 回傳：')}{at(`err${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
+          <h4 className="small" id="ov-loss" tabIndex={-1}>{t('會丟掉資料的地方')}</h4>
+          {g.worth.loss?.length ? <>
+            <p className="small muted">{t('名稱像 lost、dropped、overrun 的計數器被加上去的地方：程式在這裡放棄一部分資料。')}</p>
+            <UI.DetailList items={g.worth.loss.map((x, i) => ({
+              label: x.var,
+              value: <span>{fn(x.fid)}{t('：')}<code className="small">{x.text}</code>{' '}{at(`loss${i}`, x.f, x.l)}
+                {x.via.length ? <span className="write-row">{t('經由：')}{[...new Set(x.via.map((v) => v.fid))].map((v, j) => <span key={v}>{j ? t('、') : ''}{fn(v)}{' '}{x.via.filter((w) => w.fid === v).map((w, k) => <span key={k}>{k ? t('、') : ''}{at(`lossv${i}-${j}-${k}`, w.f, w.l)}</span>)}</span>)}</span> : null}
+                <span className="write-row">{x.said.length ? <>{t('回報：')}{x.said.map((s, j) => <span key={j}>{j ? t('、') : ''}{at(`losss${i}-${j}`, s.f, s.l)}</span>)}</> : t('沒有找到印出這個計數的地方。')}</span></span>,
+            }))} />
+          </> : <p className="small muted">{t('沒有找到。')}</p>}
           <h4 className="small" id="ov-limits" tabIndex={-1}>{t('到達上限時直接返回、不印訊息')}</h4>
           {g.worth.limits?.silent.length ? <>
             <p className="small muted">{t('計數到達 MAX 常數時直接 return，使用者不會知道有東西沒被處理。')}</p>
@@ -564,6 +574,8 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
     const files = [...p.ix.byFile()].filter(([, ids]) => p.ix.funcs[ids[0]].comp === p.comp).sort(([a], [b]) => a.localeCompare(b))
     return files.map(([f, ids]) => ({
       id: 'file:' + f, name: f.split('/').pop()!, path: f, icon: 'file-text' as const,
+      // read out as the name and its function count; the comment stays on screen
+      ariaLabel: t('{v1}，{v2} 個函式', { v1: f.split('/').pop(), v2: ids.length }),
       // the file's own comment, or its header's when the file says it is described there
       meta: docs[f] ? (docs[f].file && docs[f].file !== f ? t('（取自 {v1}）', { v1: docs[f].file!.split('/').pop() }) : '') + short(docs[f].text, 110) : t('{v1} · 沒有說明註解', { v1: f }),
       children: ids.map((id) => ({

@@ -65,6 +65,10 @@ codemap export --html                # one HTML file with the viewer and the sna
 codemap viewer -o site/              # static viewer for a web server; open a .codemap file in it
 ```
 
+`--notes` takes any Markdown file, so design documents can be checked the same way:
+`codemap serve --notes notes.md docs/*.md` lists every file:line in them that no
+longer matches the code.
+
 `codemap serve` listens on localhost. From a laptop, forward the port
 (`ssh -L 7300:localhost:7300 HOST`); VS Code Remote-SSH does this by itself.
 The viewer shows the architecture, call trees (with a predict-then-reveal

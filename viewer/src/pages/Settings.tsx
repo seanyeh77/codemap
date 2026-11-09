@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { UI } from '../ui'
-import { setLang, t } from '../i18n'
+import { dateTime, setLang, t } from '../i18n'
 import { usePrefs } from '../data/hooks'
 import { live } from '../data/load'
 import type { Graph, Meta } from '../data/types'
@@ -23,7 +23,7 @@ interface Props {
 function when(sec: number) {
   const d = new Date(sec * 1000)
   // within a week the relative time reads first, with the exact time after it to compare with other pages
-  const exact = UI.format.dateTime(d, { weekday: true })
+  const exact = dateTime(d)
   return Date.now() - d.getTime() < 7 * 864e5 ? t('{v1}（{v2}）', { v1: UI.format.relative(d), v2: exact }) : exact
 }
 

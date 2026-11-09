@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from './ui'
 import { t } from './i18n'
@@ -165,7 +165,7 @@ function Shell(p: ShellProps) {
   // live, from the functions a snapshot keeps otherwise; listed after every name that matches
   const typed = useDebounced(query.trim(), 250)
   const grepLive = useQuery({ queryKey: ['grep', p.sourceId, typed], enabled: isLive && !!p.meta?.capabilities.grep && typed.length >= 2,
-    queryFn: () => live.grep(typed), staleTime: 30_000 })
+    queryFn: () => live.grep(typed), staleTime: 30_000, placeholderData: keepPreviousData })   // no flash of an empty list between two queries
   const textHits = useMemo(() => {
     if (typed.length < 2) return []
     const hits: GrepHit[] = isLive ? grepLive.data ?? [] : snapshotGrep(ix, typed)
@@ -175,7 +175,9 @@ function Shell(p: ShellProps) {
       const kind = /^\s*(\/\/|\/\*|\*|#(?!\s*(include|define|if|ifdef|ifndef|else|elif|endif|pragma|undef)\b))/.test(h.text) && textKind(h.file) !== '文件' ? '註解' : textKind(h.file)
       // a C line outside every indexed function: either between functions, or in a file the build does not compile
       const where = fid ? ` · ${ix.funcs[fid].name}` : kind !== '程式碼' && kind !== '測試' ? ''
-        : indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('檔案不在 compile_commands.json，codemap 沒有分析它的呼叫')}`
+        : ((u) => u ? ` · ${t('{v1}（{v2}，這次的 build 沒有編進去）', { v1: u.name, v2: u.cond })}` : null)(
+            ix.g.uncompiled_funcs?.find((u) => u.f === h.file && u.line <= h.line && h.line <= u.end))
+          ?? (indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('這個檔案不在 build 裡，只找得到文字，沒有呼叫關係')}`)
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
         detail: `${h.file}:${h.line}` + where, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
@@ -286,7 +288,7 @@ function Shell(p: ShellProps) {
     else if (t.type === 'overview') {
       setFileAt(null); setSelComp(''); setSelEdge(''); setView('arch')
       const sec = t.sec
-      if (sec) setTimeout(() => jump(sec), 120)     // after the overview is drawn
+      if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)     // after the overview is drawn, and again once its lists have settled
     }
     else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
   }
@@ -486,13 +488,13 @@ function plainDoc(s: string): string {
   return s.replace(/^#+\s*/, '').replace(/^[-*]\s+/, '').replace(/\*\*|__|`/g, '').replace(/\s*\|\s*/g, ' · ').replace(/^ · | · $/g, '').trim()
 }
 /** Other words a reader may search for a section with. */
-const SECTION_WORDS: Record<string, string[]> = { 'ov-limits': ['上限', 'limit', 'MAX', 'silent', '靜默'], 'ov-worth': ['風險', '問題', '限制', 'risk', 'risks', 'issue'], 'ov-env': ['env', 'getenv', '設定'],
+const SECTION_WORDS: Record<string, string[]> = { 'ov-loss': ['overrun', 'lost', 'loss', 'drop', '遺失', '丟失', '資料遺失', '覆寫'], 'ov-limits': ['上限', 'limit', 'MAX', 'silent', '靜默'], 'ov-worth': ['風險', '問題', '限制', 'risk', 'risks', 'issue'], 'ov-env': ['env', 'getenv', '設定', 'dynamic loader', 'loader', 'LD_PRELOAD'],
   'ov-build': ['make', 'Makefile', '安裝', 'install'], 'ov-writes': ['輸出', 'output', 'fopen'], 'ov-entry': ['constructor', 'destructor', 'LD_PRELOAD'] }
 
 /** The overview's sections and their headings (ids are the headings' element ids). */
 const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束'], ['ov-env', '執行期設定（環境變數）'], ['ov-build', '建置產物'],
   ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方'], ['ov-stops', '結束程式的呼叫'], ['ov-arrays', '固定大小的全域陣列'],
-  ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-limits', '到達上限時直接返回、不印訊息'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],
+  ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-loss', '會丟掉資料的地方'], ['ov-limits', '到達上限時直接返回、不印訊息'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],
   ['ov-nullenv', '沒有先檢查 NULL 就使用的 getenv 結果']] as const
 
 let lastCat = 'source'

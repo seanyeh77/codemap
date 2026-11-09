@@ -155,6 +155,24 @@ class Facts(unittest.TestCase):
         got = facts.env_comments(self.root, ["t.h", "t.c"], {"X_ALL"})["X_ALL"]
         self.assertEqual((got[0]["at"], got[0]["defines"], got[0]["text"]), ("t.h:1", True, "X_ALL=1: record every call one by one."))
 
+    def test_data_loss(self):
+        (self.root / "d.c").write_text(
+            "static void skip_to(struct r *rd, int n)\n{\n    if (rd->lost == 0)\n        fprintf(stderr, \"overrun\");\n    rd->lost += n;\n}\n"
+            "void take(struct r *rd)\n{\n    skip_to(rd, 1);\n}\n"
+            "void summary(struct r *rd)\n{\n    printf(\"%d lost\", rd->lost);\n}\n")
+        funcs = {"skip_to": dict(name="skip_to", file="d.c", line=1, end=6), "take": dict(name="take", file="d.c", line=7, end=10),
+                 "summary": dict(name="summary", file="d.c", line=11, end=14)}
+        edges = [dict(s="take", d="skip_to", f="d.c", l=9, src="compiler")]
+        got = facts.data_loss(self.root, funcs, edges)
+        self.assertEqual([(r["fid"], r["l"], r["var"]) for r in got], [("skip_to", 5, "rd->lost")])
+        self.assertEqual(got[0]["via"], [dict(fid="take", f="d.c", l=9)])
+        self.assertEqual([s["l"] for s in got[0]["said"]], [13])
+
+    def test_uncompiled_funcs(self):
+        (self.root / "f.c").write_text("int take(void)\n{\n    return 1;\n}\n#ifdef OLD\nint take(void)\n{\n    return 0;\n}\n#endif\n")
+        funcs = {"take": dict(name="take", file="f.c", line=1, end=4)}
+        self.assertEqual(facts.uncompiled_funcs(self.root, funcs), [dict(name="take", f="f.c", line=6, end=9, cond="#ifdef OLD")])
+
     def test_arg_strings(self):
         src = ["import subprocess", "", "def tool_path(d):", "    return d + '/mon'", "",
                "def run(d):", "    cmd = [tool_path(d), '-q']", "    cmd += ['--', 'prog']", "    subprocess.Popen(cmd)",

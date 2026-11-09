@@ -217,7 +217,7 @@ def build(root, index, config=None):
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),
                files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},
                env=index.get("env", {}), env_info=facts.env_meaning(root, funcs, index.get("env", {}), config),
-               uncompiled=facts.uncompiled_calls(root, funcs, edges),
+               uncompiled=facts.uncompiled_calls(root, funcs, edges), uncompiled_funcs=facts.uncompiled_funcs(root, funcs),
                readable=readable, symbols=syms,
                phases={k: [ph for ph in v if isinstance(ph, dict) and ph.get("name") and ph.get("from")]
                        for k, v in config.get("phases", {}).items() if isinstance(v, list)},

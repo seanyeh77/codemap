@@ -107,7 +107,8 @@ def render(index, config=None, svg_name=None):
     out += [f'Index: {st["units"]} translation units ({st["failed"]} failed), {st["edges"]} compiler edges, '
             f'{st["indirect"]} indirect calls of which {st.get("indirect_unresolved", st["indirect"])} are unresolved.', ""]
 
-    out += ["### Components", "", "| Component | Files | Functions | Entry points |", "| --- | --- | --- | --- |"]
+    # files split into sources and headers: the build products count only the .c files
+    out += ["### Components", "", "| Component | Files (.c / .h) | Functions | Entry points |", "| --- | --- | --- | --- |"]
     for cname in sorted(comps, key=lambda k: -len(comps[k]["funcs"])):
         c = comps[cname]
         entries = [f'`{name(nodes, x)}` (main)' for x in c["main"]]
@@ -117,7 +118,8 @@ def render(index, config=None, svg_name=None):
             shown = ", ".join(f"`{x}`" for x in ex[:6])
             entries.append(f"{len(ex)} global function{'s' if len(ex) > 1 else ''} with no caller in the repo: {shown}"
                            + (", ..." if len(ex) > 6 else ""))
-        out.append(f'| {cname} | {len(c["files"])} | {len(c["funcs"])} | {"; ".join(entries) or "-"} |')
+        nh = sum(1 for f in c["files"] if f.endswith((".h", ".hpp", ".hh")))
+        out.append(f'| {cname} | {len(c["files"]) - nh} / {nh} | {len(c["funcs"])} | {"; ".join(entries) or "-"} |')
     out.append("")
 
     out += ["### Calls between components", "", "| From | To | Calls | Example |", "| --- | --- | --- | --- |"]

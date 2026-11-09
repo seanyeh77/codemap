@@ -97,6 +97,8 @@ export class Index {
     const parts = [t('{n} 個 caller', { n }) + (c.guessed ? (c.guessed === n ? t('（推測）') : t('，其中 {n} 個是推測', { n: c.guessed })) : '')]
     if (c.others.length) parts.push(t('另有推測的來源：{names}', { names: list(c.others.slice(0, 2)) }))
     if (c.load) parts.push(c.load === 'constructor' ? t('程式載入時自動執行') : t('程式結束時自動執行'))
+    const left = this.g.uncompiled?.[id]?.length
+    if (left) parts.push(t('另有 {v1} 處在條件編譯裡，這次的 build 沒有編進去', { v1: left }))
     return parts.join(t('；'))
   }
 

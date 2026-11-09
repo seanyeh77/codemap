@@ -563,16 +563,21 @@ def env_if_unset(root, funcs):
                     block, end = rest, len(rest)
             else:
                 block = rest[:rest.find(";") + 1] if ";" in rest else rest
+                end = len(block)
+            # when it is set already: an else branch that prints says so, otherwise nothing is said
+            after = rest[end:].lstrip()
+            els = re.match(r"else\b\s*(\{[^{}]*\}|[^;]*;)", after)
+            says = bool(els and SAYS.search(els.group(1)))
             for s in SET_CALL.finditer(block):
                 args, _ = _args(text, m.end() + s.end() - 1)
                 target = STRING.match(args[0]).group(1) if args and STRING.match(args[0]) else None
                 if s.group(1) == "setenv" and target == name or s.group(1) == "putenv":
-                    out.append(dict(name=name, fid=fid, f=f["file"], l=at(m.end() + s.start()), check=at(m.start())))
+                    out.append(dict(name=name, fid=fid, f=f["file"], l=at(m.end() + s.start()), check=at(m.start()), says=says))
                     break
         for s in SET_CALL.finditer(text):
             args, _ = _args(text, s.end() - 1)
             if s.group(1) == "setenv" and len(args) == 3 and args[2].strip() == "0" and STRING.match(args[0]):
-                out.append(dict(name=STRING.match(args[0]).group(1), fid=fid, f=f["file"], l=at(s.start()), check=at(s.start())))
+                out.append(dict(name=STRING.match(args[0]).group(1), fid=fid, f=f["file"], l=at(s.start()), check=at(s.start()), says=False))
     return out
 
 
@@ -640,7 +645,8 @@ def at_load(edges):
 def worth_checking(root, funcs, edges, files, symbols):
     return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, funcs),
                 env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs),
-                plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, funcs))
+                plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, funcs),
+                loss=data_loss(root, funcs, edges))
 
 
 def macro_value(root, funcs, name):
@@ -890,3 +896,84 @@ def env_comments(root, files, names):
     for name in out:
         out[name].sort(key=lambda c: (not c["defines"], not c["at"].split(":")[0].endswith(".h"), c["at"]))
     return out
+
+
+def uncompiled_funcs(root, funcs):
+    """Function definitions inside #if/#ifdef blocks that the build leaves out (a second take() under
+    #ifdef IBMON_FAULT_LEGACY_DRAIN): [{name, f, line, end, cond}], so a line in one can be named."""
+    root = Path(root)
+    known = {(f["file"], f["line"]) for f in funcs.values()}
+    out = []
+    for rel in sorted({f["file"] for f in funcs.values() if f["file"].endswith(".c")}):
+        src = lines_text(root / rel).splitlines()
+        stack, n = [], 0
+        while n < len(src):
+            ln = src[n]
+            d = re.match(r"\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)", ln)
+            if d:
+                kind, arg = d.group(1), " ".join(d.group(2).split())
+                if kind in ("if", "ifdef", "ifndef"):
+                    stack.append(f"#{kind} {arg}")
+                elif kind in ("elif", "else") and stack:
+                    stack[-1] = f"#{kind} {arg}".strip() + f"（{stack[-1]}）"
+                elif kind == "endif" and stack:
+                    stack.pop()
+                n += 1
+                continue
+            m = re.match(r"[A-Za-z_][^;#=]*?\b([A-Za-z_]\w*)\s*\([^;]*$", ln)
+            if stack and m and not ln[:1].isspace():
+                # the body: from the first { to its match
+                j = n
+                while j < len(src) and "{" not in src[j] and ";" not in src[j]:
+                    j += 1
+                if j < len(src) and "{" in src[j] and (rel, n + 1) not in known:
+                    depth, k = 0, j
+                    for k in range(j, len(src)):
+                        depth += src[k].count("{") - src[k].count("}")
+                        if depth <= 0:
+                            break
+                    out.append(dict(name=m.group(1), f=rel, line=n + 1, end=k + 1, cond=stack[-1]))
+                    n = k + 1
+                    continue
+            n += 1
+    return out
+
+
+# ---- where data is given up ---------------------------------------------------------------------
+
+LOSS = re.compile(r"(?i)(lost|loss|drop(ped|s)?|discard(ed|s)?|skip(ped)?|overrun|missed|overflow(ed|s)?)")
+
+
+def data_loss(root, funcs, edges):
+    """Where the code counts what it gives up: a counter named lost, dropped, skipped, overrun...
+    raised with += or ++ (rd->lost += n in skip_to). For each: the calls that lead there (take ->
+    skip_to) and the prints that report the counter (stderr at the first loss, the summary at the end).
+    -> [{fid, f, l, var, text, via: [{fid, f, l}], said: [{fid, f, l}]}]"""
+    root = Path(root)
+    out = []
+    bodies = list(_bodies(root, funcs))
+    for fid, f, text, at in bodies:
+        for m in re.finditer(r"([A-Za-z_][\w.>\-\[\]]*?)\s*(\+=|\+\+)|\+\+\s*([A-Za-z_][\w.>\-\[\]]*)", text):
+            var = m.group(1) or m.group(3)
+            leaf = re.split(r"->|\.", var)[-1]
+            if not LOSS.search(leaf):
+                continue
+            line = at(m.start())
+            src_line = lines_text(root / f["file"]).splitlines()[line - 1].strip()
+            via = sorted({(e["s"], e["f"], e["l"]) for e in edges if e.get("d") == fid and e.get("src", "compiler") == "compiler"
+                          and e["s"] in funcs and e.get("f")}, key=lambda x: (x[1], x[2]))
+            said = []
+            for gid, g, gtext, gat in bodies:
+                for p in re.finditer(r"\b\w*printf\w*\s*\(", gtext):
+                    args = gtext[p.end():p.end() + 400].split(";", 1)[0]
+                    if re.search(r"\b" + re.escape(leaf) + r"\b", args):
+                        said.append(dict(fid=gid, f=g["file"], l=gat(p.start())))
+            out.append(dict(fid=fid, f=f["file"], l=line, var=var, text=src_line,
+                            via=[dict(fid=s, f=a, l=b) for s, a, b in via], said=said))
+    # one row per counter and function
+    seen, rows = set(), []
+    for r in out:
+        if (r["fid"], r["var"]) not in seen:
+            seen.add((r["fid"], r["var"]))
+            rows.append(r)
+    return rows

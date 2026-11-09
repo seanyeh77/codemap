@@ -145,16 +145,20 @@ export interface Graph {
     arrays: { name: string; file: string; line: number; size: string; text: string; value?: string }[]
     env: { fid: string; f: string; l: number; use: number; name: string | null }[]
     /** variables set only when not set already */
-    env_if_unset?: { name: string; fid: string; f: string; l: number; check: number }[]
+    env_if_unset?: { name: string; fid: string; f: string; l: number; check: number; says?: boolean }[]
     /** fixed error codes handed back: return ENOSYS, errno = EAGAIN */
     errors?: { code: string; fid: string; f: string; l: number; how: 'return' | 'errno' }[]
     /** file-scope variables changed with a plain store, not an atomic operation */
     plain_writes?: { name: string; file: string; line: number; static: boolean; writes: { fid: string; f: string; l: number; text: string }[] }[]
     /** a count reaching a MAX constant: returns without a word (silent), or prints first (said) */
     limits?: { silent: Limit[]; said: Limit[] }
+    /** counters of what is given up (rd->lost += n): the calls that lead there and the prints that report it */
+    loss?: { fid: string; f: string; l: number; var: string; text: string; via: { fid: string; f: string; l: number }[]; said: { fid: string; f: string; l: number }[] }[]
   }
   /** Calls inside #if/#ifdef blocks the compiler did not record, by the function called. */
   uncompiled?: Record<string, { f: string; l: number; cond: string; by: string }[]>
+  /** Function definitions inside #if/#ifdef blocks the build leaves out. */
+  uncompiled_funcs?: { name: string; f: string; line: number; end: number; cond: string }[]
   /** In a snapshot only; live, the Check page asks the server. */
   checks?: CheckFile[]
   config: { cc: string | null; scope: string[] | null }

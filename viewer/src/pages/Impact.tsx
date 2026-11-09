@@ -68,7 +68,9 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               <p className="small">
                 {t('受影響的函式中有 {v1} 個是 ', { v1: entries.length })}
                 <UI.Term text={entryTerm(apis.join(t('、')))}>{t('外部進入點')}</UI.Term>
-                {t('：被追蹤的程式呼叫 {v2} 的同名函式時執行。repo 裡共有 {v1} 個外部進入點，攔截 {v3}。', { v1: Object.values(p.ix.funcs).filter((f) => f.api).length, v2: apis.join(t('、')), v3: [...new Set(Object.values(p.ix.funcs).map((f) => f.api).filter(Boolean))].sort().join(t('、')) })}
+                {t('：被追蹤的程式呼叫 {v2} 的同名函式時執行。', { v2: apis.join(t('、')) })}
+                {t('repo 裡共有 {v1} 個外部進入點（{v2}）。', { v1: Object.values(p.ix.funcs).filter((f) => f.api).length,
+                  v2: Object.entries(Object.values(p.ix.funcs).reduce<Record<string, number>>((m, f) => (f.api ? { ...m, [f.api]: (m[f.api] ?? 0) + 1 } : m), {})).sort().map(([a, n]) => `${a} ${n}`).join(t('、')) })}
               </p>
             ) : null}
             <p className="small muted">{t('只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>

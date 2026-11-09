@@ -26,6 +26,15 @@ const lineLike = (zh: string, k: string) => new RegExp(`(:|第 ?|行 ?)\\{${k}\\
 /** A unit after a count, for UI.Tabs and DataTable summaries: 「項」 in Chinese, item or items in English. */
 export const countUnit = (zh: string, one: string, many: string) => (n: number) => (current === 'en' ? (n === 1 ? one : many) : zh)
 
+/** A date and time as the interface's language writes it. Chinese: 2026/11/09（一） 14:06, the design system's
+ *  format; English: Mon 2026-11-09 14:06, which no reader takes for 9 November or 11 September by mistake. */
+export function dateTime(d: Date): string {
+  if (current !== 'en') return UI.format.dateTime(d, { weekday: true })
+  const p = (n: number) => String(n).padStart(2, '0')
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]
+  return `${day} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 /** A count as the interface's language writes it. */
 export const num = (n: number) => new Intl.NumberFormat(current === 'en' ? 'en-US' : 'zh-TW').format(n)
 

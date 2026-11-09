@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { OpenFile } from '../components/DocRefs'
 import { UI } from '../ui'
-import { list, countUnit, t } from '../i18n'
+import { countUnit, dateTime, list, t } from '../i18n'
 import type { Index } from '../data/graph'
 import { live } from '../data/load'
 import type { CheckFile, CheckItem, Sel } from '../data/types'
@@ -64,8 +64,10 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
         <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
-        {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤。', { v1: UI.format.dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length })}</p> : null}
+        {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤、{v3} 項待確認。', { v1: dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length, v3: rows.filter((r) => r.status === 'review').length })}</p> : null}
         <p className="small muted">{t('「相符」只代表引用的行出現筆記裡的名稱，或呼叫經編譯器確認。「待確認」的說明欄寫了要對照的位置。')}</p>
+        <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}{' '}
+          <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟 {v1} 全文', { v1: cur.file })}</button></p>
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
       <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
