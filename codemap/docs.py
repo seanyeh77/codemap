@@ -65,7 +65,12 @@ def files_docs(root, files):
             headers.setdefault(Path(f).stem, []).append(f)
     out = {}
     for f in files:
-        if f in own:
+        # "reader.c - described in reader.h.": the header's comment is the one that says something
+        m = re.search(r"\b(?:described|documented|explained) in\s+([\w./-]+\.h)\b", own[f]["text"]) if f in own else None
+        hs = [h for h in headers.get(Path(m.group(1)).stem, []) if Path(h).name == Path(m.group(1)).name] if m else []
+        if len(hs) == 1 and hs[0] != f:
+            out[f] = dict(own[hs[0]], file=hs[0])
+        elif f in own:
             out[f] = dict(own[f], file=f)
         elif len(hs := headers.get(Path(f).stem, [])) == 1 and hs[0] != f:
             out[f] = dict(own[hs[0]], file=hs[0])

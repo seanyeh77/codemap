@@ -19,6 +19,9 @@ C = r'''#include <stdio.h>
 static int table[MAX_B];
 static char name[16];
 static const int init[] = {1, 2};
+static int counter;
+static __thread int depth;
+static volatile sig_atomic_t stop;
 
 void log_to(const char *path)
 {
@@ -103,6 +106,16 @@ class Facts(unittest.TestCase):
     def test_unchecked_env(self):
         found = {x["name"] for x in facts.unchecked_env(self.root, self.funcs)}
         self.assertEqual(found, {"A", "C"})
+
+    def test_plain_writes(self):
+        src = (self.root / "a.c").read_text()
+        (self.root / "b.c").write_text("static int counter;\nstatic __thread int depth;\nstatic volatile sig_atomic_t stop;\n"
+                                       "void f(void)\n{\n    counter++;\n    depth++;\n    stop = 1;\n"
+                                       "    __atomic_add_fetch(&counter, 1, __ATOMIC_RELAXED);\n}\n")
+        funcs = {"f": dict(name="f", file="b.c", line=4, end=10)}
+        w = facts.plain_writes(self.root, funcs, ["b.c"])
+        self.assertEqual([(x["name"], [y["l"] for y in x["writes"]]) for x in w], [("counter", [6])])
+        self.assertTrue(src)
 
     def test_env_if_unset(self):
         self.assertEqual(sorted(x["name"] for x in facts.env_if_unset(self.root, self.funcs)), ["KEEP", "LD_PRELOAD"])

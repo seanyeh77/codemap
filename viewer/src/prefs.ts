@@ -13,7 +13,16 @@ export interface Prefs {
 }
 
 const KEY = 'codemap.prefs.v1'
-const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'none', sshHost: '', clone: '', lang: 'zh-TW' }
+
+/** Until the person picks one: Chinese for a browser set to Chinese, English otherwise. */
+function browserLang(): 'zh-TW' | 'en' {
+  try {
+    return (navigator.languages?.length ? navigator.languages : [navigator.language]).some((l) => /^zh\b/i.test(l)) ? 'zh-TW' : 'en'
+  } catch {
+    return 'zh-TW'
+  }
+}
+const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'none', sshHost: '', clone: '', lang: browserLang() }
 
 function read(): Prefs {
   try {

@@ -50,6 +50,11 @@ export interface Comp {
   callers: number
   /** What it is for: the top comment of its main file, and where that comment is. */
   doc?: Doc
+  /** python: a group of Python tools, not C code (no functions are indexed) */
+  lang?: 'python'
+  /** python: its scripts, and the first line of each one's docstring */
+  scripts?: string[]
+  docs?: Record<string, string>
 }
 
 export interface Doc {
@@ -64,7 +69,8 @@ export interface Link {
   a: string
   b: string
   n: number
-  kind: 'call' | 'env' | 'interpose' | 'channel'
+  /** runs: a Python tool starts a program built from b; reads: it parses a header of b */
+  kind: 'call' | 'env' | 'interpose' | 'channel' | 'runs' | 'reads'
   api?: string
   /** channel: the shared component the data goes through, and the name given in rules.json. */
   via?: string
@@ -80,6 +86,8 @@ export interface CheckItem {
   text: string
   status: 'done' | 'fail' | 'review'
   why: string
+  /** the same explanation as templates and values, to show in the reader's language */
+  msgs?: { t: string; v: Record<string, string | number | string[] | null> }[]
   /** A corrected line when a reference is wrong; both keep their backticks. */
   fix?: { before: string; after: string } | null
 }
@@ -122,6 +130,8 @@ export interface Graph {
   /** Macros and file-scope variables, to search by name. */
   symbols?: { name: string; kind: 'macro' | 'var'; file: string; line: number; text: string }[]
   state?: { name: string; file: string; line: number; static: boolean; users: [string, number][] }[]
+  /** Stages of a long function's calls, from .codemap/rules.json: function name -> [{name, from}]. */
+  phases?: Record<string, { name: string; from: string }[]>
   /** What the Makefile builds and installs, read from `make -n`. Null when there is no Makefile. */
   build?: BuildInfo | null
   /** Calls that create or write a file. */
@@ -135,6 +145,8 @@ export interface Graph {
     env_if_unset?: { name: string; fid: string; f: string; l: number; check: number }[]
     /** fixed error codes handed back: return ENOSYS, errno = EAGAIN */
     errors?: { code: string; fid: string; f: string; l: number; how: 'return' | 'errno' }[]
+    /** file-scope variables changed with a plain store, not an atomic operation */
+    plain_writes?: { name: string; file: string; line: number; static: boolean; writes: { fid: string; f: string; l: number; text: string }[] }[]
   }
   /** In a snapshot only; live, the Check page asks the server. */
   checks?: CheckFile[]

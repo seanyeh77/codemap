@@ -62,8 +62,8 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
         {rows.length ? (
           <div>
             {p.ix.funcs[p.start]
-              ? <p>{t('修改')} <UI.InlineCode>{name}</UI.InlineCode>{t(' 影響 {v1} 個函式，跨 {v2} 個元件。', { v1: rows.length, v2: comps.length })}</p>
-              : <p>{t('呼叫')} <UI.InlineCode>{name}</UI.InlineCode>{t('（repo 外的函式）的有 {v1} 個函式；連同呼叫它們的函式，共 {v2} 個，跨 {v3} 個元件。', { v1: rows.filter((r) => r.kind === 'direct').length, v2: rows.length, v3: comps.length })}</p>}
+              ? <UI.CodeText as="p" text={t('修改 `{name}` 影響 {v1} 個函式，跨 {v2} 個元件。', { name, v1: rows.length, v2: comps.length })} />
+              : <UI.CodeText as="p" text={t('有 {v1} 個函式呼叫 `{name}`（repo 外的函式）；連同呼叫它們的函式，共 {v2} 個，跨 {v3} 個元件。', { name, v1: rows.filter((r) => r.kind === 'direct').length, v2: rows.length, v3: comps.length })} />}
             {vars.length ? <p className="small">{t('其中 {v1} 個和它使用相同的全域變數（{v2}），沒有呼叫關係也會受影響。', { v1: rows.filter((r) => r.kind === 'state').length, v2: vars.join(t('、')) })}</p> : null}
             {entries.length ? (
               <p className="small">
@@ -97,9 +97,9 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               ) },
             { key: 'comp', label: t('元件'), width: 120, grow: 1 },
             { key: 'how', label: t('關係'), width: 150, grow: 1, searchText: (r: Row) => r.how, render: (r: Row) => r.how },
-            { key: 'loc', label: t('位置'), width: 190, grow: 2, searchText: (r: Row) => r.loc,
+            { key: 'loc', label: t('位置'), width: 190, grow: 2, searchText: (r: Row) => r.loc, fullText: (r: Row) => `${r.f}:${r.lines.join(t('、'))}`,
               // the file name and every line; the folder is in the 元件 column and in the tooltip
-              render: (r: Row) => <span className="locs" title={r.f}>{r.lines.map((l) => (
+              render: (r: Row) => <span className="locs">{r.lines.map((l) => (
                 <UI.InlineCode key={l} href={`#${r.f}:${l}`} onClick={(e) => { e.preventDefault(); p.onSel(r.fid, { f: r.f, l }) }}>{`${r.f.split('/').pop()}:${l}`}</UI.InlineCode>))}</span> },
             { key: 'depth', label: t('距離'), numeric: true, unit: t('層'), width: 72, grow: 0.5, hidden: true },
           ]}

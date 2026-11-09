@@ -13,6 +13,7 @@ interface Entry { fid: string; edge: Edge | null; names: string[]; open: boolean
 function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolean, predict: boolean, revealed: Record<string, boolean>,
   openLine: (fid: string, e: Edge, key: string) => void) {
   const index: Record<string, Entry> = {}
+  const stageIds: string[] = []
   const kidsOf = (fid: string) => (dir === 'down' ? ix.callees(fid, showExt) : ix.callers(fid))
   function node(nid: string, e: Edge | null, key: string, path: string[], parent: string, sites: Edge[] = []): TreeNode {
     const f = ix.funcs[nid]
@@ -46,9 +47,21 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
       if (g) g.push(k)
       else groups.set(cid, [k])
     }
-    return [...groups].map(([cid, ks]) => node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks))
+    const rows = [...groups].map(([cid, ks]) => ({ name: ix.bareName(cid, ks[0]), n: node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks) }))
+    // stages the project named in .codemap/rules.json (phases): each starts at its `from` call
+    const stages = dir === 'down' && ix.funcs[c.fid] ? ix.g.phases?.[ix.funcs[c.fid].name] ?? [] : []
+    const at = stages.map((s) => ({ s, i: rows.findIndex((r) => r.name === s.from) })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i)
+    if (!at.length) return rows.map((r) => r.n)
+    const out: TreeNode[] = rows.slice(0, at[0].i).map((r) => r.n)
+    at.forEach((x, k) => {
+      const id = `${key}#${k}`
+      stageIds.push(id)
+      out.push({ id, name: x.s.name, icon: 'stack', meta: t('專案定義的階段'), children: rows.slice(x.i, k + 1 < at.length ? at[k + 1].i : rows.length).map((r) => r.n) })
+    })
+    return out
   }
-  return { items: [node(start, null, 'root', [], 'root')], index, children }
+  const items = [node(start, null, 'root', [], 'root')]
+  return { items, index, children, stageIds }
 }
 
 /** The relation tag in a tree row. Its own clicks and keys stay inside, so opening the
@@ -113,7 +126,8 @@ export function Flow(p: FlowProps) {
     requestAnimationFrame(() => resultRef.current?.focus())       // the field and button are gone: keep the keyboard here
     // the result is on screen at once; screen readers hear it too
     const r = guesses[selKey] ? guessHits(guesses[selKey], cur.names) : null
-    UI.announce(r ? t('預測正確 {v1} / {v2} 個', { v1: r.hit.length, v2: cur.names.length }) : t('已揭曉：{v1} 個函式', { v1: cur.names.length }))
+    // read as 「3 個中的 2 個」, not 「2 斜線 3」
+    UI.announce(r ? t('預測正確 {v1}', { v1: UI.format.fractionLabel(r.hit.length, cur.names.length, t('個')) }) : t('已揭曉：{v1} 個函式', { v1: cur.names.length }))
   }
 
   return (
@@ -124,32 +138,33 @@ export function Flow(p: FlowProps) {
       <div className="row">
         <UI.Button icon="magnifying-glass" onClick={p.openSearch}>{t('更換起點函式')}</UI.Button>
         <div className="grow" />
-        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下你認為下一層會呼叫哪些函式，再按「揭曉」比對。用來練習讀懂程式，不是工具的推測。')}>{t('自我測驗')}</UI.Term></label>
+        {/* self-test last, so its field follows it in the Tab order */}
         <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label={t('顯示外部函式')} disabled={p.dir !== 'down'} /><span>{t('外部函式')}</span></label>
+        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下你認為下一層會呼叫哪些函式，再按「揭曉」比對。用來練習讀懂程式，不是工具的推測。')}>{t('自我測驗')}</UI.Term></label>
       </div>
       {p.predict && cur ? (
         <div className="predict">
           {needGuess ? (
             <>
-              <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{t(' 的下一層有 {v1} 個函式。請先寫下預測再揭曉。', { v1: cur.names.length })}</div>
+              <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{(p.dir === 'down' ? t(' 呼叫的函式有 {v1} 個（往下一層）。請先寫下預測再揭曉。', { v1: cur.names.length }) : t(' 的 caller 有 {v1} 個（往上一層）。請先寫下預測再揭曉。', { v1: cur.names.length }))}</div>
               <UI.TextField label={t('預測')} hint={t('函式名稱，以空白分隔')} value={guesses[selKey] ?? ''}
                 onChange={(e) => setGuesses({ ...guesses, [selKey]: e.target.value })}
                 onKeyDown={(e) => { if (e.key === 'Enter') reveal() }} />
               <UI.ActionBar actions={[{ label: t('揭曉'), primary: true, onClick: reveal }]} />
             </>
           ) : res ? (
-            <div ref={resultRef} tabIndex={-1}>{t('預測正確 {v1} / {v2} 個{v3}', { v1: res.hit.length, v2: cur.names.length, v3: res.hit.length ? t('：') + res.hit.join(t('、')) : '' })}
+            <div ref={resultRef} tabIndex={-1}>{t('預測正確')} <span aria-hidden="true">{UI.format.fraction(res.hit.length, cur.names.length, t('個'))}</span><span className="ui-visually-hidden">{UI.format.fractionLabel(res.hit.length, cur.names.length, t('個'))}</span>{res.hit.length ? t('：') + res.hit.join(t('、')) : ''}
               {hidden.length ? t('。{v1} 是 repo 外的函式，目前沒有顯示，所以不計入', { v1: hidden.join(t('、')) }) : ''}
               {res.miss.filter((m) => !hidden.includes(m)).length ? t('。不在這一層：{v1}', { v1: res.miss.filter((m) => !hidden.includes(m)).join(t('、')) }) : ''}</div>
           ) : (
-            <div className="muted">{cur.open ? t('選擇未展開的函式繼續預測。') : t('此函式沒有下一層。')}</div>
+            <div className="muted" ref={resultRef} tabIndex={-1}>{cur.open ? t('選擇未展開的函式繼續預測。') : t('此函式沒有下一層。')}</div>
           )}
         </div>
       ) : null}
       <div data-tour="tree">
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
-          items={tree.items} defaultOpen={openKeys} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
-          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; p.onSel(c.fid, c.edge, n.id) }} />
+          items={tree.items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
+          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />
       </div>
       {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api

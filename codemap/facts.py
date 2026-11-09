@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 from . import arch, state
-from .source import code_lines, lines
+from .source import code_lines, lines, walk
 
 # ---- build products --------------------------------------------------------
 
@@ -159,6 +159,81 @@ def install(root):
             if len(args) >= 2:
                 out.append(dict(what=args[:-1], to=args[-1]))
     return out
+
+
+# ---- Python tools ----------------------------------------------------------
+
+PY_TEST = re.compile(r"(^|/)(tests?|testing|docs?|examples?)(/|$)|(^|/)test_[^/]*\.py$|_test\.py$")   # tests, and scripts kept with the docs
+DOCSTRING = re.compile(r'^\s*(?:#[^\n]*\n|\s)*[rRbBuU]?("""|\'\'\')\s*(.*?)(?:\1|\n)', re.S)
+
+
+def scripts(root, index, config, built, shared=()):
+    """Python tools of the repository, as components next to the C ones: [{id, files, docs}] and the
+    lines from them: runs (a file that starts a program by subprocess and names a product the
+    Makefile builds) and reads (it parses a C header for its definitions). Tests are left out."""
+    root = Path(root)
+    files = [str(p.relative_to(root)) for p in walk(root, {".py"})]
+    files = [f for f in files if not PY_TEST.search(f)]
+    if not files:
+        return [], []
+    by_comp = {}
+    for f in files:
+        by_comp.setdefault(arch.component(f, config), []).append(f)
+    nodes = index.get("nodes", {})
+    execs = {}
+    for e in index.get("edges", []):
+        if e.get("rule") == "exec" and e["file"].endswith(".py"):
+            execs.setdefault(e["file"], []).append(e)
+    products = {}
+    for b in (built or {}).get("built", []):
+        products.setdefault(b["name"], set()).update(c for c in b["comps"] if c not in shared)   # its own code, not the library it links
+    comps, links = [], {}
+    for cid, fs in sorted(by_comp.items()):
+        docs = {}
+        for f in fs:
+            m = DOCSTRING.match(lines_text(root / f))
+            if m and m.group(2).strip():
+                docs[f] = m.group(2).strip().splitlines()[0][:160]
+        comps.append(dict(id=cid, files=len(fs), funcs=0, shared=False, layer=None, callers=0, lang="python",
+                          scripts=sorted(fs), docs=docs))
+        for f in fs:
+            src = lines_text(root / f).splitlines()
+            for e in execs.get(f, []):
+                # the product's name in a string near the call: the 40 lines before it and the 5 after
+                near = " ".join(re.findall(r"\"[^\"\n]*\"|\'[^\'\n]*\'", "\n".join(src[max(0, e["line"] - 41):e["line"] + 5])))
+                for name, targets in products.items():
+                    if not re.search(r"(?<![\w.-])" + re.escape(name) + r"(?![\w-])", near):
+                        continue
+                    for t in targets:
+                        k = (cid, t, "runs")
+                        links.setdefault(k, dict(a=cid, b=t, n=0, kind="runs", names=set(), sites=[]))
+                        links[k]["names"].add(name)
+                        links[k]["sites"].append(dict(s=e["src"], f=e["file"], l=e["line"], name=nodes.get(e["dst"], {}).get("name", "subprocess")))
+    for e in index.get("edges", []):
+        if e.get("rule") != "cross_lang" or e["file"] not in files:
+            continue
+        cid = arch.component(e["file"], config)
+        dst = nodes.get(e["dst"], {})
+        target = dst.get("file") or dst.get("name", "")
+        if target.startswith("#define "):
+            continue
+        b = arch.component(target, config)
+        k = (cid, b, "reads")
+        links.setdefault(k, dict(a=cid, b=b, n=0, kind="reads", names=set(), sites=[]))
+        links[k]["names"].add(Path(target).name)
+        links[k]["sites"].append(dict(s=e["src"], f=e["file"], l=e["line"], name=Path(target).name))
+    out = []
+    for l in links.values():
+        uniq = {(s["f"], s["l"]): s for s in l["sites"]}
+        out.append(dict(l, names=sorted(l["names"]), n=len(uniq), sites=sorted(uniq.values(), key=lambda s: (s["f"], s["l"]))))
+    return comps, out
+
+
+def lines_text(path):
+    try:
+        return Path(path).read_text(errors="replace")
+    except OSError:
+        return ""
 
 
 # ---- reading function bodies ---------------------------------------------
@@ -470,6 +545,54 @@ def error_codes(root, funcs):
     return out
 
 
+THREAD_LOCAL = re.compile(r"\b(__thread|_Thread_local|thread_local)\b")
+CONST = re.compile(r"^\s*(static\s+)?const\b|\bconst\s+[A-Za-z_]\w*\s*\[|\*\s*const\b")
+
+
+def plain_writes(root, funcs, files):
+    """[{name, file, line, writes: [{fid, f, l, text}]}]: file-scope variables, not thread-local and
+    not const, that a function changes with a plain store (x = ..., x++, x += ..., x[i] = ...)
+    rather than an __atomic_*/atomic_* call. Whether two threads ever run those lines is not known."""
+    root = Path(root)
+    decls = {}
+    for file in sorted(files):
+        if not file.endswith(".c"):
+            continue
+        raw = lines(root / file)
+        code = [state.STRINGS.sub('""', ln) for ln in code_lines(root / file)]
+        for i, name, static in state._file_scope(code):
+            if THREAD_LOCAL.search(code[i - 1]) or CONST.search(code[i - 1]) or re.search(r"_Atomic|\bsig_atomic_t\b|\batomic_\w+_t\b", code[i - 1]):
+                continue
+            decls.setdefault(name, dict(name=name, file=file, line=i, static=static, writes=[]))
+    if not decls:
+        return []
+    names = "|".join(map(re.escape, sorted(decls, key=len, reverse=True)))
+    store = re.compile(r"(?<![\w.>])(?:\+\+|--)\s*(" + names + r")\b|(?<![\w.>])(" + names + r")\s*(?:\[[^\]]*\]\s*)*"
+                       r"(?:\+\+|--|(?:[-+*/%&|^]|<<|>>)?=(?!=))")
+    for fid, f, text, at in _bodies(root, funcs):
+        if not f["file"].endswith(".c"):
+            continue
+        for m in store.finditer(text):
+            name = m.group(1) or m.group(2)
+            d = decls[name]
+            if d["static"] and d["file"] != f["file"]:
+                continue                                  # another file's static of the same name
+            start = text.rfind("\n", 0, m.start()) + 1
+            end = text.find("\n", m.end())
+            ln = text[start:end if end >= 0 else None].strip()
+            if re.search(r"\b(__atomic_\w+|__sync_\w+|atomic_\w+)\s*\(", ln):
+                continue
+            d["writes"].append(dict(fid=fid, f=f["file"], l=at(m.start()), text=ln[:120]))
+    return [d for d in sorted(decls.values(), key=lambda d: (d["file"], d["line"])) if d["writes"]]
+
+
+def at_load(edges):
+    """Functions the loader runs (constructor, destructor): their stores happen before or after the
+    program's own threads, which the viewer says next to them."""
+    return sorted({e["d"] for e in edges if e.get("k") in ("constructor", "destructor")})
+
+
 def worth_checking(root, funcs, edges, files, symbols):
     return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, funcs),
-                env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs))
+                env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs),
+                plain_writes=plain_writes(root, funcs, files))

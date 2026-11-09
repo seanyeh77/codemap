@@ -57,6 +57,7 @@ def create_app(root, notes=None, allowed_hosts=None):
                     rel = Path(n).resolve()
                     if root.resolve() in rel.parents:
                         files.add(str(rel.relative_to(root.resolve())))
+                g = dict(g, readable=sorted(set(g.get("readable", ())) | files))     # the notes show in the search too
                 c = state["cache"] = dict(mtime=mtime, index=idx, graph=g, files=files)
             return c
 

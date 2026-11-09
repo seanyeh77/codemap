@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { UI } from '../ui'
-import { t } from '../i18n'
+import { list, t } from '../i18n'
 import type { Index } from '../data/graph'
 import { live } from '../data/load'
 import type { CheckFile, CheckItem, Sel } from '../data/types'
@@ -10,6 +10,12 @@ import type { CheckFile, CheckItem, Sel } from '../data/types'
 const unlisted = (md: string) => md.replace(/^\s*[-*+]\s+/, '')
 
 const LABEL: Record<CheckItem['status'], string> = { done: '相符', fail: '錯誤', review: '待確認' }
+
+/** The explanation in the reader's language, from the templates the checker sends. */
+function whyText(r: CheckItem) {
+  if (!r.msgs) return r.why
+  return r.msgs.map((m) => t(m.t, Object.fromEntries(Object.entries(m.v).map(([k, v]) => [k, Array.isArray(v) ? list(v) : v])))).join(t('；'))
+}
 
 export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (id: string, edge: Sel['edge']) => void }) {
   // a snapshot carries its checks; live, the notes may have changed since indexing, so they are checked again on open
@@ -59,7 +65,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
           { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode>{r.at}</UI.InlineCode> },
           { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
           { key: 'status', label: t('結果'), width: 110, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{t(LABEL[r.status])}</UI.Badge> },
-          { key: 'why', label: t('說明'), width: 280, grow: 3, long: true, searchText: (r: CheckItem) => r.why, render: (r: CheckItem) => code(r.why) },
+          { key: 'why', label: t('說明'), width: 280, grow: 3, long: true, searchText: (r: CheckItem) => whyText(r), render: (r: CheckItem) => code(whyText(r)) },
         ]}
         rows={rows} />
       {fixes.length ? (

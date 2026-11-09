@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { UI } from '../ui'
-import { t } from '../i18n'
+import { list, t } from '../i18n'
 import { revealTop } from '../scroll'
 import type { Index } from '../data/graph'
 import type { BuildInfo, Doc, Edge, FileWrite, Link, Sel } from '../data/types'
@@ -16,6 +16,8 @@ function labelOf(l: Link) {
     return names.length ? t('環境變數 {v1}{v2}', { v1: names.slice(0, 2).join(', '), v2: names.length > 2 ? t(' 等 {n} 個', { n: names.length }) : '' }) : t('環境變數')
   }
   if (l.kind === 'channel') return t('經由 `{v1}` 傳資料{v2}', { v1: l.via ?? '', v2: l.label ? t('（{v1}）', { v1: l.label }) : '' })
+  if (l.kind === 'runs') return t('執行 {v1}', { v1: (l.names ?? []).map((n) => '`' + n + '`').join(', ') })
+  if (l.kind === 'reads') return t('讀取 {v1} 的定義', { v1: (l.names ?? []).map((n) => '`' + n + '`').join(', ') })
   return t('攔截 {v1} 次 `{v2}` 呼叫', { v1: l.n, v2: l.api })
 }
 
@@ -33,15 +35,21 @@ function usesOf(ix: Index, shared: string) {
 export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
   const g = p.ix.g
   const entries = useMemo(() => entryGroups(p.ix), [p.ix])
+  const starts = useMemo(() => (entries.length ? launchers(p.ix) : []), [p.ix, entries])
   const nodes = useMemo(() => [
     ...(entries.length ? [{ id: TRACED, name: t('被追蹤的程式'), external: true }] : []),
-    ...g.comps.map((c) => ({ id: c.id, name: c.id, layer: c.layer ?? 0, size: c.funcs, shared: c.shared }))], [g, entries])
+    // Python tools start the C programs: a layer above them
+    ...g.comps.map((c) => ({ id: c.id, name: c.lang ? t('{v1}（Python）', { v1: c.id }) : c.id,
+      layer: c.lang ? 0 : (c.layer ?? 0) + (g.comps.some((x) => x.lang) ? 1 : 0), size: c.lang ? undefined : c.funcs, shared: c.shared }))], [g, entries])
   const edges = useMemo(() => [
     // what any program that loads the library with LD_PRELOAD reaches: one line per library interposed
     ...entries.map((x) => ({ id: x.id, from: TRACED, to: x.comp, inferred: true, label: t('攔截 `{api}`（{n} 個函式）', { api: x.api, n: x.ids.length }) })),
+    // who starts the traced program: the order the whole system runs in
+    ...starts.map((x) => ({ id: x.id, from: x.comp, to: TRACED, inferred: true,
+      label: (x.preload ? t('啟動（{calls}），設定 LD_PRELOAD', { calls: [...x.calls].sort().join(', ') }) : t('啟動（{calls}）', { calls: [...x.calls].sort().join(', ') })) })),
     ...g.links.map((l) => (l.kind === 'call'
       ? { id: edgeId(l), from: l.a, to: l.b, count: l.n }
-      : { id: edgeId(l), from: l.a, to: l.b, inferred: true, label: labelOf(l) }))], [g, entries])
+      : { id: edgeId(l), from: l.a, to: l.b, inferred: true, label: labelOf(l) }))], [g, entries, starts])
   return (
     <UI.Card className="pane fit">
       <div data-tour="arch">
@@ -57,6 +65,26 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
 /** The box for programs outside the repo that load an interposing library (LD_PRELOAD). */
 export const TRACED = 'ext:traced'
 
+const SPAWN = new Set(['fork', 'vfork', 'execvp', 'execv', 'execve', 'execvpe', 'execl', 'execlp', 'execle', 'posix_spawn', 'posix_spawnp'])
+
+/** Components that start another program (fork, exec): with an interposing library in the repo, the
+ *  program they start is the traced one. [{ id, comp, calls: the exec-family names, sites }] */
+export function launchers(ix: Index) {
+  const m = new Map<string, { id: string; comp: string; calls: Set<string>; sites: Edge[]; preload: boolean }>()
+  for (const e of ix.g.edges) {
+    const f = ix.funcs[e.s], name = ix.bareName(e.d, e)
+    if (!f || e.src !== 'compiler' || ix.funcs[e.d] || !SPAWN.has(name)) continue
+    const id = `ext:launch->${f.comp}`
+    if (!m.has(id)) m.set(id, { id, comp: f.comp, calls: new Set(), sites: [], preload: false })
+    m.get(id)!.calls.add(name)
+    m.get(id)!.sites.push(e)
+  }
+  // does it also set LD_PRELOAD (the library gets in that way)?
+  const sets = ix.g.env?.LD_PRELOAD?.set ?? []
+  for (const x of m.values()) x.preload = sets.some((r) => Object.values(ix.funcs).some((f) => f.comp === x.comp && r.startsWith(f.file + ':')))
+  return [...m.values()]
+}
+
 /** Functions named like a library's (f.api), grouped by component and library: one line each from TRACED. */
 export function entryGroups(ix: Index) {
   const m = new Map<string, { id: string; comp: string; api: string; ids: string[] }>()
@@ -70,6 +98,23 @@ export function entryGroups(ix: Index) {
 }
 
 /** A line from the traced program: the functions it reaches when it calls that library, or (the box) all of them. */
+/** The line from a component to the traced program: where it forks and execs, and that it sets LD_PRELOAD. */
+function LaunchDetail(p: { ix: Index; id: string; onPick: (id: string, at: Sel['edge']) => void; onBack: () => void }) {
+  const x = launchers(p.ix).find((l) => l.id === p.id)
+  if (!x) return null
+  const sets = (p.ix.g.env?.LD_PRELOAD?.set ?? []).filter((r) => /\.[ch]:\d+$/.test(r))
+  return (
+    <UI.Card className="detail" title={t('{v1} → 被追蹤的程式', { v1: x.comp })} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
+      <p>{x.preload ? t('{v1} 以 {calls} 啟動另一個程式，並設定 LD_PRELOAD，讓那個程式載入 repo 裡的程式庫。啟動的就是被追蹤的程式。這是推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })
+        : t('{v1} 以 {calls} 啟動另一個程式；repo 裡有攔截用的程式庫，所以它啟動的可能就是被追蹤的程式。這是推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })}</p>
+      <UI.DetailList items={[
+        ...x.sites.map((e) => ({ label: `${e.f.split('/').pop()}:${e.l}`, value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.s, { f: e.f, l: e.l })}>{p.ix.funcs[e.s].name}</button>{t(' 呼叫 {v1}', { v1: p.ix.bareName(e.d, e) })}</span> })),
+        ...sets.map((r) => ({ label: r.split('/').pop()!, value: t('設定 LD_PRELOAD') })),
+      ]} />
+    </UI.Card>
+  )
+}
+
 function EntryDetail(p: { ix: Index; id: string; onPick: (id: string) => void; onBack: () => void }) {
   const groups = entryGroups(p.ix).filter((x) => p.id === TRACED || x.id === p.id)
   const fn = (id: string) => <button type="button" className="linklike" onClick={() => p.onPick(id)}>{p.ix.funcs[id].name}</button>
@@ -77,12 +122,16 @@ function EntryDetail(p: { ix: Index; id: string; onPick: (id: string) => void; o
     <UI.Card className="detail" title={p.id === TRACED ? t('被追蹤的程式（repo 外）') : t('被追蹤的程式 → {v1}', { v1: groups[0]?.comp ?? '' })}
       actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
       <p>{t('以 LD_PRELOAD 載入這個 repo 的程式庫的程式，不在 repo 內。它呼叫下列同名函式時，會先執行 repo 裡的版本。這是推測的關係。')}</p>
+      {((xs) => xs.length ? <p className="small muted">{t('repo 裡的 {v1} 也會被這樣追蹤：見它連到 {v2} 的線。', { v1: list(xs.map((l) => l.a)), v2: list([...new Set(xs.map((l) => l.b))]) })}</p> : null)(p.ix.g.links.filter((l) => l.kind === 'interpose'))}
+      {((xs) => xs.length ? <p className="small muted">{t('啟動它的是 {v1}。', { v1: list(xs.map((x) => x.comp)) })}</p> : null)(launchers(p.ix))}
+      {((n) => n ? <p className="small muted">{t('另有 {n} 個函式被裝進函式指標或表格，由被追蹤的程式經由指標呼叫，不在這份同名函式清單裡；它們在流程頁標示「推測（規則）」。', { n })}</p> : null)(
+        Object.keys(p.ix.funcs).filter((id) => !p.ix.funcs[id].api && p.ix.callers(id).some((e) => e.k === 'fnptr_assign' || e.k === 'fnptr_table')).length)}
       {groups.map((x) => (
         <section key={x.id}>
           <h3 className="small">{t('攔截 {api} 的 {n} 個函式（{comp}）', { api: x.api, n: x.ids.length, comp: x.comp })}</h3>
           <UI.DetailList items={x.ids.sort((a, b) => p.ix.funcs[a].name.localeCompare(p.ix.funcs[b].name)).map((id) => ({
-            label: p.ix.funcs[id].name,
-            value: <span>{fn(id)}{` · ${p.ix.funcs[id].file}:${p.ix.funcs[id].line}`}</span>,
+            label: `${p.ix.funcs[id].file.split('/').pop()}:${p.ix.funcs[id].line}`,
+            value: fn(id),
           }))} />
         </section>
       ))}
@@ -102,6 +151,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
   const [shown, setShown] = useState<{ id: string; key: string; fid: string | null; f: string; l: number } | null>(null)
   const codeRef = useRef<HTMLDivElement>(null)
   const l = p.ix.g.links.find((x) => edgeId(x) === p.id)
+  if (p.id.startsWith('ext:launch->')) return <LaunchDetail ix={p.ix} id={p.id} onPick={(id, at) => p.open(id, at)} onBack={p.onBack} />
   if (p.id.startsWith('ext:')) return <EntryDetail ix={p.ix} id={p.id} onPick={(id) => p.open(id, null)} onBack={p.onBack} />
   if (!l) return null
   const cur = shown?.id === p.id ? shown : null
@@ -150,6 +200,11 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
       + (hooks.length ? t('{v1} 呼叫到的同名函式有 {v2} 個，定義在 {v3}：{v4}{v5}。', { v1: l.a, v2: hooks.length, v3: l.b, v4: hooks.slice(0, 8).join(t('、')), v5: hooks.length > 8 ? t(' 等') : '' }) : '')
       + ((n) => n > hooks.length ? t('{v1} 一共定義了 {v2} 個 {v3} 同名函式，其餘的 {v4} 沒有呼叫。', { v1: l.b, v2: n, v3: l.api, v4: l.a }) : '')(Object.values(p.ix.funcs).filter((f) => f.comp === l.b && f.api === l.api).length)
     body = <UI.DetailList items={(l.sites ?? []).slice(0, SHOWN).map((s) => ({ label: t('{v1} 呼叫 {v2}', { v1: name(s.s), v2: s.name }), value: at(s.s, s.f, s.l) }))} />
+  } else if (l.kind === 'runs' || l.kind === 'reads') {
+    about = l.kind === 'runs'
+      ? t('{v1} 的 Python 工具以 subprocess 啟動程式，而且程式碼裡寫著 {v2}，這是 {v3} 編出的產物。這是推測的關係，下面是啟動程式的地方。', { v1: l.a, v2: list(l.names ?? []), v3: l.b })
+      : t('{v1} 的 Python 工具讀取 {v2} 裡的 {v3}，取用 C 程式的定義；兩邊要一起改。這是推測的關係。', { v1: l.a, v2: l.b, v3: list(l.names ?? []) })
+    body = <UI.DetailList items={(l.sites ?? []).slice(0, SHOWN).map((s) => ({ label: `${s.f.split('/').pop()}:${s.l}`, value: <span>{t('{v1} 使用 {v2}：', { v1: name(s.s), v2: s.name })}{at(null, s.f, s.l)}</span> }))} />
   } else if (l.kind === 'channel') {
     about = t('{v1} 經由 {v2} 把資料交給 {v3}{v4}', { v1: l.a, v2: l.via ?? '', v3: l.b, v4: l.label ? t('（{v1}）', { v1: l.label }) : '' })
       + t('。這是在 .codemap/rules.json 宣告的資料通道，下面是兩邊各自使用 {v1} 的地方。', { v1: l.via ?? '' })
@@ -164,7 +219,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
           const c = p.ix.funcs[e.s]?.comp
           if (!c) continue
           if (c === l.via) { if (!seen.has(e.s)) { seen.add(e.s); todo.push(e.s) } }
-          else if (!comps.has(c)) comps.set(c, cur === fid ? '' : t('經由 {v1}', { v1: p.ix.funcs[cur].name }))
+          else if (!comps.has(c)) comps.set(c, cur === fid ? '' : p.ix.funcs[cur].name)
         }
       }
       return comps.size ? t('由 {v1} 呼叫', { v1: [...comps].map(([c, via]) => via ? t('{v1}（經由 {v2}）', { v1: c, v2: via }) : c).join(t('、')) }) : t('沒有其他元件呼叫它')
@@ -199,7 +254,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
     const es = p.ix.g.edges.filter((e) => e.src === 'compiler' && p.ix.funcs[e.s]?.comp === l.a && p.ix.funcs[e.d]?.comp === l.b)
     body = <UI.DetailList items={es.slice(0, SHOWN).map((e) => ({ label: `${name(e.s)} → ${name(e.d)}`, value: at(e.s, e.f, e.l) }))} />
   }
-  const total = l.kind === 'interpose' ? l.sites?.length ?? 0 : l.kind === 'call' ? l.n : 0
+  const total = l.kind === 'interpose' || l.kind === 'runs' || l.kind === 'reads' ? l.sites?.length ?? 0 : l.kind === 'call' ? l.n : 0
   return (
     <UI.Card className="detail" title={`${l.a} → ${l.b}`} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
       <p className="small">{about}</p>
@@ -211,8 +266,29 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
 
 export function CompDetail(p: { ix: Index; comp: string; isLive: boolean; sourceId: string; onPick: (id: string) => void; onComp: (id: string) => void }) {
   if (p.comp === TRACED) return <EntryDetail ix={p.ix} id={TRACED} onPick={p.onPick} onBack={() => p.onComp('')} />
+  const c = p.ix.g.comps.find((x) => x.id === p.comp)
+  if (c?.lang) return <ScriptsDetail ix={p.ix} comp={c.id} isLive={p.isLive} sourceId={p.sourceId} onBack={() => p.onComp('')} />
   if (!p.comp) return <Overview ix={p.ix} isLive={p.isLive} sourceId={p.sourceId} onComp={p.onComp} onPick={p.onPick} />
   return <CompTree {...p} onBack={() => p.onComp('')} />
+}
+
+/** A group of Python tools: each script with the first line of its docstring; click to read it. */
+function ScriptsDetail(p: { ix: Index; comp: string; isLive: boolean; sourceId: string; onBack: () => void }) {
+  const c = p.ix.g.comps.find((x) => x.id === p.comp)!
+  const runs = p.ix.g.links.filter((l) => l.a === c.id)
+  const [shown, setShown] = useState<string | null>(null)
+  return (
+    <UI.Card className="detail" title={t('{v1}（Python）', { v1: c.id })} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
+      <p className="small">{t('Python 工具，{v1} 個檔案。codemap 沒有為 Python 建立呼叫索引，這裡只列出檔案、它們啟動的程式和讀取的標頭檔。', { v1: c.files })}</p>
+      {runs.length ? <p className="small">{list(runs.map((l) => labelOf(l).replace(/`/g, '') + ' → ' + l.b))}</p> : null}
+      <UI.DetailList items={(c.scripts ?? []).map((f) => ({
+        label: f.slice(c.id.length + 1),
+        value: <span>{c.docs?.[f] ?? t('沒有說明註解。')}{' '}
+          <LineLink ix={p.ix} file={f} line={1} onOpen={() => setShown(shown === f ? null : f)} />
+          {shown === f ? <div className="row-code"><CodeAt ix={p.ix} at={{ f, l: 1 }} isLive={p.isLive} sourceId={p.sourceId} focus /></div> : null}</span>,
+      }))} />
+    </UI.Card>
+  )
 }
 
 const short = (t: string, n = 140) => (t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t)
@@ -258,7 +334,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         <h3 className="small" id="ov-comps" tabIndex={-1}>{t('元件')}</h3>
         <UI.DetailList items={g.comps.map((c) => ({
           label: c.id,
-          value: <span>{c.doc ? <>{short(c.doc.text)}<br /><From doc={c.doc} /><br /></> : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
+          value: <span>{c.doc ? <>{short(c.doc.text)}<br /><From doc={c.doc} /><br /></> : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
         }))} />
         {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，取元件主要檔案的開頭註解，它說明的是那個檔案。要寫整個元件的用途，請在 .codemap/rules.json 的 describe 填寫。')}</p> : null}
       </section>
@@ -266,9 +342,9 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         <section>
           <h3 className="small" id="ov-entry" tabIndex={-1}>{t('進入與結束')}</h3>
           <UI.DetailList items={[
-            ...lifecycle.map((e) => ({
+            ...lifecycle.map((e, i) => ({
               label: e.k === 'constructor' ? t('載入時自動執行') : t('結束時自動執行'),
-              value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.d)}>{p.ix.funcs[e.d].name}</button>{t('（{v1}）', { v1: p.ix.funcs[e.d].comp })}</span>,
+              value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.d)}>{p.ix.funcs[e.d].name}</button>{t('（{v1}）', { v1: p.ix.funcs[e.d].comp })}{' '}{at(`life${i}`, p.ix.funcs[e.d].file, p.ix.funcs[e.d].line)}</span>,
             })),
             ...[...apis].sort().map(([api, n]) => ({
               label: t('外部進入點'),
@@ -310,13 +386,23 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h4 className="small">{t('只在未設定時才設定的環境變數')}</h4>
           {g.worth.env_if_unset?.length ? <UI.DetailList items={g.worth.env_if_unset.map((e, i) => ({
             label: e.name,
-            value: <span>{fn(e.fid)}{e.check !== e.l ? t(' 在第 {v1} 行先檢查是否已設定，已設定時就不改：', { v1: e.check }) : t(' 以 setenv 的第三個參數 0 設定，已設定時就不改：')}{at(`unset${i}`, e.f, e.l)}</span>,
+            // the link goes to the check: the set is a few lines below it, in view
+            value: <span>{fn(e.fid)}{e.check !== e.l ? t(' 先檢查是否已設定，已設定時就不改；設定在第 {v1} 行：', { v1: e.l }) : t(' 以 setenv 的第三個參數 0 設定，已設定時就不改：')}{at(`unset${i}`, e.f, e.check)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           <h4 className="small">{t('回傳固定錯誤碼的地方')}</h4>
           {g.worth.errors?.length ? <UI.DetailList items={g.worth.errors.map((e, i) => ({
             label: e.code,
             value: <span>{fn(e.fid)}{p.ix.funcs[e.fid]?.api ? t('（外部進入點）') : p.ix.callers(e.fid).some((x) => x.k === 'fnptr_assign' || x.k === 'fnptr_table') ? t('（裝進函式指標）') : ''}{e.how === 'errno' ? t(' 設定 errno：') : t(' 回傳：')}{at(`err${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
+          <h4 className="small">{t('不經 atomic 操作就修改的全域變數')}</h4>
+          {g.worth.plain_writes?.length ? <>
+            <p className="small muted">{t('沒有判斷是否有鎖保護，也沒有判斷是否只在單一執行緒執行；標「載入時」的是 constructor 裡的寫入，通常在其他執行緒開始之前。')}</p>
+            <UI.DetailList items={[...g.worth.plain_writes].sort((a, b) => Number(a.writes.every((w) => p.ix.callerInfo(w.fid).load)) - Number(b.writes.every((w) => p.ix.callerInfo(w.fid).load))).map((v, i) => ({
+              label: v.name,
+              value: <span>{v.writes.map((w, j) => (
+                <span key={j} className="write-row">{fn(w.fid)}{p.ix.callerInfo(w.fid).load === 'constructor' ? t('（載入時）') : p.ix.callerInfo(w.fid).load === 'destructor' ? t('（結束時）') : ''}{t('：')}<code className="small">{w.text}</code>{' '}{at(`pw${i}-${j}`, w.f, w.l)}</span>))}</span>,
+            }))} />
+          </> : <p className="small muted">{t('沒有找到。')}</p>}
           <h4 className="small">{t('沒有先檢查 NULL 就使用的 getenv 結果')}</h4>
           {g.worth.env.length ? <UI.DetailList items={g.worth.env.map((e, i) => ({
             label: e.name ?? t('（名稱執行時決定）'),
@@ -407,7 +493,8 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
     const files = [...p.ix.byFile()].filter(([, ids]) => p.ix.funcs[ids[0]].comp === p.comp).sort(([a], [b]) => a.localeCompare(b))
     return files.map(([f, ids]) => ({
       id: 'file:' + f, name: f.split('/').pop()!, path: f, icon: 'file-text' as const,
-      meta: docs[f] && docs[f].file === f ? short(docs[f].text, 70) : undefined,
+      // the file's own comment, or its header's when the file says it is described there
+      meta: docs[f] ? short(docs[f].text, 110) : t('{v1} · 沒有說明註解', { v1: f }),
       children: ids.map((id) => ({
         id, name: p.ix.funcs[id].name, meta: p.ix.callerText(id),
       })),
@@ -416,7 +503,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
   const comp = p.ix.g.comps.find((c) => c.id === p.comp)
   const uses = useMemo(() => (comp?.shared ? usesOf(p.ix, p.comp) : null), [p.ix, p.comp, comp])
   const tree = (
-    <UI.TreeList key={p.comp} kind="plain" title={p.comp} subtitle={t('{v1} 個檔案', { v1: items.length })} height="100%"
+    <UI.TreeList key={p.comp} kind="plain" title={p.comp} subtitle={((h) => h ? t('{v1} 個檔案（{v2} 個標頭檔）', { v1: items.length, v2: h }) : t('{v1} 個檔案', { v1: items.length }))(items.filter((i) => i.name.endsWith('.h')).length)} height="100%"
       actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}
       label={p.comp + t(' 的函式')} items={items} defaultOpen={items.map((i) => i.id)}
       onSelect={(n) => { if (p.ix.funcs[n.id]) p.onPick(n.id) }} />

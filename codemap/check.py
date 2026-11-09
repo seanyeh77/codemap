@@ -93,6 +93,24 @@ def plain(md):
     return re.sub(r"^(?:[-*+]|\d+\.)\s+", "", s)
 
 
+
+class Msg:
+    """A message for the viewer: the Traditional Chinese template and its values, so the viewer can
+    show it in the reader's language (lists are joined there). str() gives the Chinese text."""
+    def __init__(self, t, **v):
+        self.t, self.v = t, v
+
+    def __str__(self):
+        return self.t.format(**{k: "、".join(x) if isinstance(x, list) else x for k, x in self.v.items()})
+
+    def json(self):
+        return dict(t=self.t, v=self.v)
+
+
+def code(xs):
+    return [f"`{x}`" for x in xs]
+
+
 def check(root, md_path, index):
     """Problems as text for the command line, and one item per checked
     Markdown line for the viewer: status done, fail, or review (the claimed
@@ -130,21 +148,21 @@ def check(root, md_path, index):
             common = sorted(callees.get(a, set()) & callees.get(b, set()))
             if (a, b) not in pairs and common:
                 # not a call, but both use the same functions: likely data passed through them
-                review.append(f"`{a}` 沒有直接呼叫 `{b}`；兩者都呼叫 " + "、".join(f"`{c}`" for c in common[:3])
-                              + "，可能經由共用的資料相連。若筆記要說的是資料流向，請改寫成文字說明")
+                review.append(Msg("`{a}` 沒有直接呼叫 `{b}`；兩者都呼叫 {common}，可能經由共用的資料相連。若筆記要說的是資料流向，請改寫成文字說明",
+                                  a=a, b=b, common=code(common[:3])))
             elif (a, b) not in pairs:
                 problems.append(f"{md_path}:{n}: no edge {a} -> {b} in the index")
-                bad.append(f"程式碼中找不到 `{a}` 呼叫 `{b}`，請確認函式名稱與呼叫方向")
+                bad.append(Msg("程式碼中找不到 `{a}` 呼叫 `{b}`，請確認函式名稱與呼叫方向", a=a, b=b))
             elif not pairs[(a, b)][0]:
                 e = pairs[(a, b)][1]
                 at = f"`{e['file']}:{e['line']}`"
                 if e.get("rule") == "fnptr_assign":
-                    review.append(f"`{a}` 沒有直接呼叫 `{b}`：它在 {at} 把 `{b}` 存入 `{e.get('slot') or '函式指標'}`，"
-                                  "之後經由該指標呼叫。可改寫成「`" + a + "` 註冊 `" + b + "`」")
+                    review.append(Msg("`{a}` 沒有直接呼叫 `{b}`：它在 {at} 把 `{b}` 存入 `{slot}`，之後經由該指標呼叫。可改寫成「`{a}` 註冊 `{b}`」",
+                                      a=a, b=b, at=at, slot=e.get("slot") or "函式指標"))
                 else:
-                    review.append(f"`{a} -> {b}` 由規則「{e.get('rule')}」推得，編譯器無法確認；請對照 {at} 確認")
+                    review.append(Msg("`{a} -> {b}` 由規則「{rule}」推得，編譯器無法確認；請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
             else:
-                why.append(f"`{a} -> {b}` 經編譯器確認")
+                why.append(Msg("`{a} -> {b}` 經編譯器確認", a=a, b=b))
         whole = words_in(md)
         for clause in CLAUSE.split(md):
             local = words_in(clause)
@@ -161,34 +179,35 @@ def check(root, md_path, index):
                 if not src:
                     problems.append(f"{md_path}:{n}: {f} does not exist")
                     new = fix_ref(root, f, lo, hi, want, defs, files)
-                    bad.append(f"repo 中沒有 `{f}`，" + (f"應為 `{new}`" if new else "請改用從 repo 根目錄算起的路徑"))
+                    bad.append(Msg("repo 中沒有 `{f}`，應為 `{new}`", f=f, new=new) if new else Msg("repo 中沒有 `{f}`，請改用從 repo 根目錄算起的路徑", f=f))
                     fixes.append((ref, new))
                     continue
                 if hi < lo:
                     problems.append(f"{md_path}:{n}: {ref} ends before it starts")
-                    bad.append(f"`{ref}` 的範圍起訖顛倒，請對調前後兩個行號")
+                    bad.append(Msg("`{ref}` 的範圍起訖顛倒，請對調前後兩個行號", ref=ref))
                     continue
                 if hi > len(src) or lo < 1:
                     problems.append(f"{md_path}:{n}: {f}:{lo} is past the end ({len(src)} lines)")
                     new = fix_ref(root, f, lo, hi, want, defs, files)
-                    bad.append(f"`{ref}` 超出檔案範圍（共 {len(src)} 行），" + (f"應為 `{new}`" if new else "請確認行號"))
+                    bad.append(Msg("`{ref}` 超出檔案範圍（共 {n} 行），應為 `{new}`", ref=ref, n=len(src), new=new) if new
+                               else Msg("`{ref}` 超出檔案範圍（共 {n} 行），請確認行號", ref=ref, n=len(src)))
                     fixes.append((ref, new))
                     continue
                 span = "\n".join(src[lo - 1:hi])
                 if want and not mentions(span, whole):          # a clause's words are among the line's
                     problems.append(f"{md_path}:{n}: {ref} mentions none of {', '.join(sorted(want))}")
                     new = fix_ref(root, f, lo, hi, want, defs, files)
-                    bad.append(f"`{ref}` 沒有出現 " + "、".join(f"`{w}`" for w in sorted(want))
-                               + (f"，行號可能已移動，應為 `{new}`" if new else "，請確認行號"))
+                    bad.append(Msg("`{ref}` 沒有出現 {words}，行號可能已移動，應為 `{new}`", ref=ref, words=code(sorted(want)), new=new) if new
+                               else Msg("`{ref}` 沒有出現 {words}，請確認行號", ref=ref, words=code(sorted(want))))
                     fixes.append((ref, new))
                 elif want:
                     hit = sorted(w for w in whole if mentions(span, [w]))
-                    why.append(f"`{ref}` 提及 " + "、".join(f"`{w}`" for w in hit))
+                    why.append(Msg("`{ref}` 提及 {words}", ref=ref, words=code(hit)))
                 else:
-                    why.append(f"`{ref}` 存在")
+                    why.append(Msg("`{ref}` 存在", ref=ref))
                 if short and not (want and not mentions(span, whole)):
                     full = ref.replace(f, short, 1)
-                    why.append(f"`{f}` 指 `{short}`，建議寫完整路徑")
+                    why.append(Msg("`{f}` 指 `{short}`，建議寫完整路徑", f=f, short=short))
                     fixes.append((ref, full))
         if bad or why or review:
             status = "fail" if bad else "review" if review else "done"
@@ -197,6 +216,7 @@ def check(root, md_path, index):
                 if new:
                     fixed = fixed.replace(f"`{old}`", f"`{new}`", 1)
             items.append(dict(at=f"{rel}:{n}", line=n, text=plain(md),
-                              status=status, why="；".join(bad or review or why),
+                              status=status, why="；".join(map(str, bad or review or why)),
+                              msgs=[m.json() for m in bad or review or why],
                               fix=dict(before=md, after=fixed) if fixed != md else None))
     return dict(file=rel, refs=refs, claims=claims, problems=problems, items=items)

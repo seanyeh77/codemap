@@ -277,8 +277,9 @@ class Server(unittest.TestCase):
         self.assertIn(".codemap", r.headers["content-disposition"])
         self.assertEqual(r.content[:2], b"\x1f\x8b")
         self.assertIn("<div id=\"root\">", c.get("/").text)
-        hits = c.get("/api/grep", params={"q": "RETURN"}).json()                  # case ignored
-        self.assertTrue(hits and all(h["file"] in g["readable"] and "return" in h["text"].lower() for h in hits))
+        hits = c.get("/api/grep", params={"q": "return"}).json()
+        self.assertTrue(hits and all(h["file"] in g["readable"] and "return" in h["text"] for h in hits))
+        self.assertEqual(c.get("/api/grep", params={"q": "RETURN"}).json(), [])  # a capital: matched as written
         self.assertEqual(c.get("/api/grep", params={"q": "x"}).status_code, 422)   # too short
 
     def test_source_follows_edits_on_disk(self):

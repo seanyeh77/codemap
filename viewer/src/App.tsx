@@ -8,6 +8,7 @@ import { rank } from './data/search'
 import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import type { Graph, GrepHit, Meta, Sel } from './data/types'
+import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, TRACED, edgeId } from './pages/Arch'
 import { Flow } from './pages/Flow'
 import { Impact } from './pages/Impact'
@@ -128,26 +129,30 @@ function Shell(p: ShellProps) {
   const qc = useQueryClient()
   const isLive = !!p.meta
   const first = useMemo(() => ix.firstFunc(), [ix])
-  const [view, setView] = useState<View>(() => Object.hasOwn(PAGES, location.hash.slice(1)) ? (location.hash.slice(1) as View) : 'arch')
+  // where the address points: the page, and what is chosen on it (#flow?s=main&k=…)
+  const init = useMemo(() => parseHash(), [])
+  const [view, setView] = useState<View>(init.view ?? 'arch')
   const [collapsed, setCollapsed] = useState(false)
   // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
-  const [chosenComp, setSelComp] = useState('')
-  const [selEdge, setSelEdge] = useState('')        // a line of the architecture diagram; '' when a box or nothing is selected
-  const [chosenStart, setStart] = useState<string | null>(first)
-  const [chosenSel, setSel] = useState<Sel>({ id: first ?? '', edge: null, key: 'root' })
+  const [chosenComp, setSelComp] = useState(init.c ?? '')
+  const [selEdge, setSelEdge] = useState(init.e ?? '')        // a line of the architecture diagram; '' when a box or nothing is selected
+  const [chosenStart, setStart] = useState<string | null>(init.s ?? first)
+  const [chosenSel, setSel] = useState<Sel>({ id: init.f ?? init.s ?? first ?? '', edge: null, key: init.k ?? 'root' })
   // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
   // '' : nothing selected; a component the new index lacks falls back to nothing
   const selComp = p.graph.comps.some((c) => c.id === chosenComp) || chosenComp === TRACED ? chosenComp : ''
   // a repo function, or an external one the repo calls (the impact page then lists its callers)
   const start = chosenStart && (ix.funcs[chosenStart] || ix.inn.has(chosenStart)) ? chosenStart : first
   const sel: Sel = ix.funcs[chosenSel.id] || ix.inn.has(chosenSel.id) || ix.out.has(chosenSel.id) ? chosenSel : { id: start ?? '', edge: null, key: 'root' }
-  const [dir, setDirState] = useState<'down' | 'up'>('down')
+  const [dir, setDirState] = useState<'down' | 'up'>(init.d === 'up' ? 'up' : 'down')
   // the flow tree is rebuilt when the direction changes: the keyboard goes back to the direction tabs
   const dirMoved = useRef(false)
   const setDir = (d: 'down' | 'up') => { dirMoved.current = true; setDirState(d) }
   const [predict, setPredict] = useState(false)
   const [showExt, setShowExt] = useState(pr.showExtDefault)
-  const [cat, setCat] = useState('source')
+  // kept outside the component: a language change redraws the whole app and must not leave the settings tab
+  const [cat, setCatState] = useState(lastCat)
+  const setCat = (c: string) => { lastCat = c; setCatState(c) }
   const [alertOpen, setAlertOpen] = useState(true)
   const [searchOpen, setSearchOpen] = useState(false)
   const tablet = useTablet()
@@ -166,7 +171,7 @@ function Shell(p: ShellProps) {
     return hits.slice(0, 20).map((h): PaletteItem => {
       const fid = Object.keys(ix.funcs).find((id) => { const f = ix.funcs[id]; return f.file === h.file && f.line <= h.line && h.line <= f.end })
       return { id: `t:${h.file}:${h.line}`, kind: '程式碼', label: h.text, code: true,
-        detail: `${h.file}:${h.line}${fid ? ` · ${ix.funcs[fid].name}` : ''}`, target: { type: 'file', f: h.file, l: h.line } }
+        detail: `${h.file}:${h.line}` + (fid ? ` · ${ix.funcs[fid].name}` : /\.(c|h|cc|cpp)$/.test(h.file) ? ` · ${t('不在索引的函式裡')}` : ''), target: { type: 'file', f: h.file, l: h.line } }
     })
   }, [typed, isLive, grepLive.data, ix])
   const found = useMemo(() => [...rank(palette, query, 40), ...textHits], [palette, query, textHits])
@@ -174,20 +179,47 @@ function Shell(p: ShellProps) {
   const [tourStep, setTourStep] = useState(0)
   const beforeTour = useRef<View | null>(null)
 
-  // each page is a history entry: the browser's back and forward move between pages, a typed #check opens it
-  useEffect(() => { if (location.hash !== '#' + view) history.pushState(null, '', '#' + view) }, [view])
+  // each page and each choice on it is a history entry: back and forward return to the previous
+  // selection, and the address can be shared (a typed #check opens that page)
+  const here = hashOf({ view, c: selComp, e: selEdge, s: start ?? '', f: sel.id, k: sel.key ?? '', d: dir })
+  const placed = useRef(false)
   useEffect(() => {
-    const onPop = () => { const v = location.hash.slice(1); if (v in PAGES) setView(v as View) }
+    // the first address only gains what was filled in by default: no extra step back
+    if (location.hash !== here) {
+      if (placed.current) history.pushState(null, '', here)
+      else history.replaceState(null, '', here)
+    }
+    placed.current = true
+  }, [here])
+  useEffect(() => {
+    const onPop = () => {
+      const h = parseHash()
+      if (!h.view) return
+      setFileAt(null)
+      setView(h.view)
+      setSelComp(h.c ?? ''); setSelEdge(h.e ?? '')
+      if (h.s) setStart(h.s)
+      if (h.s || h.f) setSel({ id: h.f ?? h.s!, edge: null, key: h.k ?? 'root' })
+      setDirState(h.d === 'up' ? 'up' : 'down')
+    }
     addEventListener('popstate', onPop)
     addEventListener('hashchange', onPop)
     return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
   }, [])
   // what changed on screen, for screen readers
-  useEffect(() => { if (selComp) UI.announce(t('已開啟 {v1}', { v1: selComp })) }, [selComp])
-  useEffect(() => { const l = ix.g.links.find((x) => edgeId(x) === selEdge); if (l) UI.announce(t('已開啟 {v1} 到 {v2} 的說明', { v1: l.a, v2: l.b })) }, [selEdge, ix])
+  useEffect(() => { if (selComp) UI.announce(t('已開啟 {v1}', { v1: selComp === TRACED ? t('被追蹤的程式（repo 外）') : selComp })) }, [selComp])
+  useEffect(() => {
+    if (!selEdge) return
+    const l = ix.g.links.find((x) => edgeId(x) === selEdge)
+    const to = selEdge.startsWith('ext:') ? selEdge.split('->').pop()! : null      // a line from the traced program
+    const launch = selEdge.startsWith('ext:launch->')
+    UI.announce(l ? t('已開啟 {v1} 到 {v2} 的說明', { v1: l.a, v2: l.b })
+      : to ? t('已開啟 {v1} 到 {v2} 的說明', launch ? { v1: to, v2: t('被追蹤的程式') } : { v1: t('被追蹤的程式'), v2: to }) : '')
+  }, [selEdge, ix])
   // changes on the same page that a screen reader would not otherwise hear about
   useEffect(() => { if (sel.id && ix.funcs[sel.id] && (view === 'flow' || view === 'impact')) UI.announce(t('已選取 {v1}', { v1: ix.funcs[sel.id].name })) }, [sel.id, ix])
-  const [fileAt, setFileAt] = useState<{ f: string; l: number } | null>(null)
+  // a file opened from the search belongs to the page it was opened on, not to every page after it
+  const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(null)
   useEffect(() => { if (fileAt) UI.announce(t('已開啟 {v1} 第 {v2} 行', { v1: fileAt.f.split('/').pop(), v2: fileAt.l })) }, [fileAt])
   // Esc on the architecture page clears the selected box or line (dialogs handle their own Esc first)
   useEffect(() => {
@@ -201,7 +233,7 @@ function Shell(p: ShellProps) {
     setFileAt(null); setSel({ id, edge: edge ?? null, key: key ?? null })
     // stacked layout (phones, tablets): the details sit below the list, out of sight; bring them up
     if (key !== 'root' && matchMedia('(max-width: 959px)').matches) {
-      requestAnimationFrame(() => revealTop(document.querySelector('.body > .detail')))
+      requestAnimationFrame(() => revealTop(document.querySelector('.body .detail:not(.pane)')))
     }
   }
   // a page change made here (not by the search or the navigation, which move focus themselves): focus goes to the new page
@@ -220,7 +252,7 @@ function Shell(p: ShellProps) {
     else if (t.type === 'line') goFlow(t.fid, { f: t.f, l: t.l })
     else if (t.type === 'ext') goImpact(t.id)
     else if (t.type === 'overview') { setSelComp(''); setSelEdge(''); setView('arch') }
-    else if (t.type === 'file') { setFileAt({ f: t.f, l: t.l }); if (view === 'check' || view === 'settings') setView('flow') }
+    else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
   }
   function tourGo(i: number) {
     setTourStep(i)
@@ -249,7 +281,7 @@ function Shell(p: ShellProps) {
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
     : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
-  const side = fileAt && view !== 'check' ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onClose={() => setFileAt(null)} />
+  const side = fileAt && fileAt.view === view ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onClose={() => { setFileAt(null); requestAnimationFrame(() => UI.focusMain()) }} />
     : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
@@ -262,7 +294,9 @@ function Shell(p: ShellProps) {
     </div>
   ) : null
 
+  const openFile = (f: string, l: number) => setFileAt({ f, l, view })
   return (
+    <OpenFile.Provider value={openFile}>
     <div className="app">
       <a className="ui-skip" href="#main" onClick={(e) => { e.preventDefault(); UI.focusMain() }}>{t('跳到主要內容')}</a>
       {tablet ? (
@@ -306,6 +340,7 @@ function Shell(p: ShellProps) {
         </div>
       </main>
     </div>
+    </OpenFile.Provider>
   )
 }
 
@@ -319,8 +354,13 @@ function paletteItems(ix: Index): PaletteItem[] {
   const short = (ref: string) => '`' + UI.format.path(ref) + '`'
   const readable = new Set(ix.g.readable ?? [])
   const items: PaletteItem[] = []
+  // static functions of the same name in different files: say so, the first one is not the only one
+  const sameName = new Map<string, number>()
+  for (const f of Object.values(ix.funcs)) sameName.set(f.name, (sameName.get(f.name) ?? 0) + 1)
   for (const [id, f] of Object.entries(ix.funcs)) {
-    items.push({ id: 'f:' + id, kind: '函式', label: f.name, code: true, detail: `${short(`${f.file}:${f.line}`)} · ${f.comp}`, keywords: [f.file],
+    const twins = sameName.get(f.name)! - 1
+    items.push({ id: 'f:' + id, kind: '函式', label: f.name, code: true, keywords: [f.file],
+      detail: `${short(`${f.file}:${f.line}`)} · ${f.comp}` + (twins ? t('（另有 {n} 個同名函式）', { n: twins }) : ''),
       weight: ix.callers(id).length + ix.callees(id, false).length, target: { type: 'func', id } })
   }
   for (const c of ix.g.comps) {
@@ -345,7 +385,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   const ext = new Map<string, string[]>()
   for (const e of ix.g.edges) if (e.src === 'compiler' && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
-    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它', { v1: new Set(callers).size }), target: { type: 'ext', id } })
+    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }
   // ideas a reader searches for by name, answered on the overview
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],
@@ -373,6 +413,34 @@ function paletteItems(ix: Index): PaletteItem[] {
 const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house' }
 const localKind = <T extends { kind?: string }>(i: T): T => ({ ...i, kind: i.kind && t(i.kind) })
 
+let lastCat = 'source'
+
+interface Loc { view: View | null; c?: string; e?: string; s?: string; f?: string; k?: string; d?: string }
+
+/** The page and the choice on it, from the address: #arch?c=src/ibmon, #flow?s=main&k=root/x@12&d=up,
+ *  #impact?s=emit&f=ibt_ring_claim. #notes is another name for the notes page. */
+function parseHash(): Loc {
+  const [page, query = ''] = location.hash.slice(1).split('?')
+  const v = page === 'notes' ? 'check' : page
+  const q = new URLSearchParams(query)
+  const get = (k: string) => q.get(k) ?? undefined
+  return { view: Object.hasOwn(PAGES, v) ? (v as View) : null, c: get('c'), e: get('e'), s: get('s'), f: get('f'), k: get('k'), d: get('d') }
+}
+
+/** The address for a page and its choice; only what that page uses goes in. */
+function hashOf(l: Required<Omit<Loc, 'view'>> & { view: View }): string {
+  const q = new URLSearchParams()
+  if (l.view === 'arch') { if (l.c) q.set('c', l.c); if (l.e) q.set('e', l.e) }
+  if (l.view === 'flow' || l.view === 'impact') {
+    if (l.s) q.set('s', l.s)
+    if (l.f && l.f !== l.s) q.set('f', l.f)
+    if (l.view === 'flow' && l.k && l.k !== 'root') q.set('k', l.k)
+    if (l.view === 'flow' && l.d === 'up') q.set('d', 'up')
+  }
+  const qs = q.toString()
+  return '#' + l.view + (qs ? '?' + qs : '')
+}
+
 /** A value that follows v after it has stopped changing for ms. */
 function useDebounced<T>(v: T, ms: number): T {
   const [d, setD] = useState(v)
@@ -382,10 +450,11 @@ function useDebounced<T>(v: T, ms: number): T {
 
 /** Search a snapshot's function sources, the only text it keeps. */
 function snapshotGrep(ix: Index, q: string): GrepHit[] {
-  const lower = q.toLowerCase(), out: GrepHit[] = []
+  // as the server does: a name with a capital or an underscore matches as written
+  const exact = /[A-Z_]/.test(q), want = exact ? q : q.toLowerCase(), out: GrepHit[] = []
   for (const f of Object.values(ix.funcs)) {
     const top = f.top ?? f.line
-    ;(f.src ?? []).forEach((t, i) => { if (out.length < 20 && t.toLowerCase().includes(lower)) out.push({ file: f.file, line: top + i, text: t.trim().slice(0, 200) }) })
+    ;(f.src ?? []).forEach((s, i) => { if (out.length < 20 && (exact ? s : s.toLowerCase()).includes(want)) out.push({ file: f.file, line: top + i, text: s.trim().slice(0, 200) }) })
     if (out.length >= 20) break
   }
   return out

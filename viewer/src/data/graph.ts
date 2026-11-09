@@ -10,7 +10,7 @@ export const isEnv = (e: Edge) => e.k === 'env'
 /** Lookups over one graph: callers, callees and names. */
 /** The rules of codemap/rules.py, as the explanations name them. */
 const RULE_NAME: Record<string, string> = {
-  fnptr_assign: '函式指標賦值', table_install: '從表格取出函式指標再寫入', fnptr_pass: '函式當作參數或表格內容', indirect: '經由函式指標呼叫', ctor: 'constructor / destructor', env: '環境變數',
+  fnptr_assign: '函式指標賦值', table_install: '從表格取出函式指標再寫入', param_call: '經由參數呼叫傳入的函式', fnptr_pass: '函式當作參數或表格內容', indirect: '經由函式指標呼叫', ctor: 'constructor / destructor', env: '環境變數',
 }
 const ruleName = (r?: string) => (RULE_NAME[r ?? ''] ? t(RULE_NAME[r ?? '']) : r ?? '')
 
@@ -127,6 +127,7 @@ export class Index {
     const from = this.bareName(e.s), slot = e.slot ?? t('函式指標'), via = e.via ?? t('函式指標')
     if (e.k === 'fnptr_pass') text = t('{from} 把 {to} 當作參數傳給 `{slot}()`，可能由它呼叫。', { from, to, slot }) + tail
     else if (e.k === 'fnptr_table') text = t('{to} 列在表格 `{slot}` 裡，可能經由這張表被呼叫。', { to, slot }) + tail
+    else if (e.rule === 'param_call') text = t('{from} 經由參數 `{via}` 呼叫傳進來的函式；有呼叫者傳入的是 {to}。', { from, via, to }) + tail
     else if (e.rule === 'table_install') text = t('{to} 列在表格 `{table}` 裡；{from} 把 `{via}` 寫入 `{slot}`，所以這裡可能裝上 {to}。', { to, table: e.table ?? '', from, via, slot }) + tail
     else if (e.k === 'fnptr_assign') text = t('{to} 存入 `{slot}`，可能經由此指標被呼叫。', { to, slot }) + tail
     else if (e.k === 'indirect_saved') text = t('經由 `{via}` 呼叫替換前的 `{name}`。', { via, name: e.saved_from ?? '' }) + tail

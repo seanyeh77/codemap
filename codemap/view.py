@@ -59,6 +59,14 @@ def build_files(root):
     return {str(p.relative_to(root)) for p in walk(root) if BUILD_NAMES.search(p.name)}
 
 
+def doc_files(root, limit=2000):
+    """The project's written documents (Markdown, reStructuredText): design notes the code points to,
+    such as docs/design/ring-overrun.md, to search and read in the viewer."""
+    from .source import walk
+    root = Path(root)
+    return set(sorted(str(p.relative_to(root)) for p in walk(root, {".md", ".rst"}))[:limit])
+
+
 DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)(\([^)]*\))?\s*(.*)")
 
 
@@ -151,7 +159,7 @@ def build(root, index, config=None):
     # scripts that read or set an environment variable can be opened from the search too
     env_files = {r.rsplit(":", 1)[0] for v in index.get("env", {}).values() for r in v.get("get", []) + v.get("set", [])}
     env_files = {f for f in env_files if (root / f).is_file()}
-    readable = sorted({f["file"] for f in funcs.values()} | headers | build_files(root) | env_files)
+    readable = sorted({f["file"] for f in funcs.values()} | headers | build_files(root) | env_files | doc_files(root))
     syms = symbols(root, readable)
     comps = []
     for cid, c in lay["comps"].items():
@@ -196,6 +204,12 @@ def build(root, index, config=None):
     for ch in config.get("channels", []):
         if ch.get("from") in names and ch.get("to") in names:
             links.append(dict(a=ch["from"], b=ch["to"], n=0, kind="channel", via=ch.get("via"), label=ch.get("label")))
+    # the Python tools: components of their own, with what they run and which headers they read
+    built = facts.products(root, config)
+    py_comps, py_links = facts.scripts(root, index, config, built, {c["id"] for c in comps if c["shared"]})
+    comps += py_comps
+    links += [l for l in py_links if l["b"] in names]
+    readable = sorted(set(readable) | {f for c in py_comps for f in c["scripts"]})     # the scripts open in the viewer
     st = index.get("stats", {})
     out = dict(format=FORMAT, version=VERSION, **repo_info(root), root=str(root.resolve()), generated=int(time.time()),
                stats=dict(units=st.get("units"), failed=st.get("failed"), funcs=len(funcs),
@@ -203,7 +217,9 @@ def build(root, index, config=None):
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),
                files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},
                env=index.get("env", {}), readable=readable, symbols=syms,
-               build=facts.products(root, config), writes=facts.writes(root, funcs),
+               phases={k: [ph for ph in v if isinstance(ph, dict) and ph.get("name") and ph.get("from")]
+                       for k, v in config.get("phases", {}).items() if isinstance(v, list)},
+               build=built, writes=facts.writes(root, funcs),
                worth=facts.worth_checking(root, funcs, edges, readable, syms),
                config=dict(cc=index.get("cc"), scope=index.get("scope")))
     return out
@@ -236,9 +252,13 @@ def source(root, file, start=1, end=None):
 
 
 def grep(root, files, query, limit=40):
-    """[{file, line, text}]: lines of the given files that contain query (case ignored), in file
-    order, at most limit. For words the graph has no name for: overrun, SIGTERM, ENOSYS."""
-    q = query.strip().lower()
+    """[{file, line, text}]: lines of the given files that contain query, in file order, at most
+    limit. For words the graph has no name for: overrun, SIGTERM, ENOSYS. Case is ignored for a
+    plain lowercase word; a name with a capital or an underscore (on_signal, SIGTERM) must match as
+    written, so on_signal does not find IBMON_SIGNALS_H."""
+    raw = query.strip()
+    exact = bool(re.search(r"[A-Z_]", raw))
+    q = raw if exact else raw.lower()
     if len(q) < 2:
         return []
     root = Path(root).resolve()
@@ -251,10 +271,10 @@ def grep(root, files, query, limit=40):
             text = p.read_text(errors="replace")
         except OSError:
             continue
-        if q not in text.lower():
+        if q not in (text if exact else text.lower()):
             continue
         for i, ln in enumerate(text.splitlines(), 1):
-            if q in ln.lower():
+            if q in (ln if exact else ln.lower()):
                 out.append(dict(file=f, line=i, text=ln.strip()[:200]))
                 if len(out) >= limit:
                     return out

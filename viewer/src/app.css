@@ -93,3 +93,5 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* stacked by its own width (a narrow window with the sidebar open): the page scrolls as one */
 .split-body:has(.is-stacked) { overflow: auto; }
 .split.is-stacked .detail { flex: 0 0 auto; max-height: none; overflow: visible; }
+.doc-refs { margin: var(--space-2) 0 0; }
+.write-row { display: block; }

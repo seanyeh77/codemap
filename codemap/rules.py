@@ -127,7 +127,13 @@ def rule_fnptr_pass(c):
                     dst = c.fn(name, f)
                     if not dst or (f, i, dst) in stored or c.nodes[dst].get("file") == f and c.nodes[dst].get("line") == i:
                         continue
-                    before = cl[:m.start()]
+                    # the statement so far: a call's arguments often continue on the next lines
+                    k, prev = i - 1, []
+                    while k >= 1 and len(prev) < 6 and not code[k - 1].rstrip().endswith((";", "{", "}")) \
+                            and not code[k - 1].lstrip().startswith("#"):
+                        prev.insert(0, code[k - 1].strip())
+                        k -= 1
+                    before = " ".join(prev + [cl[:m.start()]])
                     # the innermost call still open before the name: its argument
                     opened, k = 0, len(before)
                     callee = None
@@ -217,6 +223,79 @@ def rule_table_install(c):
                 for dst, table in in_field.get((t, field), []):
                     c.add("table_install", "fnptr_assign", c.where(f, i), dst, f, i, slot=lhs.strip(), via=f"{var}.{field}",
                           table=table, key=slot_key(lhs))
+
+
+def rule_param_call(c):
+    """A function passed to another one that calls it through its parameter:
+    `ibt_ring_open_placed(name, &made, numa_place, arg)` and, inside, `place(p, len, arg)`.
+    The callee calls the passed function at that line; the compiler sees only a pointer call."""
+    passed = [e for e in c.edges if e["kind"] == "fnptr_pass"]
+    for e in passed:
+        target = c.fn(e["slot"], e["file"])
+        if not target or target == e["dst"]:
+            continue
+        tn = c.nodes[target]
+        tf, tl = tn.get("file"), tn.get("line")
+        if not tf or not tl or Path(tf).suffix not in C_EXT:
+            continue
+        # which argument the function was passed as
+        code = code_lines(c.root / e["file"])
+        text = " ".join(code[max(0, e["line"] - 6):e["line"] + 4])            # the call may open lines above
+        m = None
+        for m in re.finditer(r"\b" + re.escape(e["slot"]) + r"\s*\(", text):
+            pass
+        if not m:
+            continue
+        args, depth, cur = [], 0, ""
+        for ch in text[m.end():]:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            if ch == "," and depth == 0:
+                args.append(cur); cur = ""
+            else:
+                cur += ch
+        args.append(cur)
+        name = c.nodes[e["dst"]]["name"]
+        pos = next((i for i, a in enumerate(args) if re.search(r"(^|[^\w])&?\s*" + re.escape(name) + r"\s*$", a.strip())), None)
+        if pos is None:
+            continue
+        # the parameter at that position, and where the body calls it
+        tcode = code_lines(c.root / tf)
+        head = " ".join(tcode[tl - 1:tl + 6])
+        hm = re.search(re.escape(tn["name"]) + r"\s*\(", head)
+        if not hm:
+            continue
+        params, depth, cur = [], 0, ""
+        for ch in head[hm.end():]:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            if ch == "," and depth == 0:
+                params.append(cur); cur = ""
+            else:
+                cur += ch
+        params.append(cur)
+        if pos >= len(params):
+            continue
+        pm = re.search(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)", params[pos]) or re.search(r"([A-Za-z_]\w*)\s*$", params[pos].strip())
+        if not pm:
+            continue
+        param = pm.group(1)
+        end = c.funcs.enclosing_end(tf, tl) if hasattr(c.funcs, "enclosing_end") else None
+        body = next((k for k in range(tl, min(len(tcode), tl + 12) + 1) if "{" in tcode[k - 1]), tl)   # past the parameter list
+        for i in range(body, min(len(tcode), end or tl + 400) + 1):
+            if re.search(r"(?<![\w.>])\(?\s*\*?\s*" + re.escape(param) + r"\s*\)?\s*\(", tcode[i - 1]):
+                if c.funcs.enclosing(tf, i) != target:
+                    break
+                c.add("param_call", "indirect_candidate", target, e["dst"], tf, i, via=param)
+                break
 
 
 def slot_key(expr):
@@ -425,7 +504,7 @@ def run(root, index, config=None):
     c = Ctx(root, index, config)
     macros = _macro_sites(c)
     steps = [("fnptr_assign", lambda: rule_fnptr_assign(c)), ("indirect", lambda: rule_indirect(c)),
-             ("fnptr_pass", lambda: rule_fnptr_pass(c)), ("table_install", lambda: rule_table_install(c)), ("ctor", lambda: rule_ctor(c)), ("env", lambda: rule_env(c)), ("exec", lambda: rule_exec(c)),
+             ("fnptr_pass", lambda: rule_fnptr_pass(c)), ("table_install", lambda: rule_table_install(c)), ("param_call", lambda: rule_param_call(c)), ("ctor", lambda: rule_ctor(c)), ("env", lambda: rule_env(c)), ("exec", lambda: rule_exec(c)),
              ("build_define", lambda: rule_build_define(c, macros)), ("cross_lang", lambda: rule_cross_lang(c, macros)),
              ("custom", lambda: rule_custom(c))]
     for name, fn in steps:
