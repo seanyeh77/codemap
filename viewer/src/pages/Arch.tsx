@@ -103,8 +103,8 @@ function LaunchDetail(p: { ix: Index; id: string; onPick: (id: string, at: Sel['
   const sets = (p.ix.g.env?.LD_PRELOAD?.set ?? []).filter((r) => /\.[ch]:\d+$/.test(r))
   return (
     <UI.Card className="detail" title={t('{v1} → 被追蹤的程式', { v1: x.comp })} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
-      <p>{x.preload ? t('{v1} 以 {calls} 啟動另一個程式，並設定 LD_PRELOAD，讓那個程式載入 repo 裡的程式庫。啟動的就是被追蹤的程式。這是推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })
-        : t('{v1} 以 {calls} 啟動另一個程式；repo 裡有攔截用的程式庫，所以它啟動的可能就是被追蹤的程式。這是推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })}</p>
+      <p>{x.preload ? t('{v1} 以 {calls} 啟動被追蹤的程式，並設定 LD_PRELOAD 讓它載入 repo 裡的程式庫。這是推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })
+        : t('{v1} 以 {calls} 啟動另一個程式，可能就是被追蹤的程式。這是推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })}</p>
       <UI.DetailList items={[
         ...x.sites.map((e) => ({ label: `${e.f.split('/').pop()}:${e.l}`, value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.s, { f: e.f, l: e.l })}>{p.ix.funcs[e.s].name}</button>{t(' 呼叫 {v1}', { v1: p.ix.bareName(e.d, e) })}</span> })),
         ...sets.map((r) => ({ label: r.split('/').pop()!, value: t('設定 LD_PRELOAD') })),
@@ -119,10 +119,10 @@ function EntryDetail(p: { ix: Index; id: string; onPick: (id: string) => void; o
   return (
     <UI.Card className="detail" title={p.id === TRACED ? t('被追蹤的程式（repo 外）') : t('被追蹤的程式 → {v1}', { v1: groups[0]?.comp ?? '' })}
       actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
-      <p>{t('以 LD_PRELOAD 載入這個 repo 的程式庫的程式，不在 repo 內。它呼叫下列同名函式時，會先執行 repo 裡的版本。這是推測的關係。')}</p>
+      <p>{t('以 LD_PRELOAD 載入 repo 程式庫的程式，呼叫下列同名函式時會先執行 repo 裡的版本。這是推測的關係。')}</p>
       {((xs) => xs.length ? <p className="small muted">{t('repo 裡的 {v1} 也會被這樣追蹤：見它連到 {v2} 的線。', { v1: list(xs.map((l) => l.a)), v2: list([...new Set(xs.map((l) => l.b))]) })}</p> : null)(p.ix.g.links.filter((l) => l.kind === 'interpose'))}
       {((xs) => xs.length ? <p className="small muted">{t('啟動它的是 {v1}。', { v1: list(xs.map((x) => x.comp)) })}</p> : null)(launchers(p.ix))}
-      {((n) => n ? <p className="small muted">{t('另有 {n} 個函式被裝進函式指標或表格，由被追蹤的程式經由指標呼叫，不在這份同名函式清單裡；它們在流程頁標示「推測（規則）」。', { n })}</p> : null)(
+      {((n) => n ? <p className="small muted">{t('另有 {n} 個函式被裝進函式指標或表格，由被追蹤的程式經由指標呼叫，不在這份清單裡。', { n })}</p> : null)(
         Object.keys(p.ix.funcs).filter((id) => !p.ix.funcs[id].api && p.ix.callers(id).some((e) => e.k === 'fnptr_assign' || e.k === 'fnptr_table')).length)}
       {groups.map((x) => (
         <section key={x.id}>
@@ -174,7 +174,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
   }
   let about = '', body: ReactNode = null
   if (l.kind === 'env') {
-    about = t('{v1} 設定環境變數，{v2} 執行時讀取它。編譯器看不到這種傳遞，所以這是推測的關係。', { v1: l.a, v2: l.b })
+    about = t('{v1} 設定環境變數，{v2} 執行時讀取它。這是推測的關係。', { v1: l.a, v2: l.b })
     const es = p.ix.g.edges.filter((e) => e.rule === 'env' && compOf(e.f) === l.a && e.read_at && compOf(e.read_at.split(':')[0]) === l.b)
     const vars = [...new Set(es.map((e) => e.name!))].sort()
     body = vars.map((v) => {
@@ -194,14 +194,14 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
     })
   } else if (l.kind === 'interpose') {
     const hooks = [...new Set((l.sites ?? []).map((s) => s.name))].filter((n) => Object.values(p.ix.funcs).some((f) => f.comp === l.b && f.name === n)).sort()
-    about = t('{v1} 以 LD_PRELOAD 載入後，攔截 {v2} 對 {v3} 函式的呼叫，共 {v4} 次，所以箭頭由呼叫的一方指向攔截的一方。這是推測的關係。', { v1: l.b, v2: l.a, v3: l.api, v4: l.n })
+    about = t('{v1} 以 LD_PRELOAD 載入後，攔截 {v2} 對 {v3} 函式的 {v4} 次呼叫，箭頭由呼叫方指向攔截方。這是推測的關係。', { v1: l.b, v2: l.a, v3: l.api, v4: l.n })
       + (hooks.length ? t('{v1} 呼叫到的同名函式有 {v2} 個，定義在 {v3}：{v4}{v5}。', { v1: l.a, v2: hooks.length, v3: l.b, v4: hooks.slice(0, 8).join(t('、')), v5: hooks.length > 8 ? t(' 等') : '' }) : '')
       + ((n) => n > hooks.length ? t('{v1} 一共定義了 {v2} 個 {v3} 同名函式，其餘的 {v4} 沒有呼叫。', { v1: l.b, v2: n, v3: l.api, v4: l.a }) : '')(Object.values(p.ix.funcs).filter((f) => f.comp === l.b && f.api === l.api).length)
     body = <UI.DetailList items={(l.sites ?? []).slice(0, SHOWN).map((s) => ({ label: t('{v1} 呼叫 {v2}', { v1: name(s.s), v2: s.name }), value: at(s.s, s.f, s.l) }))} />
   } else if (l.kind === 'runs' || l.kind === 'reads') {
     about = l.kind === 'runs'
-      ? t('{v1} 的 Python 工具以 subprocess 啟動程式，而且程式碼裡寫著 {v2}，這是 {v3} 編出的產物。這是推測的關係，下面是啟動程式的地方。', { v1: l.a, v2: list(l.names ?? []), v3: l.b })
-      : t('{v1} 的 Python 工具讀取 {v2} 裡的 {v3}，取用 C 程式的定義；兩邊要一起改。這是推測的關係。', { v1: l.a, v2: l.b, v3: list(l.names ?? []) })
+      ? t('{v1} 的 Python 工具以 subprocess 啟動 {v3} 編出的 {v2}。這是推測的關係，下面列出啟動的地方。', { v1: l.a, v2: list(l.names ?? []), v3: l.b })
+      : t('{v1} 的 Python 工具讀取 {v2} 裡的 {v3}，兩邊要一起改。這是推測的關係。', { v1: l.a, v2: l.b, v3: list(l.names ?? []) })
     body = <UI.DetailList items={(l.sites ?? []).slice(0, SHOWN).map((s) => ({ label: `${s.f.split('/').pop()}:${s.l}`, value: <span>{t('{v1} 使用 {v2}：', { v1: name(s.s), v2: s.name })}{at(null, s.f, s.l)}</span> }))} />
   } else if (l.kind === 'channel') {
     about = t('{v1} 經由 {v2} 把資料交給 {v3}{v4}', { v1: l.a, v2: l.via ?? '', v3: l.b, v4: l.label ? t('（{v1}）', { v1: l.label }) : '' })
@@ -229,7 +229,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
     const sync = [...viaFuncs, ...Object.entries(p.ix.funcs).filter(([id, f]) => (f.comp === l.a || f.comp === l.b) && touches(id))].filter(([, f]) => f.atomics?.length)
     // what the channel is made of, from the system calls that create it
     const made = new Set(life.flatMap(([, , xs]) => xs))
-    const kind = made.has('shm_open') ? t('{v1} 是 POSIX shared memory：以 shm_open 建立，mmap 對應進兩個程序的記憶體，兩邊直接讀寫同一塊記憶體。', { v1: l.label || l.via || '' })
+    const kind = made.has('shm_open') ? t('{v1} 是 POSIX shared memory：以 shm_open 建立，mmap 對應進兩個程序，兩邊讀寫同一塊記憶體。', { v1: l.label || l.via || '' })
       : made.has('mmap') ? t('{v1} 是以 mmap 對應的共享記憶體。', { v1: l.label || l.via || '' })
       : made.has('pipe') || made.has('socket') ? t('{v1} 經由 pipe 或 socket 傳送。', { v1: l.label || l.via || '' }) : ''
     const facts = (
@@ -285,7 +285,7 @@ function ScriptsDetail(p: { ix: Index; comp: string; isLive: boolean; sourceId: 
   const [shown, setShown] = useState<string | null>(null)
   return (
     <UI.Card className="detail" title={t('{v1}（Python）', { v1: c.id })} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
-      <p className="small">{t('Python 工具，{v1} 個檔案。codemap 沒有為 Python 建立呼叫索引，這裡只列出檔案、它們啟動的程式和讀取的標頭檔。', { v1: c.files })}</p>
+      <p className="small">{t('Python 工具，{v1} 個檔案。codemap 不索引 Python 的呼叫，只列出檔案、啟動的程式和讀取的標頭檔。', { v1: c.files })}</p>
       {runs.length ? <p className="small">{list(runs.map((l) => labelOf(l).replace(/`/g, '') + ' → ' + l.b))}</p> : null}
       <UI.DetailList items={(c.scripts ?? []).map((f) => ({
         label: f.slice(c.id.length + 1),
@@ -354,7 +354,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           label: c.id,
           value: <span>{c.doc ? <>{short(c.doc.text)}<br /><From doc={c.doc} /><br /></> : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
         }))} />
-        {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，取元件主要檔案的開頭註解，它說明的是那個檔案。要寫整個元件的用途，請在 .codemap/rules.json 的 describe 填寫。')}</p> : null}
+        {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，顯示元件主要檔案的開頭註解。元件的用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
       </section>
       {lifecycle.length || apis.size || installed.size ? (
         <section>
@@ -374,7 +374,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             ...(installed.size ? [{
               label: t('經由函式指標進入'),
               value: <span>
-                <button type="button" className="linklike" aria-expanded={openApi === '*ptr'} onClick={() => setOpenApi(openApi === '*ptr' ? null : '*ptr')}>{t('{v1} 個函式只被裝進函式指標，由 repo 外的程式庫或系統呼叫（推測）', { v1: [...installed.values()].flat().length })}</button>
+                <button type="button" className="linklike" aria-expanded={openApi === '*ptr'} onClick={() => setOpenApi(openApi === '*ptr' ? null : '*ptr')}>{t('{v1} 個函式只被裝進函式指標，由 repo 外呼叫（推測）', { v1: [...installed.values()].flat().length })}</button>
                 {openApi === '*ptr' ? <span className="entry-list">{[...installed].sort(([, a], [, b]) => b.length - a.length).map(([by, ids]) => (
                   <span key={by} className="entry-row"><span className="muted">{t('{v1} 裝入：', { v1: p.ix.funcs[by].name })}</span>
                     {[...ids].sort((a, b) => p.ix.funcs[a].name.localeCompare(p.ix.funcs[b].name)).map((id) => <span key={id} className="entry-row indent">{line(id, 'ins' + id)}</span>)}</span>))}</span> : null}
@@ -425,7 +425,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           <h4 className="small" id="ov-plain" tabIndex={-1}>{t('不經 atomic 操作就修改的全域變數')}</h4>
           {g.worth.plain_writes?.length ? <>
-            <p className="small muted">{t('沒有判斷是否有鎖保護，也沒有判斷是否只在單一執行緒執行；標「載入時」的是 constructor 裡的寫入，通常在其他執行緒開始之前。')}</p>
+            <p className="small muted">{t('沒有判斷是否有鎖保護或只在單一執行緒執行。標「載入時」的寫入在 constructor 裡，通常早於其他執行緒。')}</p>
             <UI.DetailList items={[...g.worth.plain_writes].sort((a, b) => Number(a.writes.every((w) => p.ix.callerInfo(w.fid).load)) - Number(b.writes.every((w) => p.ix.callerInfo(w.fid).load))).map((v, i) => ({
               label: v.name,
               value: <span>{v.writes.map((w, j) => (

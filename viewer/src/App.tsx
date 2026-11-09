@@ -175,7 +175,7 @@ function Shell(p: ShellProps) {
       const kind = textKind(h.file)
       // a C line outside every indexed function: either between functions, or in a file the build does not compile
       const where = fid ? ` · ${ix.funcs[fid].name}` : kind !== '程式碼' && kind !== '測試' ? ''
-        : indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('這個檔案沒有編進索引（compile_commands.json 沒有它）')}`
+        : indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('檔案不在 compile_commands.json，沒有索引')}`
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件',
         detail: `${h.file}:${h.line}` + where, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
@@ -187,8 +187,7 @@ function Shell(p: ShellProps) {
     const all = [...ranked, ...textHits]
     if (all.length || query.trim().length < 2 || searching) return all
     // nothing at all: say what the search covers and where the lists are
-    return [{ id: 'hint:overview', kind: '概觀', label: t('改用較短的詞或名稱的一部分，或從架構頁的概觀瀏覽'),
-      detail: t('搜尋涵蓋函式、檔案、元件、環境變數，以及程式碼與文件的內文'), target: { type: 'overview' } } as PaletteItem]
+    return [{ id: 'hint:overview', kind: '概觀', label: t('找不到結果，請改用較短的詞或名稱的一部分'), target: { type: 'overview' } } as PaletteItem]
   }, [ranked, textHits, query, searching])
   const tour = UI.useTour('codemap')
   const [tourStep, setTourStep] = useState(0)
@@ -385,14 +384,14 @@ function Shell(p: ShellProps) {
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
         <UI.CommandPalette open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) setQuery('') }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching}
-          placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋函式、檔案、元件、環境變數，以及程式碼與文件的內文')} onSelect={select}
+          placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
         <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
-          { target: 'arch', title: t('架構圖'), text: t('codemap 把程式碼整理成元件和呼叫關係：圖中的方塊是元件，線是元件之間的關係。這份概觀依段落列出元件、進入點、環境變數等，點選段落名稱會跳過去。') },
+          { target: 'arch', title: t('架構圖'), text: t('方塊是元件，線是元件之間的關係。點選概觀的段落名稱，跳到該段。') },
           { target: 'search', title: t('搜尋'), text: COARSE ? t('點選右上的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
-          { target: 'tree', title: t('流程樹'), text: t('展開函式查看它呼叫的函式。標有「推測（規則）」的關係由規則推得，點選標籤查看依據。') },
+          { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則）」的關係由規則推得，點選標籤查看依據。') },
           { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
-          { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的 file:line 引用與目前的程式碼。錯誤的位置在下方附有修正建議，可直接複製。') },
+          { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
         ]} />
         <div className="mobile-only">
           <UI.MobileTabBar value={view} onChange={(v) => setView(v as View)} items={[...navItems(), nav('settings')]} />
@@ -444,7 +443,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   const ext = new Map<string, string[]>()
   for (const e of ix.g.edges) if (e.src === 'compiler' && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
-    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算編進索引的檔案；測試等其他檔案的呼叫列在下方的內文結果）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
+    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算編進索引的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }
   // ideas a reader searches for by name, answered on the overview
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],

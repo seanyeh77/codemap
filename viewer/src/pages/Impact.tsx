@@ -51,7 +51,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   const entries = rows.filter((r) => r.api)
   const apis = [...new Set(entries.map((r) => r.api))]
   const name = p.ix.funcs[p.start]?.name ?? p.ix.bareName(p.start)     // an external function: who in the repo calls it
-  const entryTerm = (api: string) => t('和 {v1} 程式庫的函式同名。程式以 LD_PRELOAD 載入這個程式庫後，呼叫該函式時會先執行這裡的版本；這些呼叫來自 repo 外，不在此表中。', { v1: api })
+  const entryTerm = (api: string) => t('和 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會先執行這裡的版本。呼叫者在 repo 外，不在此表中。', { v1: api })
   return (
     <div className="pane">
       <UI.Card data-tour="impact" className="stack">
@@ -68,7 +68,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               <p className="small">
                 {t('受影響的函式中有 {v1} 個是 ', { v1: entries.length })}
                 <UI.Term text={entryTerm(apis.join(t('、')))}>{t('外部進入點')}</UI.Term>
-                {t('：被追蹤的程式呼叫 {v2} 的同名函式時會執行它們，這些呼叫者不在 repo 內。repo 裡共有 {v1} 個外部進入點，攔截 {v3}。', { v1: Object.values(p.ix.funcs).filter((f) => f.api).length, v2: apis.join(t('、')), v3: [...new Set(Object.values(p.ix.funcs).map((f) => f.api).filter(Boolean))].sort().join(t('、')) })}
+                {t('：被追蹤的程式呼叫 {v2} 的同名函式時執行。repo 裡共有 {v1} 個外部進入點，攔截 {v3}。', { v1: Object.values(p.ix.funcs).filter((f) => f.api).length, v2: apis.join(t('、')), v3: [...new Set(Object.values(p.ix.funcs).map((f) => f.api).filter(Boolean))].sort().join(t('、')) })}
               </p>
             ) : null}
             <p className="small muted">{t('只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>
@@ -79,7 +79,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             {p.ix.callerInfo(p.start).others.length || p.ix.callerInfo(p.start).load ? <p className="small muted">{t('它不是由函式直接呼叫：{v1}。', { v1: p.ix.callerText(p.start).split('；').slice(1).join(t('；')) })}</p> : null}
             <p className="small muted">{p.ix.funcs[p.start]?.api
               ? t('它是外部進入點：呼叫者是載入此程式庫、呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
-              : t('編譯器和規則都沒找到，但經由函式指標或從 repo 外的呼叫可能沒有偵測到。')}</p>
+              : t('編譯器和規則都沒找到。經由函式指標或從 repo 外的呼叫可能沒有偵測到。')}</p>
           </div>
         )}
       </UI.Card>

@@ -142,7 +142,7 @@ export function Flow(p: FlowProps) {
         <div className="grow" />
         {/* self-test last, so its field follows it in the Tab order */}
         <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label={t('顯示外部函式')} disabled={p.dir !== 'down'} /><span>{t('外部函式')}</span></label>
-        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下你認為下一層會呼叫哪些函式，再按「揭曉」比對。用來練習讀懂程式，不是工具的推測。')}>{t('自我測驗')}</UI.Term></label>
+        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下下一層的函式，再按「揭曉」比對。用來練習讀程式，不是工具的推測。')}>{t('自我測驗')}</UI.Term></label>
       </div>
       {p.predict && cur ? (
         <div className="predict">
@@ -173,7 +173,7 @@ export function Flow(p: FlowProps) {
           ? t('找不到 caller：它是外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
           : t('找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。')}</p>
       ) : null}
-      <p className="small muted" data-tour="tree">{t('沒有標示的關係都由編譯器確認；標示「推測（規則）」的由 codemap 的文字規則（例如函式指標、環境變數、constructor）從原始碼推得。')}</p>
+      <p className="small muted" data-tour="tree">{t('沒有標示的關係由編譯器確認，標示「推測（規則）」的由 codemap 的規則從原始碼推得。')}</p>
     </UI.Card>
   )
 }

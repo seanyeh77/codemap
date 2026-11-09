@@ -71,12 +71,12 @@ export function Detail(p: Props) {
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
         { label: t('元件'), value: f.comp },
-        { label: t('關係'), value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次；推測的也算在內，並另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}{t(' · {v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次；在流程樹裡也只列一次，旁邊的 ×N 是呼叫的次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
-        ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('和 {v1} 程式庫的函式同名。以 LD_PRELOAD 載入這個程式庫的程式呼叫該函式時，會先執行這裡的版本；呼叫者在 repo 外，所以 caller 可能是 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
+        { label: t('關係'), value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}{t(' · {v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次。流程樹的 ×N 是呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
+        ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('和 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會先執行這裡的版本。呼叫者在 repo 外，所以 caller 可能是 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
         ...(e && !inside ? [{ label: t('呼叫位置'), value: sites.length > 1
           ? <span>{sites.map((s, i) => <span key={s.l}>{i ? t('、') : ''}{link(s.f, s.l)}</span>)}</span> : link(e.f, e.l) }] : []),
-        ...(sameLine.length ? [{ label: t('同一行'), value: t('這一行還呼叫 {v1}，寫在同一個運算式裡（例如一個呼叫的結果當作另一個呼叫的參數）。', { v1: sameLine.join(t('、')) }) }] : []),
-        ...macros.map((m) => ({ label: t('巨集'), value: <span>{t('這一行使用巨集 {v1}，定義在 ', { v1: m.name })}{link(m.file, m.line)}{t('。呼叫寫在巨集裡，展開後才發生，所以記在使用巨集的這一行。')}</span> })),
+        ...(sameLine.length ? [{ label: t('同一行'), value: t('這一行還呼叫 {v1}，兩個呼叫寫在同一個運算式裡。', { v1: sameLine.join(t('、')) }) }] : []),
+        ...macros.map((m) => ({ label: t('巨集'), value: <span>{t('這一行使用巨集 {v1}，定義在 ', { v1: m.name })}{link(m.file, m.line)}{t('。呼叫在巨集展開後才發生，所以記在這一行。')}</span> })),
         ...(e && (e.via || e.slot) ? [{ label: t('經由'), value: <UI.InlineCode>{e.via || e.slot}</UI.InlineCode> }] : []),
       ]} />
       <UI.ActionBar actions={[

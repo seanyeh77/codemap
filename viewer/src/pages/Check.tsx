@@ -63,9 +63,9 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={t('項')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
       <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
-        <p className="small muted">{t('比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。共 {v1} 項，含 {v2} 個引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
+        <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
         {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤。', { v1: UI.format.dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length })}</p> : null}
-        <p className="small muted">{t('「相符」表示引用的那一行出現筆記裡的名稱，或呼叫經編譯器確認，不代表整句的意思都對；「待確認」表示工具無法判斷，說明欄寫了要對照的位置和建議的寫法。')}</p>
+        <p className="small muted">{t('「相符」只代表引用的行出現筆記裡的名稱，或呼叫經編譯器確認。「待確認」的說明欄寫了要對照的位置。')}</p>
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
       <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
