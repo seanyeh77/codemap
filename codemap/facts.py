@@ -199,8 +199,9 @@ def scripts(root, index, config, built, shared=()):
         for f in fs:
             src = lines_text(root / f).splitlines()
             for e in execs.get(f, []):
-                # the product's name in a string near the call: the 40 lines before it and the 5 after
-                near = " ".join(re.findall(r"\"[^\"\n]*\"|\'[^\'\n]*\'", "\n".join(src[max(0, e["line"] - 41):e["line"] + 5])))
+                # the strings the call's arguments are built from: the call itself, and what the names in it
+                # were assigned (cmd = [ibmon_path(d), ...]; def ibmon_path: ... / "ibmon")
+                near = " ".join(arg_strings(src, e["line"]))
                 for name, targets in products.items():
                     if not re.search(r"(?<![\w.-])" + re.escape(name) + r"(?![\w-])", near):
                         continue
@@ -227,6 +228,50 @@ def scripts(root, index, config, built, shared=()):
         uniq = {(s["f"], s["l"]): s for s in l["sites"]}
         out.append(dict(l, names=sorted(l["names"]), n=len(uniq), sites=sorted(uniq.values(), key=lambda s: (s["f"], s["l"]))))
     return comps, out
+
+
+PY_WORDS = {"subprocess", "run", "Popen", "call", "check_call", "check_output", "os", "str", "list", "True", "False", "None",
+            "capture_output", "text", "check", "timeout", "stdout", "stderr", "env", "cwd", "shell", "PIPE", "STDOUT", "Path"}
+
+
+def statement(src, i):
+    """The Python statement that starts on line i (1-based): through the line where its brackets close."""
+    out, depth = [], 0
+    for ln in src[i - 1:i + 15]:
+        out.append(ln)
+        code = re.sub(r"\"[^\"\n]*\"|\'[^\'\n]*\'|#.*", "", ln)
+        depth += sum(code.count(c) for c in "([{") - sum(code.count(c) for c in ")]}")
+        if depth <= 0:
+            break
+    return "\n".join(out)
+
+
+def arg_strings(src, line, depth=3):
+    """The string literals a call on this line is built from: in the call, then in every statement of
+    the same function (or module level) that assigns a name it uses, then in the bodies of the
+    functions it calls in this file, to depth levels."""
+    indent = lambda ln: len(ln) - len(ln.lstrip())
+    strs, seen, todo = [], set(), [(statement(src, line), line, 0)]
+    while todo:
+        text, at, d = todo.pop()
+        strs += re.findall(r"\"[^\"\n]*\"|\'[^\'\n]*\'", text)
+        if d >= depth:
+            continue
+        # the function the statement is in: from its def to the line before
+        top = next((j for j in range(at - 1, 0, -1) if re.match(r"^\s*def\s", src[j - 1]) and indent(src[j - 1]) < indent(src[at - 1] or "x")), 1)
+        for name in set(re.findall(r"\b([A-Za-z_]\w*)\b", re.sub(r"\"[^\"\n]*\"|\'[^\'\n]*\'", "", text))):
+            if name in PY_WORDS or name in seen:
+                continue
+            seen.add(name)
+            assign = re.compile(r"^\s*" + re.escape(name) + r"\s*(:[^=]*)?[+]?=[^=]")
+            for j in range(1, len(src) + 1):
+                ln = src[j - 1]
+                if assign.match(ln) and (top <= j < at or not ln[:1].isspace()):
+                    todo.append((statement(src, j), j, d + 1))
+                elif re.match(r"^\s*def\s+" + re.escape(name) + r"\b", ln):
+                    end = next((k for k in range(j + 1, len(src) + 1) if src[k - 1].strip() and indent(src[k - 1]) <= indent(ln)), len(src) + 1)
+                    todo.append(("\n".join(src[j:end - 1]), j + 1, d + 1))
+    return strs
 
 
 def lines_text(path):
@@ -596,3 +641,85 @@ def worth_checking(root, funcs, edges, files, symbols):
     return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, funcs),
                 env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs),
                 plain_writes=plain_writes(root, funcs, files))
+
+
+def macro_value(root, funcs, name):
+    """The value a #define gives name, from the headers next to the indexed files and include/."""
+    root = Path(root)
+    dirs = {str(Path(f["file"]).parent) for f in funcs.values()} | {"include"}
+    for d in sorted(dirs):
+        for p in sorted((root / d).rglob("*.h")) if (root / d).is_dir() else []:
+            m = re.search(r"^\s*#\s*define\s+" + re.escape(name) + r"\s+(.+?)\s*(?:/[*/].*)?$", lines_text(p), re.M)
+            if m:
+                return m.group(1)
+    return None
+
+
+def env_meaning(root, funcs, env, config=None):
+    """name -> {kind, default, into, at, purpose?}: how the C code reads each environment variable.
+    kind: flag (non-zero is on), number, text, or presence (only whether it is set);
+    default: on, off, early-return, or the value written in the code, when it is unset;
+    into: the variable the result is stored in. Read from the line of each read and, when the name
+    goes through a helper (env_flag("X")), the helper's body. config["env"][name] {purpose, default}
+    replaces what the code says."""
+    root = Path(root)
+    by_name = {}
+    for fid, f in funcs.items():
+        by_name.setdefault(f["name"], (fid, f))
+    def body(f):
+        return lines_text(root / f["file"]).splitlines()[f.get("top", f["line"]) - 1:f["end"]]
+    def classify(text, var):
+        """kind and default from the code that uses var (or the expression, when var is None)."""
+        v = re.escape(var) if var else r"getenv\s*\([^)]*\)"
+        kind = "number" if re.search(r"\b(atoi|atol|strtol|strtoul|strtoull|atof|strtod)\s*\(\s*" + v, text) else "text"
+        default = None
+        if re.search(v + r"\s*==\s*NULL\s*\|\|", text) or re.search(r"!\s*" + v + r"\s*\|\|", text):
+            default = "on"
+        elif re.search(v + r"\s*!=\s*NULL\s*&&", text) or re.search(r"\b" + v + r"\s*&&", text):
+            default = "off"
+        if default and kind == "number" and re.search(r"!=\s*0|\)\s*;", text):
+            kind = "flag"
+        m = re.search(v + r"\s*(?:!=\s*NULL\s*)?\?[^:;]+:\s*([^;)]+)", text)
+        if m and not default:
+            default = m.group(1).strip()
+        if not default and re.search(r"if\s*\(\s*(!\s*" + v + r"|" + v + r"\s*==\s*NULL)\s*\)\s*\{?\s*return\b", text):
+            default = "early-return"
+        return kind, default
+    out = {}
+    for name, v in (env or {}).items():
+        for ref in v.get("get", []):
+            f, _, l = ref.rpartition(":")
+            if not f.endswith((".c", ".h")) or not l.isdigit():
+                continue
+            src = lines_text(root / f).splitlines()
+            line = src[int(l) - 1] if int(l) <= len(src) else ""
+            m = re.search(r"([A-Za-z_]\w*)\s*\(\s*\"" + re.escape(name) + r"\"", line)
+            if not m:
+                continue
+            call = m.group(1)
+            lhs = re.search(r"([A-Za-z_][\w.>-]*)\s*=\s*" + re.escape(call) + r"\s*\(", line)
+            into = lhs.group(1) if lhs else None
+            if call == "getenv":
+                if re.search(r"getenv\s*\([^)]*\)\s*(==|!=)\s*NULL", line) and not into:
+                    info = dict(kind="presence", default=None)
+                else:
+                    owner = next((fn for fn in funcs.values() if fn["file"] == f and fn["line"] <= int(l) <= fn["end"]), None)
+                    rest = "\n".join(src[int(l) - 1:owner["end"]] if owner else src[int(l) - 1:int(l) + 8])
+                    kind, default = classify(rest, into)
+                    info = dict(kind=kind, default=default)
+            elif call in by_name:
+                text = "\n".join(body(by_name[call][1]))
+                var = re.search(r"([A-Za-z_]\w*)\s*=\s*getenv\s*\(", text)
+                kind, default = classify(text, var.group(1) if var else None)
+                info = dict(kind=kind, default=default, via=call)
+            else:
+                continue
+            d = info.get("default")
+            if d and re.fullmatch(r"[A-Z_][A-Z0-9_]*", d):        # a macro: its value too
+                info["default"] = d + (f" ({val})" if (val := macro_value(root, funcs, d)) else "")
+            out[name] = dict(info, into=into, at=ref)
+            break
+    for name, own in ((config or {}).get("env") or {}).items():
+        if isinstance(own, dict):
+            out.setdefault(name, {}).update({k: own[k] for k in ("purpose", "default") if own.get(k)}, own=True)
+    return out

@@ -117,6 +117,25 @@ class Facts(unittest.TestCase):
         self.assertEqual([(x["name"], [y["l"] for y in x["writes"]]) for x in w], [("counter", [6])])
         self.assertTrue(src)
 
+    def test_env_meaning(self):
+        (self.root / "e.h").write_text('#define SHM_DEFAULT "/x"\n')
+        (self.root / "e.c").write_text(
+            "static int flag_on(const char *n)\n{\n    const char *v = getenv(n);\n    return v == NULL || atoi(v) != 0;\n}\n"
+            "void init(void)\n{\n    const char *shm = getenv(\"SHM\");\n    g_rec = flag_on(\"REC\");\n"
+            "    open_ring(shm != NULL ? shm : SHM_DEFAULT);\n}\n")
+        funcs = {"flag_on": dict(name="flag_on", file="e.c", line=1, end=5), "init": dict(name="init", file="e.c", line=6, end=11)}
+        env = {"SHM": {"get": ["e.c:8"]}, "REC": {"get": ["e.c:9"]}}
+        m = facts.env_meaning(self.root, funcs, env, {"env": {"REC": {"purpose": "records or not"}}})
+        self.assertEqual((m["REC"]["kind"], m["REC"]["default"], m["REC"]["into"], m["REC"]["purpose"]), ("flag", "on", "g_rec", "records or not"))
+        self.assertEqual((m["SHM"]["kind"], m["SHM"]["default"]), ("text", 'SHM_DEFAULT ("/x")'))
+
+    def test_arg_strings(self):
+        src = ["import subprocess", "", "def tool_path(d):", "    return d + '/mon'", "",
+               "def run(d):", "    cmd = [tool_path(d), '-q']", "    cmd += ['--', 'prog']", "    subprocess.Popen(cmd)",
+               "", "def other(repo):", "    return subprocess.run(['git', '-C', repo])"]
+        self.assertIn("'/mon'", facts.arg_strings(src, 9))
+        self.assertNotIn("'/mon'", facts.arg_strings(src, 12))
+
     def test_env_if_unset(self):
         self.assertEqual(sorted(x["name"] for x in facts.env_if_unset(self.root, self.funcs)), ["KEEP", "LD_PRELOAD"])
 

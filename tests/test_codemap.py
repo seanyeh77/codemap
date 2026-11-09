@@ -142,7 +142,7 @@ class Fixture(unittest.TestCase):
         md = self.root / "soft.md"
         md.write_text("- `install` at `lib.c:17`\n- `peek_a -> peek_b`\n")
         a, b = check.check(self.root, md, self.idx)["items"]
-        self.assertEqual(a["status"], "done")                          # right, only the path is short
+        self.assertEqual(a["status"], "review")                        # right, but the short path has a fix to apply
         self.assertEqual(a["fix"]["after"], "- `install` at `src/lib/lib.c:17`")
         self.assertEqual(b["status"], "review")                        # no call, but both call last_send
         self.assertIn("last_send", b["why"])

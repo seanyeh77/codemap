@@ -210,7 +210,8 @@ def check(root, md_path, index):
                     why.append(Msg("`{f}` 指 `{short}`，建議寫完整路徑", f=f, short=short))
                     fixes.append((ref, full))
         if bad or why or review:
-            status = "fail" if bad else "review" if review else "done"
+            # a line that matches but has a better way to write it is not 「相符」: it gets a suggestion to act on
+            status = "fail" if bad else "review" if review or any(new for _, new in fixes) else "done"
             fixed = md
             for old, new in fixes:
                 if new:

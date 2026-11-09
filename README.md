@@ -107,10 +107,17 @@ they are worth tracking.
 it the overview shows the top comment of the component's main file and says
 which file it came from.
 
-`phases` splits the calls of a long function into stages in the flow tree. Each
+`phases` splits the calls of a long function into stages in the flow tree. A
+stage's `name` is one string, or one per language for readers in another one:
+`{"zh-TW": "啟動", "en": "start-up"}` (the viewer's language, else English). Each
 stage starts at the first call of the function named in `from` and runs until
 the next stage; calls before the first stage stay at the top. The split is the
 project's reading of its code, so codemap never guesses it.
+
+`env` adds what the code cannot say about an environment variable:
+`{"IBTRACE_RECORD": {"purpose": "0 measures the wrappers' cost without recording", "default": "1"}}`.
+Without it the overview still shows what the C code reads it as (a flag, a number,
+text, or only whether it is set), its value when unset, and where it is stored.
 
 `channels` declares data that one component hands to another through a shared
 one (a shared-memory ring, a queue) without any call between them. The
