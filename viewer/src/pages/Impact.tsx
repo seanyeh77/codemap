@@ -8,7 +8,7 @@ import type { Sel } from '../data/types'
 type Kind = 'direct' | 'indirect' | 'state'
 interface Row {
   id: string; fid: string; name: string; comp: string; loc: string; f: string; l: number; lines: number[]; depth: number
-  kind: Kind; how: string; via: string; source: string; inferred: boolean; api?: string
+  kind: Kind; how: string; via: string; source: string; inferred: boolean; api?: string; entry: 'yes' | 'no'
 }
 
 /** Who is affected when a function changes: its callers, and their callers, up to MAX_DEPTH; plus
@@ -21,7 +21,7 @@ function affected(ix: Index, start: string): Row[] {
     seen.add(fid)
     const fn = ix.funcs[fid]
     // every line the caller uses it on: a reviewer needs the call sites, not only the first
-    res.push({ id: String(res.length), fid, name: fn.name, comp: fn.comp, loc: t('{v1}:{v2}', { v1: f, v2: lines.join(t('、')) }), f, l, lines, depth: d, kind, how, via, source, inferred, api: fn.api })
+    res.push({ id: String(res.length), fid, name: fn.name, comp: fn.comp, loc: t('{v1}:{v2}', { v1: f, v2: lines.join(t('、')) }), f, l, lines, depth: d, kind, how, via, source, inferred, api: fn.api, entry: fn.api ? 'yes' : 'no' })
     if (d < MAX_DEPTH) frontier.push([fid, d, kind])
   }
   for (const g of ix.g.state ?? []) {
@@ -50,7 +50,6 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   const vars = [...new Set(rows.filter((r) => r.kind === 'state').map((r) => r.via))]
   const entries = rows.filter((r) => r.api)
   const apis = [...new Set(entries.map((r) => r.api))]
-  const open = (r: Row) => p.onSel(r.fid, { f: r.f, l: r.l })
   const name = p.ix.funcs[p.start]?.name ?? p.ix.bareName(p.start)     // an external function: who in the repo calls it
   const entryTerm = (api: string) => t('和 {v1} 程式庫的函式同名。程式以 LD_PRELOAD 載入這個程式庫後，呼叫該函式時會先執行這裡的版本；這些呼叫來自 repo 外，不在此表中。', { v1: api })
   return (
@@ -69,7 +68,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               <p className="small">
                 {t('受影響的函式中有 {v1} 個是 ', { v1: entries.length })}
                 <UI.Term text={entryTerm(apis.join(t('、')))}>{t('外部進入點')}</UI.Term>
-                {t('（repo 裡共有 {v1} 個）：被追蹤的程式呼叫 {v2} 的同名函式時會執行它們，這些呼叫者不在 repo 內。', { v1: Object.values(p.ix.funcs).filter((f) => f.api).length, v2: apis.join(t('、')) })}
+                {t('：被追蹤的程式呼叫 {v2} 的同名函式時會執行它們，這些呼叫者不在 repo 內。repo 裡共有 {v1} 個外部進入點，攔截 {v3}。', { v1: Object.values(p.ix.funcs).filter((f) => f.api).length, v2: apis.join(t('、')), v3: [...new Set(Object.values(p.ix.funcs).map((f) => f.api).filter(Boolean))].sort().join(t('、')) })}
               </p>
             ) : null}
             <p className="small muted">{t('只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>
@@ -88,24 +87,25 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
         <UI.DataTable resetKey={`${p.sourceId}:${p.start}`} label={t('受影響的函式')} pageSize={10} urlSync={false}
           summary={{ key: 'kind', items: (['direct', 'state', 'indirect'] as const).filter((k) => k !== 'state' || vars.length).map((k) => ({ value: k, label: t(KIND_LABEL[k]) })), unit: t('個') }}
           columns={[
-            { key: 'name', label: t('函式'), width: 260, grow: 2, mobile: 'title', searchText: (r: Row) => r.name + ' ' + r.source,
+            { key: 'name', label: t('函式'), width: 160, grow: 2, mobile: 'title', searchText: (r: Row) => r.name + ' ' + r.source,
               render: (r: Row) => (
                 <span className="fnname"><b>{r.name}</b>
                   {r.inferred ? <UI.Tag>{r.source}</UI.Tag> : null}
                   {r.api ? <UI.Tag><UI.Term text={entryTerm(r.api)}>{t('外部進入點')}</UI.Term></UI.Tag> : null}
                 </span>
               ) },
-            { key: 'comp', label: t('元件'), width: 120, grow: 1 },
-            { key: 'how', label: t('關係'), width: 150, grow: 1, searchText: (r: Row) => r.how, render: (r: Row) => r.how },
-            { key: 'loc', label: t('位置'), width: 190, grow: 2, searchText: (r: Row) => r.loc, fullText: (r: Row) => `${r.f}:${r.lines.join(t('、'))}`,
-              // the file name and every line; the folder is in the 元件 column and in the tooltip
+            // 元件 starts hidden so the table fits beside the panel at 1280 px; the 元件 filter and the 欄位 menu still have it
+            { key: 'comp', label: t('元件'), width: 100, grow: 1, hidden: true },
+            { key: 'how', label: t('關係'), width: 110, grow: 1, searchText: (r: Row) => r.how, render: (r: Row) => r.how },
+            { key: 'loc', label: t('位置'), width: 100, grow: 1, searchText: (r: Row) => r.loc, fullText: (r: Row) => `${r.f}:${r.lines.join(t('、'))}`,
+              // the file name and every line; the full path is the cell's description
               render: (r: Row) => <span className="locs">{r.lines.map((l) => (
                 <UI.InlineCode key={l} href={`#${r.f}:${l}`} onClick={(e) => { e.preventDefault(); p.onSel(r.fid, { f: r.f, l }) }}>{`${r.f.split('/').pop()}:${l}`}</UI.InlineCode>))}</span> },
             { key: 'depth', label: t('距離'), numeric: true, unit: t('層'), width: 72, grow: 0.5, hidden: true },
           ]}
           rows={rows}
-          filters={[{ key: 'comp', label: t('元件'), options: comps.map((c) => ({ value: c, label: c })) }]}
-          rowActions={(r: Row) => <UI.IconButton label={t('開啟 {v1}:{v2}', { v1: r.f.split('/').pop(), v2: r.l })} icon="file-text" onClick={() => open(r)} />} />
+          filters={[{ key: 'comp' as const, label: t('元件'), options: comps.map((c) => ({ value: c, label: c })) },
+            ...(entries.length ? [{ key: 'entry' as const, label: t('外部進入點'), options: [{ value: 'yes', label: t('是外部進入點') }, { value: 'no', label: t('不是外部進入點') }] }] : [])]} />
       ) : null}
     </div>
   )

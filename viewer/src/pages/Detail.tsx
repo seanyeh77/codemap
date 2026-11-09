@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { UI } from '../ui'
-import { DocRefs } from '../components/DocRefs'
+import { DocRefs, useCodeRefs } from '../components/DocRefs'
 import { noun, t } from '../i18n'
 import type { Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
@@ -26,6 +26,7 @@ export function Detail(p: Props) {
   const f = p.ix.funcs[p.sel.id]
   const e = p.sel.edge
   const src = useFuncSource(f, p.isLive, p.sourceId)
+  const refs = useCodeRefs(p.ix)
   // a file:line clicked in this panel, shown in place of the function until another selection
   const [shown, setShown] = useState<{ key: string; f: string; l: number } | null>(null)
   const selKey = `${p.sel.id}@${e?.f}:${e?.l}`
@@ -57,6 +58,10 @@ export function Detail(p: Props) {
   // the same caller calling it on several lines (one merged row in the flow tree)
   const sites = e ? p.ix.callers(p.sel.id).filter((x) => x.s === e.s && x.src === e.src && x.f === e.f).sort((a, b) => a.l - b.l) : []
   const here = p.sel.id === p.start
+  // other calls written on the same line (ibmon_spawn(..., ibmon_default_preload())), and the macros the line uses:
+  // a call made inside a macro is recorded on the line that uses the macro
+  const sameLine = e ? [...new Set(p.ix.callees(e.s ?? "", true).filter((x) => x.f === e.f && x.l === e.l && x.d !== e.d).map((x) => p.ix.bareName(x.d, x)))] : []
+  const macros = e?.t ? (p.ix.g.symbols ?? []).filter((s) => s.kind === 'macro' && new RegExp(`\\b${s.name}\\s*\\(`).test(e.t!)) : []
   function link(file: string, line: number) {
     const own = !!f && file === f.file && f.line <= line && line <= f.end
     return <LineLink ix={p.ix} file={file} line={line} onOpen={() => setShown(own ? null : { key: selKey, f: file, l: line })} />
@@ -70,22 +75,23 @@ export function Detail(p: Props) {
         ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('和 {v1} 程式庫的函式同名。以 LD_PRELOAD 載入這個程式庫的程式呼叫該函式時，會先執行這裡的版本；呼叫者在 repo 外，所以 caller 可能是 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
         ...(e && !inside ? [{ label: t('呼叫位置'), value: sites.length > 1
           ? <span>{sites.map((s, i) => <span key={s.l}>{i ? t('、') : ''}{link(s.f, s.l)}</span>)}</span> : link(e.f, e.l) }] : []),
+        ...(sameLine.length ? [{ label: t('同一行'), value: t('這一行還呼叫 {v1}，寫在同一個運算式裡（例如一個呼叫的結果當作另一個呼叫的參數）。', { v1: sameLine.join(t('、')) }) }] : []),
+        ...macros.map((m) => ({ label: t('巨集'), value: <span>{t('這一行使用巨集 {v1}，定義在 ', { v1: m.name })}{link(m.file, m.line)}{t('。呼叫寫在巨集裡，展開後才發生，所以記在使用巨集的這一行。')}</span> })),
         ...(e && (e.via || e.slot) ? [{ label: t('經由'), value: <UI.InlineCode>{e.via || e.slot}</UI.InlineCode> }] : []),
       ]} />
       <UI.ActionBar actions={[
         ...(p.view === 'flow' && here ? [] : [{ label: p.view === 'flow' ? t('從這裡追蹤流程') : t('追蹤流程'), primary: true, onClick: () => p.goFlow(p.sel.id) }]),
         ...(p.view === 'impact' && here ? [] : [{ label: t('查看影響範圍'), primary: p.view === 'flow' && here, onClick: () => p.goImpact(p.sel.id) }]),
-        ...(p.canMacro ? [{ label: t('展開 macro') }] : []),     // shown only where the server can do it
       ]} />
       {whole ? (
         file.isPending ? <UI.Skeleton width="80%" height={16} />
           : file.error || !file.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{file.error ? (file.error as Error).message : t('這個檔案不在索引裡。')}</UI.Alert>
-          : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" /><DocRefs ix={p.ix} lines={file.data.lines} /></>
+          : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" {...refs} /><DocRefs ix={p.ix} lines={file.data.lines} /></>
       ) : at ? <CodeAt ix={p.ix} at={at} isLive={p.isLive} sourceId={p.sourceId} maxHeight="60vh" focus />
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
         : !src.data ? <p className="small muted">{t('匯出快照時讀不到這個檔案。請在 build 環境重新執行 codemap export。')}</p>
-        : <UI.CodeView file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
+        : <UI.CodeView {...refs} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}
       {p.isLive ? <div className="keep"><UI.Button onClick={() => setWhole(whole ? null : selKey)}>{whole ? t('只顯示這個函式') : t('顯示整個檔案')}</UI.Button></div> : null}

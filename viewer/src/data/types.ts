@@ -131,7 +131,10 @@ export interface Graph {
   symbols?: { name: string; kind: 'macro' | 'var'; file: string; line: number; text: string }[]
   state?: { name: string; file: string; line: number; static: boolean; users: [string, number][] }[]
   /** Stages of a long function's calls, from .codemap/rules.json: function name -> [{name, from}]. */
-  phases?: Record<string, { name: string; from: string }[]>
+  /** How the C code reads each variable: flag, number, text or presence; its value when unset; where it is stored.
+   *  purpose and default with own: written in .codemap/rules.json (env). */
+  env_info?: Record<string, { kind?: 'flag' | 'number' | 'text' | 'presence'; default?: string | null; into?: string | null; via?: string; at?: string; purpose?: string; own?: boolean }>
+  phases?: Record<string, { name: string | Record<string, string>; from: string }[]>
   /** What the Makefile builds and installs, read from `make -n`. Null when there is no Makefile. */
   build?: BuildInfo | null
   /** Calls that create or write a file. */

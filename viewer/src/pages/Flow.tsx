@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from '../ui'
-import { t } from '../i18n'
+import { local, t } from '../i18n'
 import type { Index } from '../data/graph'
 import type { Edge, Sel } from '../data/types'
 import type { TreeNode } from '@seanyeh77/ui'
@@ -47,16 +47,18 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
       if (g) g.push(k)
       else groups.set(cid, [k])
     }
-    const rows = [...groups].map(([cid, ks]) => ({ name: ix.bareName(cid, ks[0]), n: node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks) }))
+    const rows = [...groups].map(([cid, ks]) => ({ name: ix.bareName(cid, ks[0]), l: ks[0].l, n: node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks) }))
     // stages the project named in .codemap/rules.json (phases): each starts at its `from` call
     const stages = dir === 'down' && ix.funcs[c.fid] ? ix.g.phases?.[ix.funcs[c.fid].name] ?? [] : []
-    const at = stages.map((s) => ({ s, i: rows.findIndex((r) => r.name === s.from) })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i)
+    // a stage starts at the line of its `from` call: a call written inside it (its argument) goes with it
+    const first = (name: string) => { const r = rows.find((x) => x.name === name); return r ? rows.findIndex((x) => x.l === r.l) : -1 }
+    const at = stages.map((s) => ({ s, i: first(s.from) })).filter((x) => x.i >= 0).sort((a, b) => a.i - b.i)
     if (!at.length) return rows.map((r) => r.n)
     const out: TreeNode[] = rows.slice(0, at[0].i).map((r) => r.n)
     at.forEach((x, k) => {
       const id = `${key}#${k}`
       stageIds.push(id)
-      out.push({ id, name: x.s.name, icon: 'stack', meta: t('專案定義的階段'), children: rows.slice(x.i, k + 1 < at.length ? at[k + 1].i : rows.length).map((r) => r.n) })
+      out.push({ id, name: local(x.s.name), icon: 'stack', meta: t('專案定義的階段'), children: rows.slice(x.i, k + 1 < at.length ? at[k + 1].i : rows.length).map((r) => r.n) })
     })
     return out
   }
@@ -161,7 +163,7 @@ export function Flow(p: FlowProps) {
           )}
         </div>
       ) : null}
-      <div data-tour="tree">
+      <div>
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
           items={tree.items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
           selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />
@@ -171,7 +173,7 @@ export function Flow(p: FlowProps) {
           ? t('找不到 caller：它是外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
           : t('找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。')}</p>
       ) : null}
-      <p className="small muted">{t('沒有標示的關係都由編譯器確認；標示「推測（規則）」的由 codemap 的文字規則（例如函式指標、環境變數、constructor）從原始碼推得。')}</p>
+      <p className="small muted" data-tour="tree">{t('沒有標示的關係都由編譯器確認；標示「推測（規則）」的由 codemap 的文字規則（例如函式指標、環境變數、constructor）從原始碼推得。')}</p>
     </UI.Card>
   )
 }

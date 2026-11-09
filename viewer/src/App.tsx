@@ -9,7 +9,7 @@ import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import type { Graph, GrepHit, Meta, Sel } from './data/types'
 import { OpenFile } from './components/DocRefs'
-import { Arch, CompDetail, EdgeDetail, TRACED, edgeId } from './pages/Arch'
+import { Arch, CompDetail, EdgeDetail, TRACED, edgeId, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
 import { Impact } from './pages/Impact'
 import { Check } from './pages/Check'
@@ -29,6 +29,7 @@ const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> 
 const nav = (id: View) => ({ id, label: t(PAGES[id].title), icon: PAGES[id].icon })
 // the tour shows the flow tree and the check page, so it moves between pages and returns afterwards
 const TOUR_VIEWS: (View | null)[] = ['arch', null, 'flow', 'impact', 'check']
+const TOUR_TARGETS = ['arch', 'search', 'tree', 'impact', 'notes']
 // phones have no Ctrl K: the tour points at the search button instead
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 
@@ -168,24 +169,48 @@ function Shell(p: ShellProps) {
   const textHits = useMemo(() => {
     if (typed.length < 2) return []
     const hits: GrepHit[] = isLive ? grepLive.data ?? [] : snapshotGrep(ix, typed)
-    return hits.slice(0, 20).map((h): PaletteItem => {
+    const indexed = new Set(ix.byFile().keys())
+    return hits.slice(0, 30).map((h): PaletteItem => {
       const fid = Object.keys(ix.funcs).find((id) => { const f = ix.funcs[id]; return f.file === h.file && f.line <= h.line && h.line <= f.end })
-      return { id: `t:${h.file}:${h.line}`, kind: '程式碼', label: h.text, code: true,
-        detail: `${h.file}:${h.line}` + (fid ? ` · ${ix.funcs[fid].name}` : /\.(c|h|cc|cpp)$/.test(h.file) ? ` · ${t('不在索引的函式裡')}` : ''), target: { type: 'file', f: h.file, l: h.line } }
-    })
+      const kind = textKind(h.file)
+      // a C line outside every indexed function: either between functions, or in a file the build does not compile
+      const where = fid ? ` · ${ix.funcs[fid].name}` : kind !== '程式碼' && kind !== '測試' ? ''
+        : indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('這個檔案沒有編進索引（compile_commands.json 沒有它）')}`
+      return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件',
+        detail: `${h.file}:${h.line}` + where, target: { type: 'file', f: h.file, l: h.line } }
+    }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
   }, [typed, isLive, grepLive.data, ix])
-  const found = useMemo(() => [...rank(palette, query, 40), ...textHits], [palette, query, textHits])
+  const ranked = useMemo(() => rank(palette, query, 40), [palette, query])
+  // the count is said once the text results are in, not while they are still arriving
+  const searching = query.trim().length >= 2 && (typed !== query.trim() || (isLive && grepLive.isFetching))
+  const found = useMemo(() => {
+    const all = [...ranked, ...textHits]
+    if (all.length || query.trim().length < 2 || searching) return all
+    // nothing at all: say what the search covers and where the lists are
+    return [{ id: 'hint:overview', kind: '概觀', label: t('改用較短的詞或名稱的一部分，或從架構頁的概觀瀏覽'),
+      detail: t('搜尋涵蓋函式、檔案、元件、環境變數，以及程式碼與文件的內文'), target: { type: 'overview' } } as PaletteItem]
+  }, [ranked, textHits, query, searching])
   const tour = UI.useTour('codemap')
   const [tourStep, setTourStep] = useState(0)
-  const beforeTour = useRef<View | null>(null)
+  const beforeTour = useRef<{ view: View; comp: string; edge: string } | null>(null)
 
   // each page and each choice on it is a history entry: back and forward return to the previous
   // selection, and the address can be shared (a typed #check opens that page)
   const here = hashOf({ view, c: selComp, e: selEdge, s: start ?? '', f: sel.id, k: sel.key ?? '', d: dir })
   const placed = useRef(false)
+  // what had the keyboard on each address when it was left: going back puts the keyboard there again
+  const leftFrom = useRef(new Map<string, string>())
+  // the last thing focused: by the time the address changes, the page that had it may be gone already
+  const lastFocus = useRef('')
+  useEffect(() => {
+    const on = (e: FocusEvent) => { const el = e.target as HTMLElement; if (el && el !== document.body) lastFocus.current = (el.textContent ?? '').trim().slice(0, 120) }
+    addEventListener('focusin', on)
+    return () => removeEventListener('focusin', on)
+  }, [])
   useEffect(() => {
     // the first address only gains what was filled in by default: no extra step back
     if (location.hash !== here) {
+      if (placed.current && lastFocus.current) leftFrom.current.set(location.hash, lastFocus.current)
       if (placed.current) history.pushState(null, '', here)
       else history.replaceState(null, '', here)
     }
@@ -201,6 +226,17 @@ function Shell(p: ShellProps) {
       if (h.s) setStart(h.s)
       if (h.s || h.f) setSel({ id: h.f ?? h.s!, edge: null, key: h.k ?? 'root' })
       setDirState(h.d === 'up' ? 'up' : 'down')
+      const text = leftFrom.current.get(location.hash)
+      // the page is drawn again first: look for it for up to a second
+      if (text) {
+        let tries = 0
+        const find = () => {
+          const el = [...document.querySelectorAll<HTMLElement>('main [role=treeitem], main button, main a, main [tabindex]')].find((x) => (x.textContent ?? '').trim().slice(0, 120) === text)
+          if (el) el.focus()
+          else if (++tries < 10) setTimeout(find, 100)
+        }
+        setTimeout(find, 100)
+      }
     }
     addEventListener('popstate', onPop)
     addEventListener('hashchange', onPop)
@@ -251,24 +287,46 @@ function Shell(p: ShellProps) {
     else if (t.type === 'page') setView(t.id)
     else if (t.type === 'line') goFlow(t.fid, { f: t.f, l: t.l })
     else if (t.type === 'ext') goImpact(t.id)
-    else if (t.type === 'overview') { setSelComp(''); setSelEdge(''); setView('arch') }
+    else if (t.type === 'overview') {
+      setFileAt(null); setSelComp(''); setSelEdge(''); setView('arch')
+      const sec = t.sec
+      if (sec) setTimeout(() => jump(sec), 120)     // after the overview is drawn
+    }
     else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
   }
   function tourGo(i: number) {
     setTourStep(i)
     const v = TOUR_VIEWS[i]
     if (v) setView(v)
+    if (v === 'arch') { setSelComp(''); setSelEdge(''); setFileAt(null) }      // step 1 points at the overview
   }
   function tourStart() {
-    setTourStep(0)
+    beforeTour.current = { view, comp: selComp, edge: selEdge }
+    tourGo(0)
     tour.start()
   }
   function tourClose() {
     tour.close()
-    if (beforeTour.current) setView(beforeTour.current)
+    const was = beforeTour.current
+    if (was) { setView(was.view); setSelComp(was.comp); setSelEdge(was.edge) }     // back where the reader was
     beforeTour.current = null
   }
-  useEffect(() => { if (tour.open && beforeTour.current === null) beforeTour.current = view }, [tour.open])
+  // opened on its own on a first visit, maybe on a shared link to another page: show each step on its own page
+  useEffect(() => {
+    if (!tour.open || beforeTour.current !== null) return
+    beforeTour.current = { view, comp: selComp, edge: selEdge }
+    tourGo(tourStep)
+  }, [tour.open])
+  // a target below a phone's fold, inside the stacked panel's own scrolling: bring it up before the card points at it
+  useEffect(() => {
+    if (!tour.open) return
+    const id = setTimeout(() => {
+      const el = document.querySelector(`[data-tour="${TOUR_TARGETS[tourStep]}"]`)
+      const r = el?.getBoundingClientRect()
+      if (el && r && (r.top < 0 || r.bottom > innerHeight)) revealTop(el, 72)
+    }, 250)
+    return () => clearTimeout(id)
+  }, [tour.open, tourStep, view])
 
   const caps = p.meta?.capabilities
   const detail = start ? (
@@ -281,7 +339,7 @@ function Shell(p: ShellProps) {
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
     : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
-  const side = fileAt && fileAt.view === view ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onClose={() => { setFileAt(null); requestAnimationFrame(() => UI.focusMain()) }} />
+  const side = fileAt && fileAt.view === view ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} />
     : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
@@ -299,6 +357,7 @@ function Shell(p: ShellProps) {
     <OpenFile.Provider value={openFile}>
     <div className="app">
       <a className="ui-skip" href="#main" onClick={(e) => { e.preventDefault(); UI.focusMain() }}>{t('跳到主要內容')}</a>
+      <a className="ui-skip" href="#nav" onClick={(e) => { e.preventDefault(); (document.querySelector<HTMLElement>('.mobile-only:not([hidden]) [role=tab][aria-selected=true], nav [aria-current=page]') ?? document.querySelector<HTMLElement>('nav a, nav button'))?.focus() }}>{t('跳到導覽')}</a>
       {tablet ? (
         <UI.Drawer open={navOpen} onClose={() => setNavOpen(false)} title={t('導覽')} side="left" width={280}>
           <UI.SideNav value={view} onChange={(v) => { setView(v as View); setNavOpen(false) }}
@@ -325,15 +384,15 @@ function Shell(p: ShellProps) {
             // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
-        <UI.CommandPalette open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) setQuery('') }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery}
-          placeholder={t('搜尋函式、檔案、元件、環境變數')} onSelect={select}
+        <UI.CommandPalette open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) setQuery('') }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching}
+          placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋函式、檔案、元件、環境變數，以及程式碼與文件的內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
         <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
-          { target: 'arch', title: t('架構圖'), text: t('codemap 把程式碼整理成元件和呼叫關係。方塊是元件，線是元件之間的關係。') },
+          { target: 'arch', title: t('架構圖'), text: t('codemap 把程式碼整理成元件和呼叫關係：圖中的方塊是元件，線是元件之間的關係。這份概觀依段落列出元件、進入點、環境變數等，點選段落名稱會跳過去。') },
           { target: 'search', title: t('搜尋'), text: COARSE ? t('點選右上的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
-          { target: 'tree', title: t('流程樹'), text: t('展開函式後，標有「推測（規則）」的關係由規則推得，點選標籤查看依據。') },
+          { target: 'tree', title: t('流程樹'), text: t('展開函式查看它呼叫的函式。標有「推測（規則）」的關係由規則推得，點選標籤查看依據。') },
           { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
-          { target: 'notes', title: t('檢查筆記'), text: t('錯誤的位置附有修正建議，可直接複製。') },
+          { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的 file:line 引用與目前的程式碼。錯誤的位置在下方附有修正建議，可直接複製。') },
         ]} />
         <div className="mobile-only">
           <UI.MobileTabBar value={view} onChange={(v) => setView(v as View)} items={[...navItems(), nav('settings')]} />
@@ -345,7 +404,7 @@ function Shell(p: ShellProps) {
 }
 
 type Target = { type: 'func'; id: string } | { type: 'comp'; id: string } | { type: 'page'; id: View } | { type: 'line'; fid: string; f: string; l: number }
-  | { type: 'ext'; id: string } | { type: 'overview' } | { type: 'file'; f: string; l: number }
+  | { type: 'ext'; id: string } | { type: 'overview'; sec?: string } | { type: 'file'; f: string; l: number }
 /** A search result, with where it leads (onSelect gets the same type back). */
 type PaletteItem = UI.PaletteItem & { target: Target; weight?: number }
 
@@ -385,13 +444,17 @@ function paletteItems(ix: Index): PaletteItem[] {
   const ext = new Map<string, string[]>()
   for (const e of ix.g.edges) if (e.src === 'compiler' && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
-    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
+    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算編進索引的檔案；測試等其他檔案的呼叫列在下方的內文結果）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }
   // ideas a reader searches for by name, answered on the overview
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],
     [t('外部進入點（LD_PRELOAD 攔截）'), ['LD_PRELOAD', 'interpose', 'hook', t('攔截'), 'entry point']],
     [t('執行期設定（環境變數）'), ['env', 'getenv', 'environment', t('設定')]]] as const) {
     items.push({ id: 'k:' + label, kind: '概觀', label, detail: t('架構頁的概觀'), keywords: [...keywords], target: { type: 'overview' } })
+  }
+  // every section of the overview, by its heading
+  for (const [sec, label] of OVERVIEW_SECTIONS) {
+    items.push({ id: 'k:' + sec, kind: '概觀', label: t(label), detail: t('架構頁的概觀'), keywords: [label], target: { type: 'overview', sec } })
   }
   // every readable file (headers, Makefile, linker maps too), and macros and file-scope variables by name
   // one entry per file: its name, with the path and the number of functions under it
@@ -410,8 +473,26 @@ function paletteItems(ix: Index): PaletteItem[] {
 
 /** Each kind of search result and its icon; the kinds stay in Chinese inside (the ranking orders by
  *  them) and are shown in the current language. */
-const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house' }
+const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 測試: 'check-square', Python: 'terminal-window', 文件: 'file', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house' }
 const localKind = <T extends { kind?: string }>(i: T): T => ({ ...i, kind: i.kind && t(i.kind) })
+
+/** What a line of text found in a file is: the project's C code first, then its tests, its Python tools, its documents. */
+const TEXT_ORDER = ['程式碼', '測試', 'Python', '文件']
+function textKind(file: string): string {
+  if (/\.(md|rst|txt|adoc)$/i.test(file) || /(^|\/)docs?\//.test(file) && !/\.(c|h|py)$/.test(file)) return '文件'
+  if (/(^|\/)tests?\//.test(file) || /(^|\/)test_[^/]*$/.test(file)) return '測試'
+  if (/\.py$/.test(file)) return 'Python'
+  return '程式碼'
+}
+/** A Markdown line as it reads: no heading marks, emphasis, code ticks or table bars. */
+function plainDoc(s: string): string {
+  return s.replace(/^#+\s*/, '').replace(/^[-*]\s+/, '').replace(/\*\*|__|`/g, '').replace(/\s*\|\s*/g, ' · ').replace(/^ · | · $/g, '').trim()
+}
+/** The overview's sections and their headings (ids are the headings' element ids). */
+const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束'], ['ov-env', '執行期設定（環境變數）'], ['ov-build', '建置產物'],
+  ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方'], ['ov-stops', '結束程式的呼叫'], ['ov-arrays', '固定大小的全域陣列'],
+  ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],
+  ['ov-nullenv', '沒有先檢查 NULL 就使用的 getenv 結果']] as const
 
 let lastCat = 'source'
 

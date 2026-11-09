@@ -28,7 +28,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .open-card { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: var(--space-5); }
 
 /* flow */
-.fnname { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.fnname { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); row-gap: 2px; min-width: 0; }
 .predict { padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-sub); display: flex; flex-direction: column; gap: var(--space-3); }
 
 .rel-tag { display: contents; }
@@ -37,6 +37,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* edge detail: one group per environment variable */
 .edge-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .edge-group h3 { margin: 0; }
+.edge-group + .edge-group, p + .edge-group { margin-top: var(--space-4); }
 
 /* side panel that is a TreeList: the list scrolls inside it */
 .detail.tree-panel { overflow: hidden; }
@@ -82,6 +83,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* impact table: one link per call line, wrapping between links rather than inside one */
 .locs { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
 .entry-list { display: block; margin-top: var(--space-1); }
+.entry-row { display: block; }
 .toc { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
 
 /* side by side with a draggable divider (SplitPane): each area fills its column and scrolls inside */
@@ -95,3 +97,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .split.is-stacked .detail { flex: 0 0 auto; max-height: none; overflow: visible; }
 .doc-refs { margin: var(--space-2) 0 0; }
 .write-row { display: block; }
+.to-flow svg { margin-left: 2px; vertical-align: -2px; }
+.entry-row.indent { padding-left: var(--space-4); }
+.to-flow { white-space: nowrap; } .to-flow svg { display: inline-block; }

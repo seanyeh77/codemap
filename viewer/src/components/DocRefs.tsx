@@ -31,3 +31,20 @@ export function DocRefs(p: { ix: Index; lines: string[] | undefined }) {
     </p>
   )
 }
+
+/** Paths written in the code's comments and strings (docs/design/ring-overrun.md, ring.c:47) as links that open
+ *  the file in the side panel: CodeView's refHref and onRef. A path the project cannot show stays plain text. */
+export function useCodeRefs(ix: Index) {
+  const open = useContext(OpenFile)
+  const readable = ix.g.readable ?? []
+  const find = (ref: string) => {
+    const m = /^(.*?)(?::(\d+))?$/.exec(ref.replace(/^\.\//, ''))
+    if (!m) return null
+    const file = readable.find((f) => f === m[1] || f.endsWith('/' + m[1]))
+    return file ? { file, line: m[2] ? Number(m[2]) : 1 } : null
+  }
+  return {
+    refHref: (ref: string) => (find(ref) ? '#' + ref : undefined),
+    onRef: (ref: string) => { const hit = find(ref); if (hit) open(hit.file, hit.line) },
+  }
+}

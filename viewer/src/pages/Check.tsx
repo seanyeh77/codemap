@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { OpenFile } from '../components/DocRefs'
 import { UI } from '../ui'
 import { list, t } from '../i18n'
 import type { Index } from '../data/graph'
@@ -23,12 +24,20 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const files = q.data ?? p.ix.g.checks ?? []
   const [fileSel, setFile] = useState<string | null>(null)
   const cur = files.find((f) => f.file === fileSel) ?? files[0]
+  const openFile = useContext(OpenFile)
+  // the result is said once after 重新檢查, not every time the page opens (the page title is said then)
+  const asked = useRef(false)
+  useEffect(() => {
+    if (!asked.current || q.isFetching || !q.data) return
+    asked.current = false
+    UI.announce(t('檢查完成，{v1} 項錯誤。', { v1: q.data.flatMap((f) => f.items).filter((r) => r.status === 'fail').length }))
+  }, [q.isFetching, q.data])
 
   if (p.isLive && q.isPending) {
-    return <UI.Card className="pane" data-tour="notes"><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="80%" height={16} /></UI.Card>
+    return <UI.Card className="pane"><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="80%" height={16} /></UI.Card>
   }
   if (p.isLive && q.error) {
-    return <UI.Card className="pane" data-tour="notes"><UI.Alert tone="danger" title={t('無法檢查筆記')}>{(q.error as Error).message}</UI.Alert></UI.Card>
+    return <UI.Card className="pane"><UI.Alert tone="danger" title={t('無法檢查筆記')}>{(q.error as Error).message}</UI.Alert></UI.Card>
   }
   if (!cur) {
     return (
@@ -50,19 +59,19 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const code = (t: string) => <UI.CodeText text={t} refHref={refHref} onRef={onRef} />
   const fixes = rows.filter((r) => r.fix)
   return (
-    <div className="pane" data-tour="notes">
-      {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={t('行')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
-      <UI.Card title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
-        actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => q.refetch()}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
-        <p className="small muted">{t('比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。共 {v1} 行，含 {v2} 個引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
-        {p.isLive && q.dataUpdatedAt ? <p className="small muted" aria-live="polite">{t('檢查時間：{v1}，{v2} 行錯誤。', { v1: UI.format.dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length })}</p> : null}
+    <div className="pane">
+      {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={t('項')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
+      <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
+        actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
+        <p className="small muted">{t('比對筆記裡的 file:line 引用與呼叫是否符合目前的程式碼。共 {v1} 項，含 {v2} 個引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
+        {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤。', { v1: UI.format.dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length })}</p> : null}
         <p className="small muted">{t('「相符」表示引用的那一行出現筆記裡的名稱，或呼叫經編譯器確認，不代表整句的意思都對；「待確認」表示工具無法判斷，說明欄寫了要對照的位置和建議的寫法。')}</p>
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
       <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
-        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: t('行') }}
+        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: t('項') }}
         columns={[
-          { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode>{r.at}</UI.InlineCode> },
+          { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <button type="button" className="linklike code-link" aria-label={t('在檔案中開啟 {v1}', { v1: r.at })} onClick={() => openFile(r.at.slice(0, r.at.lastIndexOf(':')), r.line)}><UI.InlineCode>{r.at}</UI.InlineCode></button> },
           { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
           { key: 'status', label: t('結果'), width: 110, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{t(LABEL[r.status])}</UI.Badge> },
           { key: 'why', label: t('說明'), width: 280, grow: 3, long: true, searchText: (r: CheckItem) => whyText(r), render: (r: CheckItem) => code(whyText(r)) },
