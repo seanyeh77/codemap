@@ -48,3 +48,15 @@ export function useCodeRefs(ix: Index) {
     onRef: (ref: string) => { const hit = find(ref); if (hit) open(hit.file, hit.line) },
   }
 }
+
+/** The language under a code panel's header for files CodeView does not name itself: Makefile, Markdown, JSON. */
+export function langLabel(file: string): string | undefined {
+  const base = file.split('/').pop() ?? ''
+  if (/^(GNU)?[Mm]akefile$|\.mk$/.test(base)) return 'Makefile'
+  if (/\.(md|markdown)$/i.test(base)) return 'Markdown'
+  if (/\.rst$/i.test(base)) return 'reStructuredText'
+  if (/\.json$/i.test(base)) return 'JSON'
+  if (/\.ya?ml$/i.test(base)) return 'YAML'
+  if (/\.(txt|log)$/i.test(base)) return t('純文字')
+  return undefined
+}

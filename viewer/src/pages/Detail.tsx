@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { UI } from '../ui'
-import { DocRefs, useCodeRefs } from '../components/DocRefs'
+import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
 import { noun, t } from '../i18n'
 import type { Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
@@ -72,6 +72,9 @@ export function Detail(p: Props) {
         { label: t('定義'), value: link(f.file, f.line) },
         { label: t('元件'), value: f.comp },
         { label: t('關係'), value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}{t(' · {v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次。流程樹的 ×N 是呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
+        // calls the compiler never saw: inside #if/#ifdef blocks this build leaves out
+        ...((u) => u?.length ? [{ label: t('條件編譯'), value: <span>{t('另有 {v1} 處呼叫在條件編譯裡，這次的 build 沒有編進去，所以不算在上面：', { v1: u.length })}{u.map((x, i) => (
+          <span key={i} className="write-row">{x.by}{t('（{v1}）', { v1: x.cond })}{' '}{link(x.f, x.l)}</span>))}</span> }] : [])(p.ix.g.uncompiled?.[p.sel.id]),
         ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('和 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會先執行這裡的版本。呼叫者在 repo 外，所以 caller 可能是 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
         ...(e && !inside ? [{ label: t('呼叫位置'), value: sites.length > 1
           ? <span>{sites.map((s, i) => <span key={s.l}>{i ? t('、') : ''}{link(s.f, s.l)}</span>)}</span> : link(e.f, e.l) }] : []),
@@ -86,12 +89,12 @@ export function Detail(p: Props) {
       {whole ? (
         file.isPending ? <UI.Skeleton width="80%" height={16} />
           : file.error || !file.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{file.error ? (file.error as Error).message : t('這個檔案不在索引裡。')}</UI.Alert>
-          : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" {...refs} /><DocRefs ix={p.ix} lines={file.data.lines} /></>
+          : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" {...refs} languageLabel={langLabel(file.data.file)} /><DocRefs ix={p.ix} lines={file.data.lines} /></>
       ) : at ? <CodeAt ix={p.ix} at={at} isLive={p.isLive} sourceId={p.sourceId} maxHeight="60vh" focus />
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
         : !src.data ? <p className="small muted">{t('匯出快照時讀不到這個檔案。請在 build 環境重新執行 codemap export。')}</p>
-        : <UI.CodeView {...refs} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
+        : <UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}
       {p.isLive ? <div className="keep"><UI.Button onClick={() => setWhole(whole ? null : selKey)}>{whole ? t('只顯示這個函式') : t('顯示整個檔案')}</UI.Button></div> : null}

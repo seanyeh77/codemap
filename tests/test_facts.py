@@ -129,6 +129,32 @@ class Facts(unittest.TestCase):
         self.assertEqual((m["REC"]["kind"], m["REC"]["default"], m["REC"]["into"], m["REC"]["purpose"]), ("flag", "on", "g_rec", "records or not"))
         self.assertEqual((m["SHM"]["kind"], m["SHM"]["default"]), ("text", 'SHM_DEFAULT ("/x")'))
 
+    def test_silent_limits(self):
+        (self.root / "l.c").write_text(
+            "void add(int x)\n{\n    if (g_n >= IBT_MAX_CTX)\n        return;\n    g_a[g_n++] = x;\n}\n"
+            "void put(int x)\n{\n    if (n >= OTHER_MAX) {\n        fprintf(stderr, \"full\");\n        return;\n    }\n}\n"
+            "void parse(int a)\n{\n    if (a >= CPU_SETSIZE)\n        return;\n}\n")
+        funcs = {"add": dict(name="add", file="l.c", line=1, end=6), "put": dict(name="put", file="l.c", line=7, end=13),
+                 "parse": dict(name="parse", file="l.c", line=14, end=18)}
+        got = facts.silent_limits(self.root, funcs)
+        self.assertEqual([(x["fid"], x["l"], x["limit"]) for x in got["silent"]], [("add", 3, "IBT_MAX_CTX")])
+        self.assertEqual([x["fid"] for x in got["said"]], ["put"])
+
+    def test_uncompiled_calls(self):
+        (self.root / "u.c").write_text(
+            "#ifndef U_H\n#define U_H\n#endif\nint ready(void) { return 1; }\n"
+            "void run(void)\n{\n#ifdef OLD_PATH\n    ready();\n#endif\n    ready();\n}\n")
+        funcs = {"ready": dict(name="ready", file="u.c", line=4, end=4), "run": dict(name="run", file="u.c", line=5, end=11)}
+        edges = [dict(s="run", d="ready", f="u.c", l=10)]
+        got = facts.uncompiled_calls(self.root, funcs, edges)
+        self.assertEqual(got, {"ready": [dict(f="u.c", l=8, cond="#ifdef OLD_PATH", by="run")]})
+
+    def test_env_comments(self):
+        (self.root / "t.h").write_text("/* X_ALL=1: record every call one by one. Costs a lot. */\n")
+        (self.root / "t.c").write_text("static int g_all; /* X_ALL=1 */\n// see also X_ALL in the docs\n")
+        got = facts.env_comments(self.root, ["t.h", "t.c"], {"X_ALL"})["X_ALL"]
+        self.assertEqual((got[0]["at"], got[0]["defines"], got[0]["text"]), ("t.h:1", True, "X_ALL=1: record every call one by one."))
+
     def test_arg_strings(self):
         src = ["import subprocess", "", "def tool_path(d):", "    return d + '/mon'", "",
                "def run(d):", "    cmd = [tool_path(d), '-q']", "    cmd += ['--', 'prog']", "    subprocess.Popen(cmd)",

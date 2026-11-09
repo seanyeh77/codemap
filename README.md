@@ -119,6 +119,10 @@ project's reading of its code, so codemap never guesses it.
 Without it the overview still shows what the C code reads it as (a flag, a number,
 text, or only whether it is set), its value when unset, and where it is stored.
 
+Without `purpose`, the overview shows the sentence of a comment that names the
+variable (`IBTRACE_ALL_POLLS=1: record the empty calls one by one`), from the C
+files and the headers next to them.
+
 `channels` declares data that one component hands to another through a shared
 one (a shared-memory ring, a queue) without any call between them. The
 architecture diagram draws each as a dashed line labelled 「經由 `src/common`

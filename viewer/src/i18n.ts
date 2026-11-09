@@ -23,6 +23,9 @@ export const t = (zh: string, vars?: Record<string, string | number | null | und
 /** A line number (file:{l}, 第 {l} 行, line {l}) is never grouped: ring.c:1024, not ring.c:1,024. */
 const lineLike = (zh: string, k: string) => new RegExp(`(:|第 ?|行 ?)\\{${k}\\}|\\{${k}\\} ?行`).test(zh)
 
+/** A unit after a count, for UI.Tabs and DataTable summaries: 「項」 in Chinese, item or items in English. */
+export const countUnit = (zh: string, one: string, many: string) => (n: number) => (current === 'en' ? (n === 1 ? one : many) : zh)
+
 /** A count as the interface's language writes it. */
 export const num = (n: number) => new Intl.NumberFormat(current === 'en' ? 'en-US' : 'zh-TW').format(n)
 

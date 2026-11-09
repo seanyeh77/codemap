@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { OpenFile } from '../components/DocRefs'
 import { UI } from '../ui'
-import { list, t } from '../i18n'
+import { list, countUnit, t } from '../i18n'
 import type { Index } from '../data/graph'
 import { live } from '../data/load'
 import type { CheckFile, CheckItem, Sel } from '../data/types'
@@ -60,7 +60,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const fixes = rows.filter((r) => r.fix)
   return (
     <div className="pane">
-      {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={t('項')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
+      {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={countUnit('項', 'item', 'items')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
       <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
         <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
@@ -69,7 +69,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
       <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
-        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: t('項') }}
+        summary={{ key: 'status', items: (['fail', 'review', 'done'] as const).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
         columns={[
           { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <button type="button" className="linklike code-link" aria-label={t('在檔案中開啟 {v1}', { v1: r.at })} onClick={() => openFile(r.at.slice(0, r.at.lastIndexOf(':')), r.line)}><UI.InlineCode>{r.at}</UI.InlineCode></button> },
           { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },

@@ -133,7 +133,7 @@ export interface Graph {
   /** Stages of a long function's calls, from .codemap/rules.json: function name -> [{name, from}]. */
   /** How the C code reads each variable: flag, number, text or presence; its value when unset; where it is stored.
    *  purpose and default with own: written in .codemap/rules.json (env). */
-  env_info?: Record<string, { kind?: 'flag' | 'number' | 'text' | 'presence'; default?: string | null; into?: string | null; via?: string; at?: string; purpose?: string; own?: boolean }>
+  env_info?: Record<string, { comments?: { text: string; at: string; defines: boolean }[]; kind?: 'flag' | 'number' | 'text' | 'presence'; default?: string | null; into?: string | null; via?: string; at?: string; purpose?: string; own?: boolean }>
   phases?: Record<string, { name: string | Record<string, string>; from: string }[]>
   /** What the Makefile builds and installs, read from `make -n`. Null when there is no Makefile. */
   build?: BuildInfo | null
@@ -150,11 +150,17 @@ export interface Graph {
     errors?: { code: string; fid: string; f: string; l: number; how: 'return' | 'errno' }[]
     /** file-scope variables changed with a plain store, not an atomic operation */
     plain_writes?: { name: string; file: string; line: number; static: boolean; writes: { fid: string; f: string; l: number; text: string }[] }[]
+    /** a count reaching a MAX constant: returns without a word (silent), or prints first (said) */
+    limits?: { silent: Limit[]; said: Limit[] }
   }
+  /** Calls inside #if/#ifdef blocks the compiler did not record, by the function called. */
+  uncompiled?: Record<string, { f: string; l: number; cond: string; by: string }[]>
   /** In a snapshot only; live, the Check page asks the server. */
   checks?: CheckFile[]
   config: { cc: string | null; scope: string[] | null }
 }
+
+export interface Limit { fid: string; f: string; l: number; cond: string; limit: string }
 
 export interface Capabilities {
   rebuild: boolean

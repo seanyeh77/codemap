@@ -640,7 +640,7 @@ def at_load(edges):
 def worth_checking(root, funcs, edges, files, symbols):
     return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, funcs),
                 env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs),
-                plain_writes=plain_writes(root, funcs, files))
+                plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, funcs))
 
 
 def macro_value(root, funcs, name):
@@ -719,7 +719,174 @@ def env_meaning(root, funcs, env, config=None):
                 info["default"] = d + (f" ({val})" if (val := macro_value(root, funcs, d)) else "")
             out[name] = dict(info, into=into, at=ref)
             break
+    # what the project's comments say: the sentence that names the variable, best first
+    # the indexed files, the headers next to them (trace.h has no function but documents the switches), and include/
+    dirs = {Path(f["file"]).parent for f in funcs.values()}
+    files = sorted({f["file"] for f in funcs.values()}
+                   | {str(p.relative_to(root)) for d in dirs if (root / d).is_dir() for p in (root / d).glob("*.h")}
+                   | {str(p.relative_to(root)) for p in (root / "include").rglob("*.h")} if (root / "include").is_dir() else set())
+    for name, cs in env_comments(root, files, set(out) | set(env or {})).items():
+        if cs:
+            out.setdefault(name, {})["comments"] = cs[:3]
     for name, own in ((config or {}).get("env") or {}).items():
         if isinstance(own, dict):
             out.setdefault(name, {}).update({k: own[k] for k in ("purpose", "default") if own.get(k)}, own=True)
+    return out
+
+
+# ---- limits reached without a word ----------------------------------------------------------
+
+NOT_LIMITS = {"NULL", "MAP_FAILED", "EOF", "SIG_ERR", "SEM_FAILED", "INVALID", "TRUE", "FALSE"}
+SAYS = re.compile(r"\b\w*(print|puts|perror|syslog|warn|log|err|abort|assert|die|fail)\w*\s*\(", re.I)
+
+
+def balanced(text, i, open_, close):
+    """The index after the bracket that closes the one at text[i]."""
+    depth = 0
+    for j in range(i, len(text)):
+        if text[j] == open_:
+            depth += 1
+        elif text[j] == close:
+            depth -= 1
+            if depth == 0:
+                return j + 1
+    return len(text)
+
+
+def silent_limits(root, funcs):
+    """Where a function gives up on reaching a fixed limit without saying so: an `if` comparing a
+    count with an UPPER_CASE constant (g_nhooks >= IBT_MAX_CTX) whose body returns and prints
+    nothing. The ones that do print are counted too, for contrast.
+    -> {silent: [{fid, f, l, cond, limit}], said: [the same]}"""
+    root = Path(root)
+    out = dict(silent=[], said=[])
+    for fid, f in sorted(funcs.items(), key=lambda kv: (kv[1]["file"], kv[1]["line"])):
+        if not f["file"].endswith((".c", ".h")):
+            continue
+        src = lines_text(root / f["file"]).splitlines()
+        text = "\n".join(src[f["line"] - 1:f["end"]])
+        text = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), text, flags=re.S)
+        text = re.sub(r"//[^\n]*", "", text)
+        for m in re.finditer(r"\bif\s*\(", text):
+            start = m.end() - 1
+            end = balanced(text, start, "(", ")")
+            cond = text[start + 1:end - 1]
+            # a capacity: a count reaching a MAX_ / _MAX / LIMIT constant (g_nhooks >= IBT_MAX_CTX)
+            lim = next((x for x in re.findall(r"(?:>=|==)\s*\(?\s*([A-Z][A-Z0-9_]{2,})\b", cond)
+                        if x not in NOT_LIMITS and re.search(r"(^|_)(MAX|LIMIT|CAP)(_|$)", x)), None)
+            if not lim:
+                continue
+            rest = text[end:].lstrip()
+            body = rest[:balanced(rest, 0, "{", "}")] if rest.startswith("{") else rest.split(";", 1)[0] + ";"
+            if not re.search(r"\breturn\b", body):
+                continue
+            hit = dict(fid=fid, f=f["file"], l=f["line"] + text[:m.start()].count("\n"),
+                       cond=" ".join(cond.split()), limit=lim)
+            out["said" if SAYS.search(body) else "silent"].append(hit)
+    return out
+
+
+# ---- calls the build leaves out ---------------------------------------------------------------
+
+def uncompiled_calls(root, funcs, edges):
+    """Calls written inside #if/#ifdef blocks that the compiler did not record: code the current
+    build leaves out (reader.c:140 under #ifdef IBMON_FAULT_LEGACY_DRAIN). A plain text match for
+    the names of indexed functions, so a call through a macro can show up too.
+    -> {function id: [{f, l, cond, by}]}"""
+    root = Path(root)
+    ids = {}
+    for fid, f in funcs.items():
+        ids.setdefault(f["name"], []).append(fid)
+    if not ids:
+        return {}
+    seen = {(e.get("f"), e.get("l"), e["d"]) for e in edges}
+    pat = re.compile(r"\b(" + "|".join(sorted(map(re.escape, ids), key=len, reverse=True)) + r")\s*\(")
+    files = sorted({f["file"] for f in funcs.values() if f["file"].endswith((".c", ".h"))})
+    out = {}
+    for rel in files:
+        src = lines_text(root / rel).splitlines()
+        stack, in_comment = [], False
+        owner = sorted((f for f in funcs.values() if f["file"] == rel), key=lambda f: f["line"])
+        for n, ln in enumerate(src, 1):
+            code = ln
+            if in_comment:
+                if "*/" not in code:
+                    continue
+                code, in_comment = code.split("*/", 1)[1], False
+            code = re.sub(r"/\*.*?\*/", " ", code)
+            if "/*" in code:
+                code, in_comment = code.split("/*", 1)[0], True
+            code = re.sub(r"//.*", "", code)
+            d = re.match(r"\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)", code)
+            if d:
+                kind, arg = d.group(1), " ".join(d.group(2).split())
+                if kind in ("if", "ifdef", "ifndef"):
+                    # include guards (#ifndef X_H) cover the whole header: not a condition on code
+                    stack.append(None if kind == "ifndef" and re.fullmatch(r"\w+_H_?", arg) else f"#{kind} {arg}")
+                elif kind in ("elif", "else") and stack and stack[-1]:
+                    stack[-1] = f"#{kind} {arg}".strip() + f"（{stack[-1]}）"
+                elif kind == "endif" and stack:
+                    stack.pop()
+                continue
+            cond = next((c for c in reversed(stack) if c), None)
+            if not cond:
+                continue
+            code = re.sub(r"\"(\\.|[^\"\\])*\"", "\"\"", code)
+            for m in pat.finditer(code):
+                if not ln[:1].isspace() and not ln.rstrip().endswith(";"):
+                    continue                    # the line defines the name (a second definition under #ifdef)
+                by = next((f["name"] for f in reversed(owner) if f["line"] <= n <= f["end"]), None)
+                if by is None:
+                    # a function the build leaves out entirely: the nearest definition above
+                    head = next((re.search(r"\b(\w+)\s*\(", src[k]) for k in range(n - 2, -1, -1)
+                                 if re.match(r"[A-Za-z_][^;]*\b\w+\s*\([^;]*$", src[k]) and not src[k].lstrip().startswith("#")), None)
+                    if head is None:
+                        continue
+                    by = head.group(1)
+                for fid in ids[m.group(1)]:
+                    if (rel, n, fid) not in seen and funcs[fid]["line"] != n:
+                        out.setdefault(fid, []).append(dict(f=rel, l=n, cond=cond, by=by))
+    return out
+
+
+# ---- what the project's comments say about an environment variable ---------------------------------
+
+def comment_blocks(text):
+    """(first line, joined text) of every comment block: /* ... */ and runs of // lines."""
+    out, i, n = [], 0, len(text)
+    for m in re.finditer(r"/\*.*?\*/|(?://[^\n]*\n?)+", text, re.S):
+        body = m.group(0)
+        body = re.sub(r"^/\*+|\*+/$", "", body.strip())
+        body = re.sub(r"(?m)^\s*(\*|//+)\s?", "", body)
+        out.append((text.count("\n", 0, m.start()) + 1, " ".join(body.split())))
+    return out
+
+
+def env_comments(root, files, names):
+    """name -> [{text, at, defines}]: the sentence of each comment that mentions an environment
+    variable, from the C and header files; defines is true for one that starts by naming it
+    (`IBTRACE_ALL_POLLS=1: record the empty calls one by one`), which says best what it is for."""
+    root = Path(root)
+    out = {n: [] for n in names}
+    if not names:
+        return out
+    pat = re.compile(r"\b(" + "|".join(map(re.escape, sorted(names, key=len, reverse=True))) + r")\b")
+    for rel in sorted(files):
+        if not rel.endswith((".c", ".h")):
+            continue
+        for line, body in comment_blocks(lines_text(root / rel)):
+            # sentences end at . ! ? before a capital or a parenthesis: not inside ./ibmon or /ibtrace.<pid>
+            ends = [x.end() for x in re.finditer(r"[.!?](?=\s+[A-Z(])", body)]
+            for m in pat.finditer(body):
+                name = m.group(1)
+                a = max([e for e in ends if e <= m.start()], default=0)
+                b = min([e for e in ends if e > m.end()], default=len(body))
+                sentence = body[a:b].strip()
+                if len(sentence) > 260:
+                    sentence = sentence[:257].rstrip() + "..."
+                # IBTRACE_ALL_POLLS=1: record the empty calls... (an example such as LD_PRELOAD=./other.so is not)
+                defines = bool(re.match(re.escape(name) + r"(=\S+)?(:\s+|\s+[a-z])", sentence)) and len(sentence) >= 25
+                out[name].append(dict(text=sentence, at=f"{rel}:{line}", defines=defines))
+    for name in out:
+        out[name].sort(key=lambda c: (not c["defines"], not c["at"].split(":")[0].endswith(".h"), c["at"]))
     return out

@@ -172,11 +172,11 @@ function Shell(p: ShellProps) {
     const indexed = new Set(ix.byFile().keys())
     return hits.slice(0, 30).map((h): PaletteItem => {
       const fid = Object.keys(ix.funcs).find((id) => { const f = ix.funcs[id]; return f.file === h.file && f.line <= h.line && h.line <= f.end })
-      const kind = textKind(h.file)
+      const kind = /^\s*(\/\/|\/\*|\*|#(?!\s*(include|define|if|ifdef|ifndef|else|elif|endif|pragma|undef)\b))/.test(h.text) && textKind(h.file) !== '文件' ? '註解' : textKind(h.file)
       // a C line outside every indexed function: either between functions, or in a file the build does not compile
       const where = fid ? ` · ${ix.funcs[fid].name}` : kind !== '程式碼' && kind !== '測試' ? ''
-        : indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('檔案不在 compile_commands.json，沒有索引')}`
-      return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件',
+        : indexed.has(h.file) ? ` · ${t('在函式之外')}` : ` · ${t('檔案不在 compile_commands.json，codemap 沒有分析它的呼叫')}`
+      return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
         detail: `${h.file}:${h.line}` + where, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
   }, [typed, isLive, grepLive.data, ix])
@@ -184,11 +184,8 @@ function Shell(p: ShellProps) {
   // the count is said once the text results are in, not while they are still arriving
   const searching = query.trim().length >= 2 && (typed !== query.trim() || (isLive && grepLive.isFetching))
   const found = useMemo(() => {
-    const all = [...ranked, ...textHits]
-    if (all.length || query.trim().length < 2 || searching) return all
-    // nothing at all: say what the search covers and where the lists are
-    return [{ id: 'hint:overview', kind: '概觀', label: t('找不到結果，請改用較短的詞或名稱的一部分'), target: { type: 'overview' } } as PaletteItem]
-  }, [ranked, textHits, query, searching])
+    return [...ranked, ...textHits]
+  }, [ranked, textHits])
   const tour = UI.useTour('codemap')
   const [tourStep, setTourStep] = useState(0)
   const beforeTour = useRef<{ view: View; comp: string; edge: string } | null>(null)
@@ -332,7 +329,7 @@ function Shell(p: ShellProps) {
     <Detail ix={ix} sel={sel} isLive={isLive} sourceId={p.sourceId} canMacro={!!caps?.macro} goFlow={goFlow} goImpact={goImpact} view={view} start={start} />
   ) : null
   const empty = !p.graph.comps.length
-  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={setSelComp} edge={selEdge} onEdge={setSelEdge} />
+  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={(c) => { setFileAt(null); setSelComp(c) }} edge={selEdge} onEdge={(e) => { setFileAt(null); setSelEdge(e) }} />
     : view === 'flow' && start ? <Flow key={start + dir} ix={ix} start={start} dir={dir} setDir={setDir} dirMoved={dirMoved}
         predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} openSearch={() => setSearchOpen(true)} />
@@ -384,11 +381,12 @@ function Shell(p: ShellProps) {
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
         <UI.CommandPalette open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) setQuery('') }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching}
+          noResultsText={(q) => t('找不到「{v1}」，請改用較短的詞或名稱的一部分', { v1: q })}
           placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
         <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
           { target: 'arch', title: t('架構圖'), text: t('方塊是元件，線是元件之間的關係。點選概觀的段落名稱，跳到該段。') },
-          { target: 'search', title: t('搜尋'), text: COARSE ? t('點選右上的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
+          { target: 'search', title: t('搜尋'), text: COARSE ? t('點選畫面上方的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
           { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則）」的關係由規則推得，點選標籤查看依據。') },
           { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
           { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
@@ -443,7 +441,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   const ext = new Map<string, string[]>()
   for (const e of ix.g.edges) if (e.src === 'compiler' && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
-    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算編進索引的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
+    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算 compile_commands.json 裡的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }
   // ideas a reader searches for by name, answered on the overview
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],
@@ -453,7 +451,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   }
   // every section of the overview, by its heading
   for (const [sec, label] of OVERVIEW_SECTIONS) {
-    items.push({ id: 'k:' + sec, kind: '概觀', label: t(label), detail: t('架構頁的概觀'), keywords: [label], target: { type: 'overview', sec } })
+    items.push({ id: 'k:' + sec, kind: '概觀', label: t(label), detail: t('架構頁的概觀'), keywords: [label, t(label), ...(SECTION_WORDS[sec] ?? [])], target: { type: 'overview', sec } })
   }
   // every readable file (headers, Makefile, linker maps too), and macros and file-scope variables by name
   // one entry per file: its name, with the path and the number of functions under it
@@ -472,11 +470,11 @@ function paletteItems(ix: Index): PaletteItem[] {
 
 /** Each kind of search result and its icon; the kinds stay in Chinese inside (the ranking orders by
  *  them) and are shown in the current language. */
-const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 測試: 'check-square', Python: 'terminal-window', 文件: 'file', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house' }
+const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 測試: 'check-square', 註解: 'info', Python: 'terminal-window', 文件: 'file', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house' }
 const localKind = <T extends { kind?: string }>(i: T): T => ({ ...i, kind: i.kind && t(i.kind) })
 
 /** What a line of text found in a file is: the project's C code first, then its tests, its Python tools, its documents. */
-const TEXT_ORDER = ['程式碼', '測試', 'Python', '文件']
+const TEXT_ORDER = ['程式碼', '註解', '測試', 'Python', '文件']
 function textKind(file: string): string {
   if (/\.(md|rst|txt|adoc)$/i.test(file) || /(^|\/)docs?\//.test(file) && !/\.(c|h|py)$/.test(file)) return '文件'
   if (/(^|\/)tests?\//.test(file) || /(^|\/)test_[^/]*$/.test(file)) return '測試'
@@ -487,10 +485,14 @@ function textKind(file: string): string {
 function plainDoc(s: string): string {
   return s.replace(/^#+\s*/, '').replace(/^[-*]\s+/, '').replace(/\*\*|__|`/g, '').replace(/\s*\|\s*/g, ' · ').replace(/^ · | · $/g, '').trim()
 }
+/** Other words a reader may search for a section with. */
+const SECTION_WORDS: Record<string, string[]> = { 'ov-limits': ['上限', 'limit', 'MAX', 'silent', '靜默'], 'ov-worth': ['風險', '問題', '限制', 'risk', 'risks', 'issue'], 'ov-env': ['env', 'getenv', '設定'],
+  'ov-build': ['make', 'Makefile', '安裝', 'install'], 'ov-writes': ['輸出', 'output', 'fopen'], 'ov-entry': ['constructor', 'destructor', 'LD_PRELOAD'] }
+
 /** The overview's sections and their headings (ids are the headings' element ids). */
 const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束'], ['ov-env', '執行期設定（環境變數）'], ['ov-build', '建置產物'],
   ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方'], ['ov-stops', '結束程式的呼叫'], ['ov-arrays', '固定大小的全域陣列'],
-  ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],
+  ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-limits', '到達上限時直接返回、不印訊息'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],
   ['ov-nullenv', '沒有先檢查 NULL 就使用的 getenv 結果']] as const
 
 let lastCat = 'source'

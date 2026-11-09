@@ -18,7 +18,7 @@ function labelOf(l: Link) {
   if (l.kind === 'channel') return t('經由 `{v1}` 傳資料{v2}', { v1: l.via ?? '', v2: l.label ? t('（{v1}）', { v1: l.label }) : '' })
   if (l.kind === 'runs') return t('執行 {v1}', { v1: (l.names ?? []).map((n) => '`' + n + '`').join(', ') })
   if (l.kind === 'reads') return t('讀取 {v1} 的定義', { v1: (l.names ?? []).map((n) => '`' + n + '`').join(', ') })
-  return t('攔截 {v1} 次 `{v2}` 呼叫', { v1: l.n, v2: l.api })
+  return t('{v1} 處 `{v2}` 呼叫被攔截', { v1: l.n, v2: l.api })
 }
 
 /** The calls each component makes into a shared one: component -> its call edges, by caller. */
@@ -49,13 +49,15 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
       label: (x.preload ? t('啟動（{calls}），設定 LD_PRELOAD', { calls: [...x.calls].sort().join(', ') }) : t('啟動（{calls}）', { calls: [...x.calls].sort().join(', ') })) })),
     ...g.links.map((l) => (l.kind === 'call'
       ? { id: edgeId(l), from: l.a, to: l.b, count: l.n }
-      : { id: edgeId(l), from: l.a, to: l.b, inferred: true, label: labelOf(l) }))], [g, entries, starts])
+      // a channel is declared in .codemap/rules.json: it has a basis, so it is not drawn as a guess
+      : { id: edgeId(l), from: l.a, to: l.b, inferred: l.kind !== 'channel', declared: l.kind === 'channel', label: labelOf(l) }))], [g, entries, starts])
   return (
     <UI.Card className="pane fit">
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('元件'), edges: t('關係') }}
         externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
-        inferredText={t('函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。')} />
+        inferredText={t('函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。')}
+        inferredLabel={t('推測')} declaredLabel={t('宣告')} declaredLegend={t('專案宣告的關係')} declaredText={t('寫在 .codemap/rules.json 的 channels，例如兩個程式共用的 ring。')} />
     </UI.Card>
   )
 }
@@ -123,7 +125,7 @@ function EntryDetail(p: { ix: Index; id: string; onPick: (id: string) => void; o
       {((xs) => xs.length ? <p className="small muted">{t('repo 裡的 {v1} 也會被這樣追蹤：見它連到 {v2} 的線。', { v1: list(xs.map((l) => l.a)), v2: list([...new Set(xs.map((l) => l.b))]) })}</p> : null)(p.ix.g.links.filter((l) => l.kind === 'interpose'))}
       {((xs) => xs.length ? <p className="small muted">{t('啟動它的是 {v1}。', { v1: list(xs.map((x) => x.comp)) })}</p> : null)(launchers(p.ix))}
       {((n) => n ? <p className="small muted">{t('另有 {n} 個函式被裝進函式指標或表格，由被追蹤的程式經由指標呼叫，不在這份清單裡。', { n })}</p> : null)(
-        Object.keys(p.ix.funcs).filter((id) => !p.ix.funcs[id].api && p.ix.callers(id).some((e) => e.k === 'fnptr_assign' || e.k === 'fnptr_table')).length)}
+        [...pointerEntries(p.ix).values()].flat().length)}
       {groups.map((x) => (
         <section key={x.id}>
           <h3 className="small">{t('攔截 {api} 的 {n} 個函式（{comp}）', { api: x.api, n: x.ids.length, comp: x.comp })}</h3>
@@ -220,7 +222,9 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
           else if (!comps.has(c)) comps.set(c, cur === fid ? '' : p.ix.funcs[cur].name)
         }
       }
-      return comps.size ? t('由 {v1} 呼叫', { v1: [...comps].map(([c, via]) => via ? t('{v1}（經由 {v2}）', { v1: c, v2: via }) : c).join(t('、')) }) : t('沒有其他元件呼叫它')
+      const left = p.ix.g.uncompiled?.[fid]?.length ?? 0
+      const more = left ? t('；另有 {v1} 處在條件編譯裡，這次的 build 沒有編進去', { v1: left }) : ''
+      return (comps.size ? t('由 {v1} 呼叫', { v1: [...comps].map(([c, via]) => via ? t('{v1}（經由 {v2}）', { v1: c, v2: via }) : c).join(t('、')) }) : t('沒有其他元件呼叫它')) + more
     }
     const viaFuncs = Object.entries(p.ix.funcs).filter(([, f]) => f.comp === l.via)
     const life = viaFuncs.map(([id, f]) => [id, f, [...new Set(p.ix.callees(id, true).map((e) => e.dn ?? '').filter((n) => LIFECYCLE.has(n)))]] as const).filter(([, , xs]) => xs.length)
@@ -327,14 +331,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   for (const f of Object.values(p.ix.funcs)) if (f.api) apis.set(f.api, (apis.get(f.api) ?? 0) + 1)
   // functions nothing in the repo calls directly, put into a function pointer that code outside the repo calls
   // (an ops table, a UCT table, a signal handler): grouped by the function that installs them
-  const installed = new Map<string, string[]>()
-  for (const [id, f] of Object.entries(p.ix.funcs)) {
-    if (f.api) continue
-    const by = p.ix.callers(id)
-    if (by.some((e) => e.src === 'compiler' && p.ix.funcs[e.s])) continue
-    const put = by.find((e) => e.k === 'fnptr_assign' && p.ix.funcs[e.s])
-    if (put) push(installed, put.s, id)
-  }
+  const installed = pointerEntries(p.ix)
   const line = (id: string, key: string) => <>{fn(id)}{' '}{at(key, p.ix.funcs[id].file, p.ix.funcs[id].line)}</>
   // variables a C file reads: the ones that steer the program; the rest belong to scripts and tests
   const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some((r) => /\.[ch]:\d+$/.test(r) && fname(r)))
@@ -362,7 +359,11 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <UI.DetailList items={[
             ...lifecycle.map((e, i) => ({
               label: e.k === 'constructor' ? t('載入時自動執行') : t('結束時自動執行'),
-              value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.d)}>{p.ix.funcs[e.d].name}</button>{t('（{v1}）', { v1: p.ix.funcs[e.d].comp })}{' '}{at(`life${i}`, p.ix.funcs[e.d].file, p.ix.funcs[e.d].line)}</span>,
+              value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.d)}>{p.ix.funcs[e.d].name}</button>{t('（{v1}）', { v1: p.ix.funcs[e.d].comp })}{' '}{at(`life${i}`, p.ix.funcs[e.d].file, p.ix.funcs[e.d].line)}
+                {/* two constructors in one component (one .so): the loader does not promise an order */}
+                {e.k === 'constructor' && lifecycle.filter((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp).length > 1
+                  && lifecycle.find((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp) === e
+                  ? <><br /><span className="muted">{t('{v1} 有多個 constructor，同一個程式庫裡它們的先後順序沒有保證。', { v1: p.ix.funcs[e.d].comp })}</span></> : null}</span>,
             })),
             ...[...apis].sort().map(([api, n]) => ({
               label: t('外部進入點'),
@@ -388,9 +389,13 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h3 className="small" id="ov-env" tabIndex={-1}>{t('執行期設定（環境變數）')}</h3>
           <UI.DetailList items={env.map(([name, v]) => ({
             label: name,
-            value: <span>{((m) => m ? <>{meaning(m)}<br /></> : null)(g.env_info?.[name])}{t('讀取：{v1}', { v1: where(v.get).join(t('、')) || '—' })}{where(v.set).length ? <><br />{t('設定：{v1}', { v1: where(v.set).join(t('、')) })}</> : null}{((n) => n ? <><br /><span className="muted">{t('另有 {v1} 處在 Python 工具、測試或腳本裡，可用搜尋找到', { v1: n })}</span></> : null)([...v.get, ...v.set].filter((r) => !/\.[ch]:\d+$/.test(r)).length)}</span>,
+            value: <span>{name === 'LD_PRELOAD' ? <>{t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。')}<br /></> : null}{((m) => m ? <>{meaning(m)}<br /></> : null)(g.env_info?.[name])}{t('讀取：{v1}', { v1: where(v.get).join(t('、')) || '—' })}{where(v.set).length ? <><br />{t('設定：{v1}', { v1: where(v.set).join(t('、')) })}</> : null}{((n) => n ? <><br /><span className="muted">{t('另有 {v1} 處在 Python 工具、測試或腳本裡，可用搜尋找到', { v1: n })}</span></> : null)([...v.get, ...v.set].filter((r) => !/\.[ch]:\d+$/.test(r)).length)}</span>,
           }))} />
-          {others > 0 ? <p className="small muted">{t('另有 {v1} 個變數只出現在 Python 工具、測試或腳本裡，可用搜尋找到。', { v1: others })}</p> : null}
+          {others > 0 ? <p className="small muted">
+            <button type="button" className="linklike" aria-expanded={openApi === '*env'} onClick={() => setOpenApi(openApi === '*env' ? null : '*env')}>{t('另有 {v1} 個變數只出現在 Python 工具、測試或腳本裡', { v1: others })}</button>
+            {openApi === '*env' ? <span className="entry-list">{Object.entries(g.env ?? {}).filter(([name]) => !env.some(([n]) => n === name)).sort(([a], [b]) => a.localeCompare(b)).map(([name, v]) => (
+              <span key={name} className="entry-row"><UI.InlineCode>{name}</UI.InlineCode>{' '}{[...v.get, ...v.set].slice(0, 3).join(t('、'))}{[...v.get, ...v.set].length > 3 ? t('，共 {v1} 處', { v1: [...v.get, ...v.set].length }) : ''}</span>))}</span> : null}
+          </p> : null}
         </section>
       ) : null}
       {g.build ? <Products build={g.build} at={at} /> : null}
@@ -423,6 +428,15 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             label: e.code,
             value: <span>{fn(e.fid)}{p.ix.funcs[e.fid]?.api ? t('（外部進入點）') : p.ix.callers(e.fid).some((x) => x.k === 'fnptr_assign' || x.k === 'fnptr_table') ? t('（裝進函式指標）') : ''}{e.how === 'errno' ? t(' 設定 errno：') : t(' 回傳：')}{at(`err${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
+          <h4 className="small" id="ov-limits" tabIndex={-1}>{t('到達上限時直接返回、不印訊息')}</h4>
+          {g.worth.limits?.silent.length ? <>
+            <p className="small muted">{t('計數到達 MAX 常數時直接 return，使用者不會知道有東西沒被處理。')}</p>
+            <UI.DetailList items={g.worth.limits.silent.map((x, i) => ({
+              label: x.limit,
+              value: <span>{fn(x.fid)}{t('：')}<code className="small">{x.cond}</code>{' '}{at(`lim${i}`, x.f, x.l)}</span>,
+            }))} />
+            {g.worth.limits.said.length ? <p className="small muted">{t('另有 {v1} 處到達上限時會先印出訊息：', { v1: g.worth.limits.said.length })}{g.worth.limits.said.map((x, i) => <span key={i}>{i ? t('、') : ''}{fn(x.fid)}{' '}{at(`said${i}`, x.f, x.l)}</span>)}</p> : null}
+          </> : <p className="small muted">{t('沒有找到。')}</p>}
           <h4 className="small" id="ov-plain" tabIndex={-1}>{t('不經 atomic 操作就修改的全域變數')}</h4>
           {g.worth.plain_writes?.length ? <>
             <p className="small muted">{t('沒有判斷是否有鎖保護或只在單一執行緒執行。標「載入時」的寫入在 constructor 裡，通常早於其他執行緒。')}</p>
@@ -447,10 +461,28 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
 function meaning(m: NonNullable<Graph['env_info']>[string]): ReactNode {
   const kind = m.kind === 'flag' ? t('開關，0 為關閉、其他數字為開啟') : m.kind === 'number' ? t('數字') : m.kind === 'presence' ? t('只看是否已設定') : m.kind === 'text' ? t('文字') : ''
   const unset = !m.default ? '' : m.default === 'on' ? t('開啟') : m.default === 'off' ? t('關閉') : m.default === 'early-return' ? t('提早返回，不做後續的事') : m.default
+  // the project's own words: rules.json first, else the comment that names the variable (trace.h: IBTRACE_X=1: ...)
+  const said = m.comments?.find((c) => c.defines)
+  const near = !said && !(m.own && m.purpose) ? m.comments?.[0] : undefined
   return <>
-    {m.own && m.purpose ? <>{m.purpose}<br /></> : null}
+    {m.own && m.purpose ? <>{m.purpose}<br /></> : said ? <><UI.CodeText text={said.text} />{' '}<span className="muted small">{t('（取自 {v1} 的註解）', { v1: said.at.split('/').pop() })}</span><br /></> : null}
+    {near ? <><span className="muted small">{t('相關註解（{v1}）：', { v1: near.at.split('/').pop() })}</span><UI.CodeText text={near.text} /><br /></> : null}
     {[kind, unset ? t('未設定時：{v1}', { v1: unset }) + (m.own && m.default ? t('（專案寫的）') : '') : '', m.into ? t('存入 {v1}', { v1: m.into }) : ''].filter(Boolean).join(t('；'))}
   </>
+}
+
+/** Functions nothing in the repo calls directly, put into a function pointer that code outside the repo calls
+ *  (an ops table, a UCT table, a signal handler), by the function that installs them. One count for every page. */
+export function pointerEntries(ix: Index): Map<string, string[]> {
+  const installed = new Map<string, string[]>()
+  for (const [id, f] of Object.entries(ix.funcs)) {
+    if (f.api) continue
+    const by = ix.callers(id)
+    if (by.some((e) => e.src === 'compiler' && ix.funcs[e.s])) continue
+    const put = by.find((e) => e.k === 'fnptr_assign' && ix.funcs[e.s])
+    if (put) push(installed, put.s, id)
+  }
+  return installed
 }
 
 const TOC = [['ov-comps', '元件'], ['ov-entry', '進入與結束'], ['ov-env', '環境變數'], ['ov-build', '建置產物'], ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方']] as const

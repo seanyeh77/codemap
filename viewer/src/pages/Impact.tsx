@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { UI } from '../ui'
-import { t } from '../i18n'
+import { countUnit, t } from '../i18n'
 import { MAX_DEPTH, type Index } from '../data/graph'
 import type { Sel } from '../data/types'
 
@@ -84,8 +84,8 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
         )}
       </UI.Card>
       {rows.length ? (
-        <UI.DataTable resetKey={`${p.sourceId}:${p.start}`} label={t('受影響的函式')} pageSize={10} urlSync={false}
-          summary={{ key: 'kind', items: (['direct', 'state', 'indirect'] as const).filter((k) => k !== 'state' || vars.length).map((k) => ({ value: k, label: t(KIND_LABEL[k]) })), unit: t('個') }}
+        <UI.DataTable resetKey={`${p.sourceId}:${p.start}`} label={t('受影響的函式')} pageSize={10} urlSync={false} search={{ placeholder: t('篩選函式') }}
+          summary={{ key: 'kind', items: (['direct', 'state', 'indirect'] as const).filter((k) => k !== 'state' || vars.length).map((k) => ({ value: k, label: t(KIND_LABEL[k]) })), unit: countUnit('個', 'function', 'functions') }}
           columns={[
             { key: 'name', label: t('函式'), width: 160, grow: 2, mobile: 'title', searchText: (r: Row) => r.name + ' ' + r.source,
               render: (r: Row) => (
