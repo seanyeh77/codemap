@@ -177,30 +177,99 @@ class TsProgramCache(unittest.TestCase):
         self.assertEqual(a["edges"], b["edges"])
         self.assertEqual(a["nodes"], b["nodes"])
 
+    def fixture(self, tmp):
+        import shutil
+        root = Path(tmp) / "tsfix"
+        shutil.copytree(ROOT, root, ignore=shutil.ignore_patterns(".codemap"))
+        return root
+
+    def entries(self, root):
+        return sorted((root / ".codemap" / "cache" / "typescript").glob("*.json"))
+
     def test_cache(self):
-        import shutil, tempfile
+        import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "tsfix"
-            shutil.copytree(ROOT, root, ignore=shutil.ignore_patterns(".codemap"))
+            root = self.fixture(tmp)
             cold = self.run_ts(root, True)
-            self.assertEqual(cold["stats"]["cache"]["misses"], 1)
+            self.assertEqual((cold["stats"]["cache"]["rebuilt"], cold["stats"]["cache"]["why"]), (1, {"no entry": 1}))
             warm = self.run_ts(root, True)
-            self.assertEqual((warm["stats"]["cache"]["hits"], warm["stats"]["cache"]["misses"]), (1, 0))
+            self.assertEqual((warm["stats"]["cache"]["replayed"], warm["stats"]["cache"]["rebuilt"]), (1, 0))
+            self.assertEqual(warm["stats"]["cache"]["entries"], 1)
             self.same(warm, self.run_ts(root, False))
+            # a workspace package's release: its imports still go to the same source
+            pj = root / "packages" / "core" / "package.json"
+            pj.write_text(pj.read_text().replace('"version": "1.0.0"', '"version": "1.1.0"'))
+            self.assertEqual(self.run_ts(root, True)["stats"]["cache"]["replayed"], 1)
+            # its source moves: the program that imports it is rebuilt
+            (root / "packages" / "core" / "src" / "main.ts").write_text((root / "packages" / "core" / "src" / "index.ts").read_text())
+            self.run_ts(root, True)                                                     # a new file: a new entry
+            pj.write_text(pj.read_text().replace('"exports"', '"source": "./src/main.ts", "exports"'))
+            moved = self.run_ts(root, True)
+            self.assertEqual(moved["stats"]["cache"]["why"], {"workspace package": 1})
+            self.same(moved, self.run_ts(root, False))
+            self.assertTrue(any(e["dst"] == "packages/core/src/main.ts:coreRun" for e in moved["edges"]))
             # a package that was missing is installed: only a lookup changed
             (root / "node_modules" / "not-installed").mkdir()
             (root / "node_modules" / "not-installed" / "index.d.ts").write_text("export declare function missing(): void;\n")
             after = self.run_ts(root, True)
-            self.assertEqual(after["stats"]["cache"]["invalid"], {"lookup": 1})
+            self.assertEqual(after["stats"]["cache"]["why"], {"lookup": 1})
             self.same(after, self.run_ts(root, False))
             self.assertNotIn("not-installed", after["stats"]["placeholders"])
-            # a source file changes
+            # a source file changes; the entry it replaces is removed
             p = root / "src" / "util" / "math.ts"
             p.write_text(p.read_text().replace("return a * b;", "return add(a, b) * b;"))
             edited = self.run_ts(root, True)
-            self.assertEqual(edited["stats"]["cache"]["invalid"], {"content": 1})
+            self.assertEqual(edited["stats"]["cache"]["why"], {"content": 1})
+            self.assertEqual(len(self.entries(root)), 1)
             self.same(edited, self.run_ts(root, False))
             self.assertTrue(any(e["src"] == "src/util/math.ts:mul" and e["dst"] == "src/util/math.ts:add" for e in edited["edges"]))
+
+    def test_damaged_entries(self):
+        # unreadable, malformed, or of another format: removed, the program analyzed in full, same graph
+        import json, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            self.run_ts(root, True)
+            full = self.run_ts(root, False)
+            [entry] = self.entries(root)
+            good = json.loads(entry.read_text())
+            bad_edge = json.loads(entry.read_text())
+            bad_edge["delta"]["edges"][0]["line"] = "x"
+            other = dict(good, format=0)
+            flipped = json.loads(entry.read_text())
+            flipped["delta"]["edges"][0]["dst"] = "ext:tampered"                         # parses, well formed, wrong
+            for damage, why in (("{not json", "corrupt"), (json.dumps(bad_edge), "corrupt"), ("", "corrupt"), (json.dumps(flipped), "corrupt"),
+                                (json.dumps(other), "format")):
+                entry = self.entries(root)[0] if self.entries(root) else entry
+                entry.write_text(damage)
+                r = self.run_ts(root, True)
+                self.assertEqual(r["stats"]["cache"]["why"], {why: 1}, damage[:20])
+                self.same(r, full)
+                self.assertEqual(r["stats"]["errors"], full["stats"]["errors"])
+                self.assertEqual(self.run_ts(root, True)["stats"]["cache"]["replayed"], 1)   # rewritten whole
+
+    def test_temporary_files_and_version(self):
+        import os, tempfile, time
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            self.run_ts(root, True)
+            cache = root / ".codemap" / "cache" / "typescript"
+            stale = cache / "x-y.json.123.tmp"
+            stale.write_text("half")
+            os.utime(stale, (time.time() - 7200, time.time() - 7200))
+            fresh = cache / "x-z.json.456.tmp"
+            fresh.write_text("another run writing now")
+            r = self.run_ts(root, True)
+            self.assertFalse(stale.exists())
+            self.assertTrue(fresh.exists())
+            self.assertEqual(r["stats"]["cache"]["removed"], 1)
+            self.assertEqual((cache / ".gitignore").read_text(), "*\n")
+            # another codemap version: its entries are not used, and are replaced
+            with mock.patch.object(ts, "_version", lambda: "0.0.0-other"):
+                other = self.run_ts(root, True)
+            self.assertEqual(other["stats"]["cache"]["why"], {"no entry": 1})
+            self.assertEqual(len(self.entries(root)), 1)
 
 
 class TsFallback(unittest.TestCase):

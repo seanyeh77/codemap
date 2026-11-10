@@ -156,7 +156,9 @@ export interface Stats {
   /** ambiguous edges and call sites per backend: candidates in the repository, or only outside methods of one name */
   ambiguity?: Record<string, { repo_edges: number; repo_sites: number; external_edges: number; external_sites: number }>
   /** the compiler that read each backend's files: version and where it came from */
-  compilers?: Record<string, { version: string; source?: string }>
+  compilers?: Record<string, { version: string; source?: string
+    /** the program cache of this run: programs replayed and rebuilt (with why), entries kept, their size, entries removed */
+    cache?: { replayed: number; rebuilt: number; why: Record<string, number>; entries: number; mb: number; removed: number } }>
   /** per backend: type-checker messages, packages read as placeholders, packages with incomplete types */
   limits?: Record<string, { messages: number; placeholders: string[]; incomplete: number }>
 }

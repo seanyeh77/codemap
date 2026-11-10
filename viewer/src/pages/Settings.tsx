@@ -27,6 +27,17 @@ function when(sec: number) {
   return Date.now() - d.getTime() < 7 * 864e5 ? t('{v1}（{v2}）', { v1: UI.format.relative(d), v2: exact }) : exact
 }
 
+// why the program cache rebuilt programs, in the reader's words
+const WHY: Record<string, string> = {
+  'no entry': '沒有快取', content: '讀過的檔案內容改變', lookup: '模組查找結果改變', 'workspace package': 'workspace 套件的進入點改變', files: 'repo 或測試檔的範圍改變',
+  corrupt: '快取損毀，已重新分析', format: '快取格式不同', 'not saved': '無法寫入快取',
+}
+function cacheText(c: { replayed: number; rebuilt: number; why: Record<string, number>; entries: number; mb: number; removed: number }): string {
+  const why = Object.entries(c.why).map(([k, n]) => t('{v1} {v2} 個', { v1: t(WHY[k] ?? k), v2: n })).join(t('、'))
+  return t('程式快取：重放 {v1} 個、重建 {v2} 個 program', { v1: c.replayed, v2: c.rebuilt }) + (why ? t('（{v1}）', { v1: why }) : '')
+    + t('；保存 {v1} 筆、{v2} MB', { v1: c.entries, v2: c.mb }) + (c.removed ? t('，清除 {v1} 筆', { v1: c.removed }) : '')
+}
+
 // a backend reads more than one language: typescript reads JavaScript too
 const BACKEND: Record<string, string> = { typescript: 'TypeScript / JavaScript' }
 const LANG: Record<string, string> = { python: 'Python', java: 'Java', go: 'Go', typescript: 'TypeScript', javascript: 'JavaScript', html: 'HTML', css: 'CSS', cpp: 'C++' }
@@ -66,6 +77,7 @@ export function Settings(p: Props) {
             ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值；interface 只連到真的實作它的型別。找不到目標的呼叫不會畫線。')
             : b === 'typescript' ? t('以 TypeScript 官方編譯器解析 import、類別、繼承、型別、interface、函式值與 JSX；.d.ts 與 node_modules 只提供型別。找不到目標的呼叫不會畫線。')
             : t('以 Python 的 ast 解析 import、類別與簡單的型別，不靠名稱猜。找不到目標的呼叫不會畫線。')}>{t('靜態分析')}</UI.Term>{st.compilers?.[b] ? t('（TypeScript {v1}）', { v1: st.compilers[b].version }) : ''}{t('：')}{t('{v1} 條確定、{v2} 條型別推論、{v3} 條有多個可能目標、{v4} 處無法解析', { v1: r.exact ?? 0, v2: r.inferred ?? 0, v3: r.ambiguous ?? 0, v4: r.unresolved ?? 0 })}
+            {st.compilers?.[b]?.cache ? <><br /><span className="muted">{cacheText(st.compilers[b].cache!)}</span></> : null}
             {st.ambiguity?.[b] ? <><br /><span className="muted">{t('多個可能目標：repo 內的候選 {v1} 條（{v2} 個呼叫）；外部同名方法的候選 {v3} 條（{v4} 個呼叫，例如聯集型別上的 toString）', { v1: st.ambiguity[b].repo_edges, v2: st.ambiguity[b].repo_sites, v3: st.ambiguity[b].external_edges, v4: st.ambiguity[b].external_sites })}</span></> : null}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
           ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>

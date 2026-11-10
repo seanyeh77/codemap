@@ -438,7 +438,15 @@ function sourceIn(entry, dir) {
   return null;
 }
 
+// the source a workspace package's import goes to; each lookup is one of a program's recorded questions,
+// so a change to a package a program never imports does not rebuild it
 function workspaceSource(name) {
+  const r = findWorkspaceSource(name);
+  if (rec) rec.probe['workspace\0' + name] = r;
+  return r;
+}
+
+function findWorkspaceSource(name) {
   let pkg = null;
   let sub = '';
   for (const [n, w] of workspace) if ((name === n || name.startsWith(n + '/')) && (!pkg || n.length > pkg[0].length)) { pkg = [n, w]; sub = name.slice(n.length); }
@@ -527,17 +535,27 @@ function hostFor(options, prof) {
 const CACHE = input.cache ? path.resolve(input.cache) : null;
 const crypto = require('crypto');
 const digest = (text) => crypto.createHash('sha1').update(text).digest('hex');
-const cacheStats = { hits: 0, misses: 0, invalid: {} };
-const fresh = new Set();
-// what this helper and this TypeScript are: a change to either makes every entry stale
-const HELPER = CACHE ? digest(fs.readFileSync(__filename, 'utf8') + '\0' + ts.version + '\0' + process.version
-  + '\0' + !!process.env.CODEMAP_TS_DEBUG) : null;
+// the layout of an entry; an entry of another format is not read, whatever codemap wrote it
+const FORMAT = 1;
+const KEEP_DAYS = 14;                 // an entry no run has used for this long is removed
+const MAX_MB = Number(process.env.CODEMAP_TS_CACHE_MB || 2048);   // beyond this, the least recently used go
+// replayed: answers unchanged; rebuilt, and why: no entry, content, lookup, files (repository or test
+// membership), corrupt (unreadable or malformed: removed, the program analyzed in full), format
+const cacheStats = { replayed: 0, rebuilt: 0, why: {}, entries: 0, mb: 0, removed: 0 };
+const fresh = new Set();          // the entries this run read or wrote
+const why = (k) => { cacheStats.why[k] = (cacheStats.why[k] || 0) + 1; };
+// the helper's code, codemap's version, TypeScript and Node: a change to any makes every entry stale
+const HELPER = CACHE ? digest([fs.readFileSync(__filename, 'utf8'), input.codemap || '', ts.version, process.version,
+  !!process.env.CODEMAP_TS_DEBUG, FORMAT].join('\0')) : null;
 
+// an entry's file: <program>-<key>.json, the program named by its configs, so an entry that a newer
+// one replaces is found and removed
 function programKey(group) {
   const c = group.config;
-  return digest(JSON.stringify([HELPER, c ? group.configs.map((k) => [k.rel, k.options, k.names]) : DEFAULTS,
-    [...group.owned].sort(), [...workspace].map(([n, w]) => [n, w.dir, w.json.exports, w.json.source, w.json.types, w.json.main]),
-    group.owned.some(isJs), c ? null : input.files.filter(isDts)]));
+  const program = digest(JSON.stringify(c ? group.configs.map((k) => k.rel).sort() : ['(default options)'])).slice(0, 12);
+  const key = digest(JSON.stringify([HELPER, c ? group.configs.map((k) => [k.rel, k.options, k.names]) : DEFAULTS,
+    [...group.owned].sort(), group.owned.some(isJs), c ? null : input.files.filter(isDts)]));
+  return { program, key, file: path.join(CACHE, `${program}-${key}.json`) };
 }
 
 // the answers now, asked again; one file's content is read once per run
@@ -553,44 +571,94 @@ function answer(q) {
     else if (kind === 'realpath') v = ts.sys.realpath ? ts.sys.realpath(arg) : arg;
     else if (kind === 'getDirectories') v = JSON.stringify(ts.sys.getDirectories(arg));
     else if (kind === 'isFile') v = isFile(arg);
-    else v = undefined;
-  } catch (e) { v = undefined; }
+    else if (kind === 'workspace') v = findWorkspaceSource(arg);
+    else v = { unknown: kind };            // a question this helper does not ask: never the same answer
+  } catch (e) { v = { failed: true }; }
   answers.set(q, v);
   return v;
 }
 
-function cached(key) {
-  const f = path.join(CACHE, key + '.json');
+// an entry this helper can replay whole: checked before anything is replayed, so a damaged entry
+// never leaves half its results behind
+const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
+const strs = (a) => Array.isArray(a) && a.every((x) => typeof x === 'string');
+function wellFormed(entry) {
+  if (!isObj(entry) || entry.format !== FORMAT || entry.sum !== digest(JSON.stringify(entry.delta)) || !isObj(entry.probe) || !isObj(entry.member) || !isObj(entry.delta)) return false;
+  const d = entry.delta;
+  return Number.isInteger(d.owned) && isObj(d.nodes) && Object.values(d.nodes).every((n) => isObj(n) && typeof n.name === 'string')
+    && Array.isArray(d.edges) && d.edges.every((e) => isObj(e) && typeof e.src === 'string' && typeof e.dst === 'string'
+      && Number.isInteger(e.line) && Number.isInteger(e.col) && typeof e.kind === 'string')
+    && [d.counts, d.unresolved].every((c) => isObj(c) && Object.values(c).every(Number.isInteger))
+    && isObj(d.samples) && Object.values(d.samples).every(strs) && strs(d.errors) && strs(d.placeholders) && strs(d.broken)
+    && Object.values(entry.member).every((v) => typeof v === 'boolean');
+}
+
+function cached(k) {
+  let text;
+  try { text = fs.readFileSync(k.file, 'utf8'); } catch (e) { why('no entry'); return null; }
   let entry;
-  try { entry = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { cacheStats.invalid.none = (cacheStats.invalid.none || 0) + 1; return null; }
+  try { entry = JSON.parse(text); } catch (e) { entry = null; }
+  if (!wellFormed(entry)) {
+    why(entry && entry.format !== FORMAT ? 'format' : 'corrupt');
+    try { fs.unlinkSync(k.file); } catch (e) { /* gone */ }
+    return null;
+  }
   for (const [q, v] of Object.entries(entry.member)) {
-    const [kind, k] = q.split('\0');
-    if ((kind === 'repo' ? repoSet : testSet).has(k) !== v) { cacheStats.invalid.files = (cacheStats.invalid.files || 0) + 1; return null; }
+    const [kind, f] = q.split('\0');
+    if ((kind === 'repo' ? repoSet : kind === 'test' ? testSet : null)?.has(f) !== v) { why('files'); return null; }
   }
   for (const [q, v] of Object.entries(entry.probe)) {
-    if (answer(q) !== v) {
-      const why = q.startsWith('readFile') ? 'content' : 'lookup';
-      cacheStats.invalid[why] = (cacheStats.invalid[why] || 0) + 1;
-      return null;
-    }
+    if (answer(q) !== v) { why(q.startsWith('readFile') ? 'content' : q.startsWith('workspace') ? 'workspace package' : 'lookup'); return null; }
   }
+  const now = new Date();
+  try { fs.utimesSync(k.file, now, now); } catch (e) { /* read-only: still usable */ }   // used: kept longer
   return entry;
 }
 
-function save(key, r, d) {
-  fs.mkdirSync(CACHE, { recursive: true });
-  const ignore = path.join(CACHE, '.gitignore');          // local to this checkout, never committed
-  if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n');
-  const tmp = path.join(CACHE, key + '.json.' + process.pid);
-  fs.writeFileSync(tmp, JSON.stringify({ probe: r.probe, member: r.member, delta: d }));
-  fs.renameSync(tmp, path.join(CACHE, key + '.json'));
+// written whole or not at all: a temporary file renamed over the entry, so a crash or another run at
+// the same time never leaves a half-written entry behind
+function save(k, r, d) {
+  try {
+    fs.mkdirSync(CACHE, { recursive: true });
+    const ignore = path.join(CACHE, '.gitignore');          // local to this checkout, never committed
+    if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n');
+    const tmp = `${k.file}.${process.pid}.tmp`;
+    // the checksum covers what is replayed: a changed byte that still parses is caught too
+    fs.writeFileSync(tmp, JSON.stringify({ format: FORMAT, sum: digest(JSON.stringify(d)), probe: r.probe, member: r.member, delta: d }));
+    fs.renameSync(tmp, k.file);
+    // the entries this one replaces: the same program before a change
+    for (const f of fs.readdirSync(CACHE)) {
+      if (f.startsWith(k.program + '-') && f.endsWith('.json') && path.join(CACHE, f) !== k.file) { fs.unlinkSync(path.join(CACHE, f)); cacheStats.removed++; }
+    }
+  } catch (e) { why('not saved'); }            // a full disk or a read-only checkout: the next run analyzes again
 }
 
-// entries no program of this run used: a config or file set that is gone
+// entries no run has used for KEEP_DAYS, temporary files a stopped run left, and, beyond MAX_MB, the
+// least recently used; the size is reported
 function prune() {
-  try {
-    for (const f of fs.readdirSync(CACHE)) if (f.endsWith('.json') && !fresh.has(f.slice(0, -5))) fs.unlinkSync(path.join(CACHE, f));
-  } catch (e) { /* no cache yet */ }
+  let list;
+  try { list = fs.readdirSync(CACHE); } catch (e) { return; }
+  const now = Date.now();
+  const kept = [];
+  for (const f of list) {
+    const p = path.join(CACHE, f);
+    let st;
+    try { st = fs.statSync(p); } catch (e) { continue; }
+    const age = now - st.mtimeMs;
+    // an entry this format does not name so (an earlier codemap's): never read, so removed
+    const foreign = f.endsWith('.json') && !/^[0-9a-f]{12}-[0-9a-f]{40}\.json$/.test(f);
+    if ((f.endsWith('.tmp') && age > 3600e3) || foreign || (f.endsWith('.json') && age > KEEP_DAYS * 86400e3 && !fresh.has(p))) {
+      try { fs.unlinkSync(p); cacheStats.removed++; } catch (e) { /* gone */ }
+    } else if (f.endsWith('.json')) kept.push([p, st.size, st.mtimeMs]);
+  }
+  kept.sort((a, b) => b[2] - a[2]);
+  let total = 0;
+  for (const [p, size] of kept) {
+    if (total + size > MAX_MB * 1048576 && !fresh.has(p)) { try { fs.unlinkSync(p); cacheStats.removed++; } catch (e) { /* gone */ } continue; }
+    total += size;
+    cacheStats.entries++;
+  }
+  cacheStats.mb = Math.round(total / 1048576 * 10) / 10;
 }
 
 // what one program adds to the run's results
@@ -1322,12 +1390,12 @@ for (const [, g] of groups) {
     if (hit) {
       replay(hit.delta);
       files += hit.delta.owned;
-      cacheStats.hits++;
-      fresh.add(key);
+      cacheStats.replayed++;
+      fresh.add(key.file);
     } else {
       if (key) { rec = { probe: {}, member: {}, touched: new Set() }; snapshot(); }
       files += analyze(g).owned;
-      if (key) { save(key, rec, delta()); rec = null; cacheStats.misses++; fresh.add(key); }
+      if (key) { save(key, rec, delta()); rec = null; cacheStats.rebuilt++; fresh.add(key.file); }
     }
     slow.push([name + (hit ? ' (cached)' : ''), Date.now() - t0]);
   } catch (e) {

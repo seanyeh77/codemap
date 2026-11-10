@@ -315,7 +315,7 @@ def build(root, index, config=None):
                           # from those with candidates in the repository, per backend
                           ambiguity=ambiguity,
                           # the compiler that read the code, so a result can be reproduced
-                          compilers={name: dict(version=b["typescript"], source=b.get("typescript_from"))
+                          compilers={name: dict(version=b["typescript"], source=b.get("typescript_from"), cache=b.get("cache"))
                                      for name, b in index.get("backends", {}).items() if b.get("typescript")},
                           languages={k: v for b in index.get("backends", {}).values() for k, v in b.get("languages", {}).items()},
                           frameworks=index.get("frameworks", [])),

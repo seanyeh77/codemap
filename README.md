@@ -321,7 +321,23 @@ The build is one self-contained `index.html`, so it can be served by
   nothing changed takes 1.7 s instead of 213 s, and an edit in one example
   app 9.8 s; an edit in a package most programs import rebuilds those
   programs. `CODEMAP_TS_CACHE=0` turns it off. `benchmarks/typescript.md`
-  has the scenarios.
+  has the scenarios. Maintenance:
+  - `codemap index` and the settings page report how many programs were
+    replayed and rebuilt, why (no entry, a file's content, a module lookup,
+    the repository's or tests' files, a damaged entry, another format), how
+    many entries are kept, their size and how many were removed.
+  - An entry is written to a temporary file and renamed into place, so a
+    stopped run or two runs at once never leave half an entry; temporary
+    files older than an hour are removed.
+  - An entry that cannot be read, does not have the expected shape, or
+    whose checksum does not match what it would replay is removed and its
+    program analyzed in full: no part of it is replayed.
+  - The key includes the helper's code, codemap's version, TypeScript and
+    Node, and each entry records its format: entries of another version are
+    never used, and are replaced.
+  - A program's new entry replaces its old one; an entry no run has used
+    for 14 days is removed, and beyond 2 GB
+    (`CODEMAP_TS_CACHE_MB`) the least recently used go.
 - A function a library hands back (`const [x, setX] = useState()`, a
   solid-js setter) is a call to that library, `inferred`, named by its
   declared type (`react.Dispatch`) or by the function that returned it

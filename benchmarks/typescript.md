@@ -176,6 +176,65 @@ machine. A warm run spends its time reading the configs (0.5 s) and asking the q
 kinds of change on the fixture, including a missing package that gets installed (a lookup, not a
 content change).
 
+### Real development history
+
+The last 30 commits of TanStack Query (3ccb007 to 8f6da1e, 2026-11-05 to 2026-11-07), checked out
+one after another in the isolated copy and indexed after each with the cache; `node_modules` stayed
+as installed from the newest lockfile, as in a checkout where nobody reinstalls. Step 00 starts with
+an empty cache. "Before" is the first run of this replay; the second run records each lookup of a
+workspace package as one of the program's questions, so a change to a package a program never
+imports no longer rebuilds it (step 11: a new entry in two devtools packages' `exports`, 54 programs
+rebuilt before, 12 after).
+
+| Step | Commit | Files changed (個) | TS/JS changed (個) | Kind | Rebuilt before (個) | Time before (s) | Replayed (個) | Rebuilt (個) | Why rebuilt | Time (s) |
+|---:|---|---:|---:|---|---:|---:|---:|---:|---|---:|
+| 00 | 3ccb007 | 0 | 0 | cold | 54 | 155.9 | 0 | 54 | no entry 54 | 177.5 |
+| 01 | 8f5144b | 1 | 0 | docs | 0 | 1.6 | 54 | 0 |  | 1.8 |
+| 02 | f69b28a | 12 | 10 | docs/tests/source | 29 | 98.0 | 25 | 29 | content 28, no entry 1 | 96.8 |
+| 03 | e712412 | 3 | 2 | docs/tests/source | 7 | 39.7 | 47 | 7 | content 6, no entry 1 | 42.6 |
+| 04 | 16d863a | 1 | 0 | docs | 0 | 1.6 | 54 | 0 |  | 1.6 |
+| 05 | 925168e | 205 | 0 | package.json/docs | 50 | 160.7 | 4 | 50 | content 50 | 173.1 |
+| 06 | f078a2b | 8 | 5 | package.json/docs/tests/source | 10 | 37.5 | 44 | 10 | content 9, no entry 1 | 42.3 |
+| 07 | b165677 | 3 | 1 | package.json/source | 1 | 5.7 | 53 | 1 | content 1 | 5.9 |
+| 08 | c4ed956 | 7 | 6 | docs/tests/source | 30 | 99.8 | 24 | 30 | content 30 | 108.6 |
+| 09 | 284abac | 201 | 0 | package.json/docs | 50 | 173.4 | 4 | 50 | content 50 | 177.5 |
+| 10 | 9dbf992 | 1 | 0 | docs | 0 | 1.8 | 54 | 0 |  | 2.0 |
+| 11 | a8c2a17 | 14 | 5 | package.json/docs/tests/source | 54 | 167.6 | 42 | 12 | content 10, no entry 2 | 70.9 |
+| 12 | c34ce05 | 2 | 0 | docs | 0 | 1.7 | 54 | 0 |  | 2.1 |
+| 13 | 2cdba60 | 5 | 4 | docs/tests/source | 7 | 41.2 | 47 | 7 | content 7 | 43.4 |
+| 14 | d07ed19 | 5 | 0 | docs | 0 | 1.8 | 54 | 0 |  | 1.9 |
+| 15 | 00dc8de | 3 | 2 | docs/tests/source | 7 | 42.9 | 47 | 7 | content 7 | 42.7 |
+| 16 | b6add89 | 3 | 2 | docs/tests/source | 50 | 169.1 | 4 | 50 | content 50 | 177.0 |
+| 17 | 172fd2a | 14 | 0 | docs | 0 | 1.6 | 54 | 0 |  | 1.8 |
+| 18 | a4d72f7 | 8 | 7 | docs/tests/source | 30 | 106.5 | 24 | 30 | content 30 | 104.0 |
+| 19 | d01e358 | 204 | 0 | package.json/docs | 50 | 169.5 | 4 | 50 | content 50 | 171.3 |
+| 20 | 025773a | 8 | 7 | docs/tests/source | 7 | 41.3 | 47 | 7 | content 7 | 43.6 |
+| 21 | f4199ab | 6 | 4 | docs/tests/source | 7 | 42.1 | 47 | 7 | content 7 | 42.8 |
+| 22 | 82fe952 | 14 | 0 | docs | 0 | 1.8 | 54 | 0 |  | 1.4 |
+| 23 | 3875d1d | 201 | 0 | package.json/docs | 50 | 172.5 | 4 | 50 | content 50 | 171.6 |
+| 24 | 9705a4c | 1 | 1 | tests | 1 | 16.4 | 53 | 1 | content 1 | 16.1 |
+| 25 | ef6f3e0 | 1 | 1 | tests | 1 | 15.7 | 53 | 1 | content 1 | 15.7 |
+| 26 | cb755b9 | 7 | 1 | docs/source | 4 | 26.0 | 50 | 4 | content 4 | 26.2 |
+| 27 | 5174c71 | 6 | 0 | docs | 0 | 1.7 | 54 | 0 |  | 1.7 |
+| 28 | e676aa7 | 2 | 1 | docs/source | 7 | 44.0 | 47 | 7 | content 7 | 41.5 |
+| 29 | 9a9ded3 | 10 | 3 | docs/source | 7 | 44.6 | 47 | 7 | content 7 | 43.2 |
+| 30 | 8f6da1e | 7 | 0 | docs | 0 | 1.9 | 54 | 0 |  | 1.7 |
+
+- Programs rebuilt over the 30 steps: 459 of 1,620 (28 %) before, 417 (26 %) after. Total time:
+  1,730 s before, 1,673 s after; without the cache each step takes 162 s to 172 s on this machine
+  (steps 05, 15 and 30, measured), about 5,000 s for the 30.
+- Nine steps change only documentation: every program replayed, 1.4 s to 2.1 s.
+- Four steps (05, 09, 19, 23) are releases: about 200 `package.json` versions and changelogs, no
+  TypeScript or JavaScript. Each rebuilds 50 programs, 200 of the 417, because the compiler reads the
+  workspace packages' `package.json` through their `node_modules` links, and it uses `version` (in
+  the package id it gives files of `node_modules` packages). The cache keeps that answer as it is.
+- Steps that change `query-core` (16) or the devtools (02, 08, 18) rebuild 30 to 50 programs: the
+  limit of a program as the unit.
+- At steps 05, 15 and 30 the graph was compared with a run without the cache on the same commit:
+  every edge (in order), node and count was the same.
+- The cache ended at 54 entries, 78 MB: an entry is replaced when its program is rebuilt, and the
+  entries an earlier format of the prototype left were removed.
+
 A program is the unit: case 4 shows its limit. A body changed in a package that 50 programs import
 rebuilds those 50, though only one function's calls changed.
 

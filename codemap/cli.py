@@ -108,6 +108,11 @@ def cmd_index(a):
         print(f'typescript: {idx["backends"]["syntax-typescript"]["files"]} files read by tree-sitter (no Node or no TypeScript)')
     if "typescript" in idx["backends"]:
         tb = idx["backends"]["typescript"]
+        c = tb.get("cache")
+        if c:
+            print(f'  program cache: {c["replayed"]} replayed, {c["rebuilt"]} rebuilt'
+                  + (" (" + ", ".join(f"{k}: {v}" for k, v in sorted(c["why"].items())) + ")" if c["why"] else "")
+                  + f'; {c["entries"]} entries, {c["mb"]} MB' + (f', {c["removed"]} removed' if c["removed"] else ""))
         print(f'  TypeScript {tb.get("typescript")} from {tb.get("typescript_from")}, {tb.get("programs")} programs'
               + ('; modules not found: ' + ", ".join(tb["placeholders"][:8]) + (" ..." if len(tb["placeholders"]) > 8 else "")
                  if tb.get("placeholders") else ""))
