@@ -202,6 +202,12 @@ export interface Graph {
   build?: BuildInfo | null
   /** Calls that create or write a file. */
   writes?: FileWrite[]
+  /** test functions taken out of the graph while the tests setting is off (filled in by the viewer) */
+  hidden_tests?: { id: string; name: string; file: string; line: number; comp: string }[]
+  /** Python: files the code opens to read (open() without a writing mode, read_text, read_bytes) */
+  reads?: FileWrite[]
+  /** commands a Python program runs: the command line as written, and for a wrapper (_run(namespace, argv)) each call that fills it in */
+  commands?: { fid: string; f: string; l: number; call: string; cmd: string; timeout?: string; shell?: string; via?: { fid: string; f: string; l: number; cmd: string }[] }[]
   docs?: DocSummary[]
   /** Facts worth a look: calls that end the process, fixed-size global arrays, getenv results used unchecked. */
   worth?: {
@@ -220,6 +226,8 @@ export interface Graph {
     loss?: { fid: string; f: string; l: number; var: string; text: string; via: { fid: string; f: string; l: number }[]; said: { fid: string; f: string; l: number }[] }[]
     /** what stays after the process ends unless removed (shm_open with O_CREAT), who removes it, and calls that end the program in the components that make it */
     leftovers?: { fid: string; f: string; l: number; call: string; remove: string; removed: { fid: string; f: string; l: number; via: string[] }[]; stops: { fid: string; f: string; l: number; name: string }[] }[]
+    /** Python: except Exception (or bare) whose handler does not raise again */
+    broad?: { fid: string; f: string; l: number; what: string; then: string }[]
     /** the languages each check reads (writes, stops, arrays, ...): c, python, go, typescript */
     covers?: Record<string, string[]>
   }

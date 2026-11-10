@@ -313,7 +313,7 @@ function presentLangs(g: Graph): Set<string> {
 const STOP_CALLS: Record<string, string> = { c: 'abort、exit、_exit', python: 'sys.exit、os._exit、os.abort', go: 'os.Exit、log.Fatal', typescript: 'process.exit' }
 const WRITE_CALLS: Record<string, string> = { c: 'fopen 的 w、a 模式，open 的 O_CREAT、O_WRONLY 等', python: 'open 的寫入模式、Path.write_text、os.replace 等',
   go: 'os.Create、os.WriteFile、os.OpenFile 的寫入旗標', typescript: 'fs.writeFile、appendFile、createWriteStream 等' }
-const WORTH = [['stops', '結束程式的呼叫'], ['arrays', '固定大小的全域陣列'], ['env_if_unset', '只在未設定時才設定的環境變數'], ['errors', '回傳固定錯誤碼的地方'],
+const WORTH = [['broad', '捕捉所有例外後繼續執行'], ['stops', '結束程式的呼叫'], ['arrays', '固定大小的全域陣列'], ['env_if_unset', '只在未設定時才設定的環境變數'], ['errors', '回傳固定錯誤碼的地方'],
   ['loss', '會丟掉資料的地方'], ['leftovers', '程式結束後會留下的東西'], ['limits', '到達上限時直接返回、不印訊息'], ['plain_writes', '不經 atomic 操作就修改的全域變數'],
   ['env', '沒有先檢查 NULL 就使用的 getenv 結果']] as const
 const short = (t: string, n = 140) => (t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t)
@@ -394,12 +394,23 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const applies = (k: string) => covers(k).some((l) => langs.has(l))
   const inLangs = (k: string, by: Record<string, string>) => covers(k).filter((l) => langs.has(l) && by[l]).map((l) => t(by[l])).join(t('；'))
   const skipped = WORTH.filter(([k]) => !applies(k))
+  // the commands the program runs (outside C): tests and grading scripts are left to the search
+  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => p.ix.funcs[c.fid]?.scope !== 'test')
+  const broad = (g.worth?.broad ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
   // outside C, a function named main that is not a test: the command line's entry
   const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module').map(([id]) => id)
   // in a C repository the program is its C code: Python there is tools and tests, as with the variables above
   const cFile = (f: string) => /\.(c|h|cc|cpp|cxx|hpp|hh)$/.test(f)
   const stops = (g.worth?.stops ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
   const writes = (g.writes ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
+  // test and grading code: left out of the diagram, but a reader needs to know it is there
+  const testComps = useMemo(() => {
+    const all = g.hidden_tests ?? Object.entries(p.ix.funcs).filter(([, f]) => f.scope === 'test').map(([id, f]) => ({ id, name: f.name, file: f.file, line: f.line, comp: f.comp }))
+    const m = new Map<string, typeof all>()
+    for (const f of all) if (!g.comps.some((c) => c.id === f.comp)) m.set(f.comp, [...(m.get(f.comp) ?? []), f])
+    return [...m].sort(([a], [b]) => a.localeCompare(b))
+  }, [p.ix, g])
+  const reads = cRepo ? [] : (g.reads ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
   const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
   // a variable the program only sets (PYTHONPATH for a child process) belongs here too, outside a C repository
   const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram) || (!cRepo && v.set.some(inProgram)))
@@ -409,8 +420,8 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     <UI.Card className="detail fit overview" title={t('概觀')}>
       <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
       <nav className="toc" aria-label={t('概觀的段落')} data-tour="arch">
-        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length).filter(([id]) => id !== 'ov-env' || env.length)
-          .filter(([id]) => id !== 'ov-docs' || g.docs?.length).filter(([id]) => id !== 'ov-build' || g.build).filter(([id]) => id !== 'ov-writes' || g.writes).filter(([id]) => id !== 'ov-worth' || g.worth)
+        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length).filter(([id]) => id !== 'ov-env' || env.length).filter(([id]) => id !== 'ov-cmds' || cmds.length)
+          .filter(([id]) => id !== 'ov-docs' || g.docs?.length).filter(([id]) => id !== 'ov-build' || g.build).filter(([id]) => id !== 'ov-writes' || g.writes).filter(([id]) => id !== 'ov-reads' || reads.length).filter(([id]) => id !== 'ov-worth' || g.worth)
           .map(([id, label]) => <button key={id} type="button" className="linklike" onClick={() => jump(id)}>{t(label)}</button>)}
       </nav>
       <section>
@@ -422,6 +433,21 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
               <span key={d.file} className="entry-row"><UI.InlineCode>{d.file.split('/').pop()}</UI.InlineCode>{' '}{short(firstSentence(d.text), 90)}</span>))}</span></>
             : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
         }))} />
+        {testComps.length ? <>
+          <h4 className="small">{t('測試與評分程式（不畫在圖上）')}</h4>
+          <UI.DetailList items={testComps.map(([comp, fs]) => {
+            const files = [...new Set(fs.map((f) => f.file))].sort()
+            const entry = fs.filter((f) => f.name === 'main')
+            return {
+              label: comp,
+              value: <span>{t('{v1} 個檔案、{v2} 個函式', { v1: files.length, v2: fs.length })}
+                {entry.length ? <>{t('，入口 ')}{entry.map((f) => <span key={f.id}>{p.ix.funcs[f.id] ? line(f.id, 'tmain' + f.id) : at('tmain' + f.id, f.file, f.line)}</span>)}</> : null}
+                <span className="entry-list">{files.slice(0, 8).map((f) => (
+                  <span key={f} className="entry-row"><UI.InlineCode>{f}</UI.InlineCode>{g.files?.[f] ? <>{' '}{short(firstSentence(g.files[f].text), 90)}</> : null}</span>))}</span></span>,
+            }
+          })} />
+          {g.hidden_tests ? <p className="small muted">{t('流程、影響範圍與搜尋預設不列出測試程式碼；在設定頁開啟「包含測試程式碼」後會列出。')}</p> : null}
+        </> : null}
         {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，顯示元件主要檔案（main.c、__init__.py 或只有一個檔案時那個檔案）的開頭註解；沒有主要檔案時列出各檔案的。元件的用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
       </section>
       {g.docs?.length ? <Docs docs={g.docs} /> : null}
@@ -473,6 +499,20 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           ]} />
         </section>
       ) : null}
+      {cmds.length ? (
+        <section>
+          <h3 className="small" id="ov-cmds" tabIndex={-1}>{t('執行的外部指令')}</h3>
+          <p className="small muted">{t('{v1} 是執行時才知道的值。經由包裝函式執行的指令，列出每個呼叫它的地方組成的指令。', { v1: '{…}' })}</p>
+          <UI.DetailList items={cmds.map((c, i) => ({
+            label: p.ix.funcs[c.fid]?.name ?? c.fid,
+            value: <span><UI.InlineCode>{c.cmd || c.call}</UI.InlineCode>{' '}{at(`cmd${i}`, c.f, c.l)}
+              <span className="muted">{t('（{v1}', { v1: c.call })}{c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')}{c.shell ? t('，shell={v1}', { v1: c.shell }) : ''}{t('）')}</span>
+              {c.via?.length ? <span className="entry-list">{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
+                <span key={j} className="entry-row indent"><UI.InlineCode>{v.cmd}</UI.InlineCode>{' '}{fn(v.fid)}{' '}{at(`cmd${i}-${j}`, v.f, v.l)}</span>))}
+                {c.via.length > 5 ? <button type="button" className="linklike" aria-expanded={openApi === '*cmd' + i} onClick={() => setOpenApi(openApi === '*cmd' + i ? '' : '*cmd' + i)}>{openApi === '*cmd' + i ? t('收合') : t('另有 {v1} 處', { v1: c.via.length - 5 })}</button> : null}</span> : null}</span>,
+          }))} />
+        </section>
+      ) : null}
       {env.length ? (
         <section>
           <h3 className="small" id="ov-env" tabIndex={-1}>{t('執行期設定（環境變數）')}</h3>
@@ -489,11 +529,27 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
       ) : null}
       {g.build ? <Products build={g.build} at={at} /> : null}
       {g.writes ? <Writes writes={writes} at={at} fn={fn} none={inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS)} /> : null}
+      {reads.length ? (
+        <section>
+          <h3 className="small" id="ov-reads" tabIndex={-1}>{t('讀取的檔案')}</h3>
+          <UI.DetailList items={reads.map((r, i) => ({
+            label: r.name ?? (r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ?? t('（執行時決定）')),
+            value: <span>{fn(r.fid)}{t(' 以 {v1} 讀取：', { v1: r.call })}{at(`r${i}`, r.f, r.l)}</span>,
+          }))} />
+        </section>
+      ) : null}
       {g.worth ? (
         <section>
           <h3 className="small" id="ov-worth" tabIndex={-1}>{t('值得檢查的地方')}</h3>
           <p className="small muted">{t('只列出程式碼裡的事實，是否有問題要看實際用法。')}</p>
-                    {applies('stops') ? <>
+                    {applies('broad') ? <>
+          <h4 className="small" id="ov-broad" tabIndex={-1}>{t('捕捉所有例外後繼續執行')}</h4>
+          {broad.length ? <UI.DetailList items={broad.map((x, i) => ({
+            label: `except ${x.what}`,
+            value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，沒有再拋出', { v1: x.then })}</span></span>,
+          }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
+          </> : null}
+          {applies('stops') ? <>
 <h4 className="small" id="ov-stops" tabIndex={-1}>{t('結束程式的呼叫')}</h4>
           {stops.length ? <UI.DetailList items={stops.map((s, i) => ({
             label: `${s.name}()`,
@@ -616,7 +672,7 @@ export function pointerEntries(ix: Index): Map<string, string[]> {
   return installed
 }
 
-const TOC = [['ov-comps', '元件'], ['ov-docs', '專案文件'], ['ov-entry', '進入與結束'], ['ov-env', '環境變數'], ['ov-build', '建置產物'], ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方']] as const
+const TOC = [['ov-comps', '元件'], ['ov-docs', '專案文件'], ['ov-entry', '進入與結束'], ['ov-cmds', '外部指令'], ['ov-env', '環境變數'], ['ov-build', '建置產物'], ['ov-writes', '寫出的檔案'], ['ov-reads', '讀取的檔案'], ['ov-worth', '值得檢查的地方']] as const
 /** Scrolls an overview section into view and puts the keyboard there. */
 export function jump(id: string) {
   const h = document.getElementById(id)

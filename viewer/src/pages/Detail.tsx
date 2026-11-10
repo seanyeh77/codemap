@@ -69,6 +69,15 @@ export function Detail(p: Props) {
     bySite.set(x.s, g)
   }
   const callSites = [...bySite.values()].map((g) => g.sort((a, b) => a.l - b.l)).sort((a, b) => a[0].f.localeCompare(b[0].f) || a[0].l - b[0].l)
+  // the repository functions it calls, each with every line it calls from: a count alone sends people elsewhere for names
+  const outSites = new Map<string, Edge[]>()
+  for (const x of p.ix.callees(p.sel.id, true)) {
+    if (!p.ix.funcs[x.d] || x.k === 'exec') continue
+    const g = outSites.get(x.d) ?? []
+    if (!g.some((y) => y.f === x.f && y.l === x.l)) g.push(x)
+    outSites.set(x.d, g)
+  }
+  const calleeSites = [...outSites.values()].map((g) => g.sort((a, b) => a.l - b.l)).sort((a, b) => a[0].l - b[0].l)
   const twins = Object.entries(p.ix.funcs).filter(([id, g]) => id !== p.sel.id && g.name === f.name).sort(([, a], [, b]) => a.file.localeCompare(b.file))
   // the same caller calling it on several lines (one merged row in the flow tree)
   const sites = e ? p.ix.callers(p.sel.id).filter((x) => x.s === e.s && x.src === e.src && x.f === e.f).sort((a, b) => a.l - b.l) : []
@@ -108,6 +117,11 @@ export function Detail(p: Props) {
           <span key={id} className="entry-row"><button type="button" className="linklike" onClick={() => p.goFlow(id)}>{g.name}</button>{' '}{link(g.file, g.line)}{t('（{v1}）', { v1: g.comp })}</span>))}</span> }] : []),
         { label: t('呼叫誰'),
           value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次。流程樹的 ×N 是呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}
+            {calleeSites.length ? <span className="entry-list">{calleeSites.slice(0, 12).map((g) => (
+              <span key={g[0].d} className="entry-row"><button type="button" className="linklike" onClick={() => p.goFlow(g[0].d)}>{p.ix.funcs[g[0].d].name}</button>{' '}
+                {g.map((c, i) => <span key={c.f + c.l}>{i ? t('、') : ''}{link(c.f, c.l)}</span>)}{inferred(g[0]) ? <span className="muted">{t('（推測）')}</span> : g.every((c) => c.k === 'ref') ? <span className="muted">{t('（當作值傳出）')}</span> : null}</span>))}
+              {calleeSites.length > 12 ? <span className="entry-row muted">{t('另有 {v1} 個，見流程頁的「往下」', { v1: calleeSites.length - 12 })}</span> : null}</span> : null}
+            {extNames.length ? <span className="entry-row muted">{t('repo 外：')}</span> : null}
             {/* the outside calls by name: subprocess.run, os.replace and the like say what the function does to the system */}
             {extNames.length ? <span className="entry-list">{extNames.slice(0, 10).map(([n, e]) => <span key={n} className="entry-row"><UI.InlineCode>{n}</UI.InlineCode>{' '}{link(e.f, e.l)}</span>)}
               {extNames.length > 10 ? <span className="entry-row muted">{t('另有 {v1} 個', { v1: extNames.length - 10 })}</span> : null}</span> : null}</span> },

@@ -522,6 +522,46 @@ def py_writes(root, funcs):
     return out
 
 
+def py_reads(root, funcs):
+    """Python: open() or Path.open() in a reading mode (no mode is reading), and Path.read_text/read_bytes.
+    The same shape as py_writes: [{fid, f, l, call, name? | param? | expr?}]."""
+    import ast
+    by_file = {}
+    for fid, f in funcs.items():
+        if lang_of(f["file"]) == "python" and f.get("end"):
+            by_file.setdefault(f["file"], []).append((fid, f))
+    out = []
+    for file, fs in sorted(by_file.items()):
+        try:
+            tree = ast.parse(lines_text(Path(root) / file))
+        except (SyntaxError, ValueError, OSError):
+            continue
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Call):
+                continue
+            fn, args = n.func, n.args
+            kw = {k.arg: k.value for k in n.keywords if k.arg}
+            dotted = ast.unparse(fn)
+            if isinstance(fn, ast.Name) and fn.id == "open" or dotted in ("io.open", "codecs.open"):
+                mode, path, call = (args[1] if len(args) > 1 else kw.get("mode")), (args[0] if args else kw.get("file")), dotted
+            elif isinstance(fn, ast.Attribute) and fn.attr == "open" and dotted not in ("os.open", "webbrowser.open") and not dotted.endswith(("gzip.open", "tarfile.open", "zipfile.open")):
+                mode, path, call = (args[0] if args else kw.get("mode")), fn.value, "open"
+            elif isinstance(fn, ast.Attribute) and fn.attr in ("read_text", "read_bytes"):
+                mode, path, call = None, fn.value, fn.attr
+            else:
+                continue
+            if call not in ("read_text", "read_bytes"):
+                if mode is not None and not (isinstance(mode, ast.Constant) and isinstance(mode.value, str) and not PY_WRITE_MODE.search(mode.value)):
+                    continue                                        # a writing mode, or one only known at run time
+            fid = _innermost(fs, n.lineno)
+            if path is None or fid is None:
+                continue
+            f = funcs[fid]
+            params = {a.arg for a in getattr(_def_node(tree, f), "args", ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], defaults=[])).args}
+            out.append(dict(fid=fid, f=file, l=n.lineno, call=call, **_py_path(path, params)))
+    return out
+
+
 def _def_node(tree, f):
     import ast
     for n in ast.walk(tree):
@@ -812,7 +852,7 @@ def leftovers(root, funcs, edges):
 
 # the languages each check reads: where a repository has none of them, the check found nothing
 # because it did not look, and the viewer says so instead of "none found"
-COVERS = dict(writes=("c", "python", "go", "typescript"), stops=("c", "python", "go", "typescript"),
+COVERS = dict(writes=("c", "python", "go", "typescript"), stops=("c", "python", "go", "typescript"), broad=("python",),
               arrays=("c",), env=("c",), env_if_unset=("c", "python"), errors=("c",), plain_writes=("c",),
               limits=("c",), loss=("c",), leftovers=("c",))
 
@@ -823,7 +863,7 @@ def worth_checking(root, funcs, edges, files, symbols):
                 env_if_unset=env_if_unset(root, c_funcs) + py_env_if_unset(root, funcs), errors=error_codes(root, c_funcs),
                 plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, c_funcs),
                 loss=data_loss(root, c_funcs, edges), leftovers=leftovers(root, c_funcs, edges),
-                covers={k: list(v) for k, v in COVERS.items()})
+                broad=broad_excepts(root, funcs), covers={k: list(v) for k, v in COVERS.items()})
 
 
 def py_env_if_unset(root, funcs):
@@ -1169,3 +1209,180 @@ def data_loss(root, funcs, edges):
             seen.add((r["fid"], r["var"]))
             rows.append(r)
     return rows
+
+
+# ---- commands a Python program runs ---------------------------------------
+
+def _argv_text(node, subst=None):
+    """An argument list as the command line it makes: literals as written, other parts as {expr};
+    subst maps a parameter name to what a caller passed for it."""
+    import ast
+    subst = subst or {}
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return " ".join(_argv_text(e, subst) for e in node.elts)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        listy = lambda x: isinstance(x, (ast.List, ast.Tuple)) or isinstance(x, ast.Call) and isinstance(x.func, ast.Name) and x.func.id in ("list", "tuple")
+        sep = " " if listy(node.left) or listy(node.right) else ""          # a list joins words; strings join as one
+        return (_argv_text(node.left, subst) + sep + _argv_text(node.right, subst)).strip()
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
+        vals = node.right.elts if isinstance(node.right, ast.Tuple) else [node.right]
+        it = iter("{" + ast.unparse(v) + "}" for v in vals)
+        return re.sub(r"%[-#0 +]*\d*(?:\.\d+)?[sdifr]", lambda m: next(it, m.group(0)), node.left.value)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("list", "tuple") and len(node.args) == 1:
+        return _argv_text(node.args[0], subst)
+    if isinstance(node, ast.Starred):
+        return _argv_text(node.value, subst)
+    if isinstance(node, ast.Name) and node.id in subst:
+        return subst[node.id]
+    if isinstance(node, ast.JoinedStr):
+        return "".join(v.value if isinstance(v, ast.Constant) else "{" + ast.unparse(v.value) + "}" for v in node.values)
+    return "{" + ast.unparse(node) + "}"
+
+
+SUBPROCESS = ("subprocess.run", "subprocess.Popen", "subprocess.call", "subprocess.check_call", "subprocess.check_output",
+              "os.system", "os.execvp", "os.execv", "os.spawnvp", "asyncio.create_subprocess_exec")
+
+
+def py_commands(root, funcs, edges):
+    """[{fid, f, l, call, cmd, timeout?, shell?, via?: [{fid, f, l, cmd}]}]: the commands a Python program
+    runs. A function that runs a command built from its own parameters (_run(namespace, argv)) is a
+    wrapper: each place that calls it with literal arguments is listed under it, as the command it makes,
+    through up to three wrappers (_ns(ns, *argv) -> _run(argv))."""
+    import ast
+    trees, out = {}, []
+
+    def tree(f):
+        if f not in trees:
+            try:
+                trees[f] = ast.parse(lines_text(Path(root) / f))
+            except (SyntaxError, ValueError, OSError):
+                trees[f] = None
+        return trees[f]
+
+    def call_at(f, line, names):
+        t = tree(f)
+        for n in ast.walk(t) if t else ():
+            if isinstance(n, ast.Call) and n.lineno <= line <= (n.end_lineno or n.lineno) \
+                    and (ast.unparse(n.func) in names or ast.unparse(n.func).split(".")[-1] in names):
+                return n
+        return None
+
+    def defn(fid):
+        f = funcs[fid]
+        t = tree(f["file"])
+        return _def_node(t, f) if t else None
+
+    def params_of(fid):
+        d = defn(fid)
+        if not d:
+            return []
+        a = d.args
+        return [x.arg for x in a.posonlyargs + a.args + ([a.vararg] if a.vararg else []) + a.kwonlyargs if x.arg not in ("self", "cls")]
+
+    def local_value(fid, name, line):
+        """command = [...] + list(argv) earlier in the function: the expression the name holds."""
+        d = defn(fid)
+        best = None
+        for n in ast.walk(d) if d else ():
+            if isinstance(n, ast.Assign) and n.lineno < line and len(n.targets) == 1 \
+                    and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name:
+                best = n.value if best is None or n.lineno > best.lineno else best
+        return best
+
+    callers = {}
+    for c in edges:
+        if c.get("k", "call") == "call" and c.get("s") in funcs and c.get("d") in funcs:
+            callers.setdefault(c["d"], []).append(c)
+
+    def expand(fid, text, depth):
+        """The places that call fid, each with fid's parameters in text replaced by what it passes."""
+        params = params_of(fid)
+        if depth > 3 or not any("{" + p + "}" in text for p in params):
+            return []
+        d = defn(fid)
+        star = d.args.vararg.arg if d and d.args.vararg else None
+        via, seen = [], set()
+        for c in sorted(callers.get(fid, ()), key=lambda c: (c["f"], c["l"])):
+            if (c["f"], c["l"]) in seen:
+                continue
+            seen.add((c["f"], c["l"]))
+            cn = call_at(c["f"], c["l"], {funcs[fid]["name"].split(".")[-1]})
+            if cn is None:
+                continue
+            pos = [p for p in params if p != star]
+
+            def arg(a, c=c, cn=cn):
+                if isinstance(a, ast.Constant) and isinstance(a.value, (int, float)) and not isinstance(a.value, bool):
+                    return str(a.value)                     # vtysh(3, …) makes l3-r3, not l3-r{3}
+                # a name the caller assigned just before (ns = f"l3-r{asn}"): what it holds, not {ns}
+                if isinstance(a, ast.Name):
+                    v = local_value(c["s"], a.id, cn.lineno)
+                    if v is not None and not isinstance(v, ast.Call) or isinstance(v, ast.Call) and _argv_text(v) != "{" + ast.unparse(v) + "}":
+                        return _argv_text(v)
+                return _argv_text(a)
+            subst = {p: arg(a) for p, a in zip(pos, cn.args)}
+            if star:
+                subst[star] = " ".join(arg(a) for a in cn.args[len(pos):])
+            subst.update({k.arg: arg(k.value) for k in cn.keywords if k.arg in params})
+            cmd = text
+            for p, v in subst.items():
+                cmd = cmd.replace("{" + p + "}", v).replace("{list(" + p + ")}", v).replace("{tuple(" + p + ")}", v)
+            # a caller further up only helps when it fills something in (a loop variable leaves {as_id} as it was)
+            deeper = [v for v in expand(c["s"], cmd, depth + 1) if v["cmd"] != cmd]
+            via += deeper if deeper else [dict(fid=c["s"], f=c["f"], l=cn.lineno, cmd=cmd)]
+        return via
+
+    done = set()
+    for e in edges:
+        # an exec edge, or a plain call to subprocess.Popen and the like (the backend does not mark every one)
+        run = e.get("k") == "exec" or e.get("d", "").removeprefix("ext:") in SUBPROCESS
+        if not run or lang_of(e.get("f", "")) != "python" or e.get("s") not in funcs or (e["f"], e["l"]) in done:
+            continue
+        done.add((e["f"], e["l"]))
+        n = call_at(e["f"], e["l"], SUBPROCESS)
+        if n is None:
+            continue
+        argv = n.args[0] if n.args else next((k.value for k in n.keywords if k.arg in ("args", "command")), None)
+        if isinstance(argv, ast.Name) and argv.id not in params_of(e["s"]):
+            argv = local_value(e["s"], argv.id, n.lineno) or argv
+        kw = {k.arg: k.value for k in n.keywords if k.arg}
+        cmd = _argv_text(argv) if argv is not None else ""
+        item = dict(fid=e["s"], f=e["f"], l=n.lineno, call=ast.unparse(n.func), cmd=cmd)
+        if "timeout" in kw:
+            item["timeout"] = ast.unparse(kw["timeout"])
+        if "shell" in kw:
+            item["shell"] = ast.unparse(kw["shell"])
+        via = expand(e["s"], cmd, 1)
+        if via:
+            item["via"] = via
+        out.append(item)
+    return sorted(out, key=lambda x: (x["f"], x["l"]))
+
+
+def broad_excepts(root, funcs):
+    """Python: `except Exception` (or BaseException, or a bare except) whose handler does not raise again:
+    the error is caught and the code goes on. [{fid, f, l, what, then}] with then the handler's first line."""
+    import ast
+    out, by_file = [], {}
+    for fid, f in funcs.items():
+        if lang_of(f["file"]) == "python" and f.get("end"):
+            by_file.setdefault(f["file"], []).append((fid, f))
+    for file, fs in sorted(by_file.items()):
+        try:
+            t = ast.parse(lines_text(Path(root) / file))
+        except (SyntaxError, ValueError, OSError):
+            continue
+        for n in ast.walk(t):
+            if not isinstance(n, ast.ExceptHandler):
+                continue
+            what = ast.unparse(n.type) if n.type is not None else ""
+            if what not in ("", "Exception", "BaseException"):
+                continue
+            if any(isinstance(x, ast.Raise) for b in n.body for x in ast.walk(b)):
+                continue
+            fid = _innermost(fs, n.lineno)
+            if fid:
+                out.append(dict(fid=fid, f=file, l=n.lineno, what=what or "（全部）", then=ast.unparse(n.body[0]).split("\n")[0][:100] if n.body else ""))
+    return out

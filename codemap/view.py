@@ -337,7 +337,8 @@ def build(root, index, config=None):
                docs=doc_summaries(root, readable, readable),
                phases={k: [ph for ph in v if isinstance(ph, dict) and ph.get("name") and ph.get("from")]
                        for k, v in config.get("phases", {}).items() if isinstance(v, list)},
-               build=built, writes=facts.writes(root, funcs),
+               build=built, writes=facts.writes(root, funcs), reads=facts.py_reads(root, funcs), commands=facts.py_commands(root, funcs, [dict(s=e["src"], d=e["dst"], f=e["file"], l=e["line"], k=e["kind"])
+                                                                                        for e in index.get("edges", []) if e.get("file")]),
                worth=facts.worth_checking(root, funcs, edges, readable, syms),
                config=dict(cc=index.get("cc"), scope=index.get("scope")))
     return out

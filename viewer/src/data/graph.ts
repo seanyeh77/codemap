@@ -293,7 +293,9 @@ export function production(g: Graph): Graph {
   if (!Object.values(g.funcs).some((f) => f.scope === 'test')) return g
   const funcs = Object.fromEntries(Object.entries(g.funcs).filter(([, f]) => f.scope !== 'test'))
   const test = (id: string) => g.funcs[id]?.scope === 'test'
-  return { ...g, funcs, edges: g.edges.filter((e) => !test(e.s) && !test(e.d)) }
+  // what was left out, so the overview can still say the tests are there
+  const hidden_tests = Object.entries(g.funcs).filter(([id]) => test(id)).map(([id, f]) => ({ id, name: f.name, file: f.file, line: f.line, comp: f.comp }))
+  return { ...g, funcs, edges: g.edges.filter((e) => !test(e.s) && !test(e.d)), hidden_tests }
 }
 
 /** Add v to the list at m[k]. */

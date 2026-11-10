@@ -203,6 +203,8 @@ function Shell(p: ShellProps) {
   }, [ranked, textHits, query])
   // the tour starts only when asked: opened by itself on a first visit it covered the page, and readers who
   // came for one answer had to find 「略過」 first. A first visit shows an offer instead (welcome, below)
+  // a new box each time the search closes: the next search starts empty, not after the last words
+  const [paletteKey, setPaletteKey] = useState(0)
   const seenTour = UI.useTour('codemap')
   const [tourOpen, setTourOpen] = useState(false)
   const [welcome, setWelcome] = useState(() => !seenTour.seen)
@@ -416,7 +418,7 @@ function Shell(p: ShellProps) {
             // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
-        <UI.CommandPalette open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) setQuery('') }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching}
+        <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) { setQuery(''); setPaletteKey((k) => k + 1) } }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching}
           noResultsText={(q) => noResults(q)}
           placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />

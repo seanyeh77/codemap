@@ -51,3 +51,46 @@ class Writes(unittest.TestCase):
                  dict(s="app.py:log", d="ext:sys.getsizeof", f="app.py", l=22, k="call", src="static", dn="sys.getsizeof")]
         self.assertEqual([s["name"] for s in facts.stops(edges)], ["sys.exit"])
         self.assertEqual(facts.COVERS["arrays"], ("c",))          # a C-only check: the viewer leaves it out for Python
+
+
+CMD_SRC = '''import subprocess
+
+
+def _run(namespace, argv, timeout=5):
+    return subprocess.run(["ip", "netns", "exec", namespace, *argv], timeout=timeout, check=False)
+
+
+def sync(asn):
+    ns = f"l3-r{asn}"
+    _run(ns, ["ip", "-j", "route"])
+
+
+def guard():
+    try:
+        sync(1)
+    except Exception as e:
+        print(e)
+'''
+
+
+class Commands(unittest.TestCase):
+    def test_reads_commands_broad(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "app.py").write_text(SRC)
+            Path(d, "cmd.py").write_text(CMD_SRC)
+            funcs = {"app.py:save": dict(name="save", file="app.py", line=5, end=9),
+                     "app.py:read": dict(name="read", file="app.py", line=12, end=14),
+                     "app.py:log": dict(name="log", file="app.py", line=17, end=21),
+                     "cmd.py:_run": dict(name="_run", file="cmd.py", line=4, end=5),
+                     "cmd.py:sync": dict(name="sync", file="cmd.py", line=8, end=10),
+                     "cmd.py:guard": dict(name="guard", file="cmd.py", line=13, end=17)}
+            # open(path) with no mode reads; open(..., "a") and Path.open("w") do not
+            self.assertEqual([(r["fid"], r["l"], r.get("param")) for r in facts.py_reads(d, funcs)], [("app.py:read", 13, "path")])
+            edges = [dict(s="cmd.py:_run", d="ext:subprocess.run", f="cmd.py", l=5, k="exec"),
+                     dict(s="cmd.py:sync", d="cmd.py:_run", f="cmd.py", l=10, k="call")]
+            cmds = facts.py_commands(d, funcs, edges)
+            self.assertEqual(len(cmds), 1)
+            self.assertEqual(cmds[0]["timeout"], "timeout")
+            self.assertEqual([v["cmd"] for v in cmds[0]["via"]], ["ip netns exec l3-r{asn} ip -j route"])
+            broad = facts.broad_excepts(d, funcs)
+            self.assertEqual([(b["fid"], b["l"], b["what"]) for b in broad], [("cmd.py:guard", 16, "Exception")])
