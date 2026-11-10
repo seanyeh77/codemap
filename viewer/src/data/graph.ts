@@ -1,4 +1,4 @@
-import { inferred, type Edge, type Func, type Graph } from './types'
+import { inferred, uncertain, type Edge, type Func, type Graph } from './types'
 import { list, t } from '../i18n'
 
 /** How deep the impact list goes. */
@@ -88,7 +88,7 @@ export class Index {
     for (const e of this.callers(id)) {
       if (e.k === 'constructor' || e.k === 'destructor') load = e.k
       else if (!this.funcs[e.s]) others.add(this.nameOf(e.s, e))
-      else (inferred(e) ? guessed : sure).add(e.s)
+      else (uncertain(e) ? guessed : sure).add(e.s)
     }
     for (const s of guessed) if (sure.has(s)) guessed.delete(s)
     // the names, compiler-seen first; main of a program is called by the C runtime, never by the repo
@@ -138,7 +138,8 @@ export class Index {
       }
       return { label: t('編譯器確認'), title: t('編譯器確認'), text: t('重新編譯時記錄到的呼叫，存在於目前的 build。') }
     }
-    if (e.src === 'syntax' || e.src === 'static') {
+    if (e.src === 'static') return this.staticEdge(e, to)
+    if (e.src === 'syntax') {
       if (!this.funcs[id]) return { label: t('外部'), title: t('外部函式'), text: t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? id) + '`' }) }
       // tree-sitter read the call; a name, not a type checker, decided which definition it is
       if (e.by === 'name') return { label: t('依名稱推測'), title: t('依名稱推測'),
@@ -162,6 +163,27 @@ export class Index {
       : t('標記為 `destructor`：程式結束或程式庫卸載時自動執行。')
     else text = t('由規則「{rule}」推得，編譯器無法確認。', { rule: e.rule ?? '' })
     return { label: ruleTag(e.rule), title: t('推測（規則）'), text }
+  }
+
+  /** A call the Python analyzer resolved: through names (exact), a type (inferred), or one of several targets. */
+  staticEdge(e: Edge, to: string): { label: string; title: string; text: string } {
+    if (!this.funcs[e.d]) return { label: t('外部'), title: t('外部函式'), text: t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? e.d) + '`' }) }
+    const ty = e.infer?.type ? '`' + e.infer.type + '`' : t('這個類別')
+    const how = e.infer?.how
+    const because = how === 'self' ? t('`self` 是 {v1} 的物件，方法依繼承順序找到 {v2}。', { v1: ty, v2: to })
+      : how === 'cls' ? t('`cls` 是 {v1}，方法依繼承順序找到 {v2}。', { v1: ty, v2: to })
+        : how === 'super' ? t('`super()` 從 {v1} 的父類別找到 {v2}。', { v1: ty, v2: to })
+          : how === 'constructor' ? t('物件由 {v1}() 建立，所以方法是 {v2}。', { v1: ty, v2: to })
+            : how === 'annotation' ? t('型別註記寫明物件是 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
+              : how === 'return' ? t('物件是另一個函式的回傳值，那個函式回傳 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
+                : how === 'assign' ? t('物件由賦值傳過來，來源是 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
+                  : how === 'attribute' ? t('這是 self 的屬性，在類別裡被設成 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
+                    : how === 'override' ? t('子類別覆寫了這個方法，`self` 也可能是子類別的物件。')
+                      : t('名稱經由 import 或同一個模組，確定指向 {v1}。', { v1: to })
+    if (e.resolution === 'ambiguous') return { label: t('可能目標之一'), title: t('可能目標之一'),
+      text: t('這個呼叫有多個可能的目標（型別是聯集，或子類別覆寫了方法），每一個都列出，{v1} 是其中之一。', { v1: to }) + because }
+    if (e.resolution === 'inferred') return { label: t('型別推論'), title: t('型別推論'), text: because + t('型別是 codemap 從程式碼推得的，沒有執行程式確認。') }
+    return { label: t('符號解析'), title: t('符號解析'), text: because }
   }
 
   /** An edge a framework adapter added: the framework makes this call, the code does not. */

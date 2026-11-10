@@ -27,6 +27,8 @@ export interface Func {
 /** How an edge is known: the first three are calls written in the code, the last two are inferred. */
 export type EdgeSource = 'compiler' | 'static' | 'syntax' | 'rule' | 'framework'
 export const inferred = (e: { src: EdgeSource }) => e.src === 'rule' || e.src === 'framework'
+/** Not certain: inferred by a rule or framework, or one of several possible targets, or matched on a name alone. */
+export const uncertain = (e: Edge) => inferred(e) || e.resolution === 'ambiguous' || e.by === 'name'
 /** A call written in the code, whichever backend read it. */
 export const written = (e: { src: EdgeSource }) => !inferred(e)
 
@@ -41,6 +43,10 @@ export interface Edge {
   rule?: string
   /** syntax: the receiver's type is unknown, matched on a method name defined once in the repo */
   by?: 'name'
+  /** static: exact (the name decides it), inferred (a type did), ambiguous (one of several targets) */
+  resolution?: 'exact' | 'inferred' | 'ambiguous'
+  /** static: how the receiver's type was found, and the type */
+  infer?: { how: string; type: string | null }
   via?: string
   slot?: string
   /** table_install: the table the function is listed in */
@@ -124,6 +130,10 @@ export interface Stats {
   edges: number | null
   /** calls tree-sitter matched by name */
   syntax?: number
+  /** calls the Python analyzer resolved */
+  static?: number
+  /** the Python analyzer's results: exact, inferred, ambiguous, unresolved, builtin */
+  resolution?: Record<string, number>
   /** files read per language */
   languages?: Record<string, number>
   /** framework adapters that ran */

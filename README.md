@@ -13,7 +13,16 @@ The map has four layers:
      with `-O0 -fcallgraph-info` (no linking). Macros are expanded, only the
      `#ifdef` branches that are really built appear, and calls through
      function pointers are kept as `__indirect_call`. Edges: `compiler`.
-   - `syntax`: tree-sitter reads definitions, calls and imports, and joins a
+   - `python`: Python's own `ast` resolves names and simple types. Imports
+     (aliases, relative, cycles), module functions, classes, `self`/`cls`,
+     the MRO and `super()` decide a target exactly; constructors,
+     annotations (`X | Y`, `Optional`, `Union`), return values, assignments
+     and instance attributes (`self.client = Client()`) infer one. Each edge
+     says `resolution`: `exact`, `inferred`, or `ambiguous` (a union, or a
+     method a subclass overrides: every target gets an edge). A call nothing
+     decides gets no edge and is counted as unresolved; it is never matched
+     on its name across the repository. Edges: `static`.
+   - `syntax`: for the other languages, tree-sitter reads definitions, calls and imports, and joins a
      call to a definition when the name decides it (the same file, an import,
      `self`/`this`, the package in Go, a name defined once). Edges: `syntax`;
      a call on an object of unknown type joined by a method name defined once
@@ -197,7 +206,10 @@ The build is one self-contained `index.html`, so it can be served by
 
 ## Limits
 
-- Outside C/C++ the calls come from names, not types: a method called on an
+- Python types are followed through constructors, annotations, returns,
+  assignments and attributes, not through loops, containers (`for row in
+  rows`), or arguments without annotations; those calls stay unresolved.
+- In the other tree-sitter languages the calls come from names, not types: a method called on an
   object whose type codemap cannot see is joined only when one definition in
   the repository has that name (and never for names every container has, such
   as `get` or `append`). Dynamic calls (`getattr`, reflection, callbacks passed

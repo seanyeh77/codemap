@@ -111,6 +111,10 @@ def code(xs):
     return [f"`{x}`" for x in xs]
 
 
+# how a claimed call is known, strongest first
+RANK = ("compiler", "static:exact", "static:inferred", "syntax", "static:ambiguous")
+
+
 def check(root, md_path, index):
     """Problems as text for the command line, and one item per checked
     Markdown line for the viewer: status done, fail, or review (the claimed
@@ -123,8 +127,9 @@ def check(root, md_path, index):
         b = nodes.get(e["dst"], {}).get("name", e["dst"])
         # the strongest way the call is known: the compiler, else a call tree-sitter read in the code
         ok, rule = pairs.get((a, b), (None, None))
-        seen = e["source"] if e["source"] in ("compiler", "static", "syntax") else None
-        best = min(filter(None, (ok, seen)), key=("compiler", "static", "syntax").index, default=None)
+        seen = (e["source"] if e["source"] != "static" else f'static:{e.get("resolution", "exact")}') \
+            if e["source"] in ("compiler", "static", "syntax") else None
+        best = min(filter(None, (ok, seen)), key=RANK.index, default=None)
         pairs[(a, b)] = (best, rule or (e if e["source"] in ("rule", "framework") else None))
         if e["source"] in ("compiler", "static", "syntax") and e["kind"] == "call" and nodes.get(e["dst"], {}).get("defined"):
             callees.setdefault(a, set()).add(b)
@@ -168,6 +173,12 @@ def check(root, md_path, index):
                     review.append(Msg("`{a} -> {b}` 由規則「{rule}」推得，編譯器無法確認；請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
             elif pairs[(a, b)][0] == "compiler":
                 why.append(Msg("`{a} -> {b}` 經編譯器確認", a=a, b=b))
+            elif pairs[(a, b)][0] == "static:exact":
+                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（靜態分析確定目標）", a=a, b=b))
+            elif pairs[(a, b)][0] == "static:inferred":
+                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（目標由型別推論得到）", a=a, b=b))
+            elif pairs[(a, b)][0] == "static:ambiguous":
+                review.append(Msg("`{a} -> {b}`：`{b}` 只是這個呼叫可能的目標之一（聯集型別或子類別覆寫），請確認", a=a, b=b))
             else:
                 why.append(Msg("`{a} -> {b}` 寫在程式碼裡（tree-sitter 依名稱對到）", a=a, b=b))
         whole = words_in(md)
@@ -227,7 +238,7 @@ def check(root, md_path, index):
             # referenced lines (the rest of the sentence, such as "set by", is not checked)
             basis = (None if status != "done" else
                      "calls" if why and all(m.t.endswith("經編譯器確認") for m in why) else
-                     "syntax" if why and all(m.t.endswith(("經編譯器確認", "依名稱對到）")) for m in why) else
+                     "syntax" if why and all(m.t.endswith(("經編譯器確認", "依名稱對到）", "確定目標）", "型別推論得到）")) for m in why) else
                      "names" if any("提及" in m.t for m in why) else "exists")
             items.append(dict(at=f"{rel}:{n}", line=n, text=plain(md),
                               status=status, basis=basis, why="；".join(map(str, bad or review or why)),

@@ -24,14 +24,15 @@ class Polyglot(unittest.TestCase):
 
     def test_languages(self):
         self.assertEqual(self.idx["backends"]["syntax"]["languages"],
-                         {"python": 7, "java": 1, "go": 2, "typescript": 2, "html": 1, "css": 1})
+                         {"java": 1, "go": 2, "typescript": 2, "html": 1, "css": 1})
+        self.assertEqual(self.idx["backends"]["python"]["languages"], {"python": 7})     # its own backend
 
     def test_python_calls(self):
-        self.has("current_user", "lookup")                       # same file
-        self.has("test_render", "render")                        # from api.main import render
-        self.has("Switch.packet_in", "Switch.learn")             # self.learn()
-        self.has("get_db", "Session")                            # a class: no __init__, the class itself
-        self.assertIn("ext:fastapi.FastAPI", self.idx["nodes"])  # an outside module's function
+        self.has("current_user", "lookup", "static")                       # same file
+        self.has("test_render", "render", "static")                        # from api.main import render
+        self.has("Switch.packet_in", "Switch.learn", "static")             # self.learn()
+        self.has("get_db", "Session", "static")                            # a class: no __init__, the class itself
+        self.assertIn("ext:fastapi.FastAPI", self.idx["nodes"])            # an outside module's function
 
     def test_java_calls(self):
         self.has("AppComponent.activate", "AppComponent.log")    # own class's method, no this.
@@ -87,7 +88,8 @@ class Polyglot(unittest.TestCase):
     def test_viewer_graph(self):
         g = view.build(ROOT, rules.run(ROOT, dict(self.idx, edges=list(self.idx["edges"])), {}), {})
         self.assertEqual(g["stats"]["languages"]["go"], 2)
-        self.assertGreater(g["stats"]["syntax"], 20)
+        self.assertGreater(g["stats"]["syntax"], 10)
+        self.assertGreater(g["stats"]["static"], 15)
         f = g["funcs"]["api/main.py:read_user"]
         self.assertEqual((f["lang"], f["entry"]["kind"], f["end"]), ("python", "route", 10))
         self.assertTrue(any(e["src"] == "framework" and e["k"] == "inject" for e in g["edges"]))

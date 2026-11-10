@@ -5,10 +5,13 @@ builds a partial index from them. The pipeline merges the parts and never
 looks inside a backend, so a new language is a new module here.
 
   gcc      C/C++ through the compiler (needs compile_commands.json): source "compiler"
-  syntax   every language with a tree-sitter grammar, calls matched by name: source "syntax"
+  python   Python through its own ast: names, imports and simple types: source "static"
+  syntax   every other language with a tree-sitter grammar, calls matched by name: source "syntax"
 
 The gcc backend takes the C/C++ files when it can; tree-sitter reads them only
-when the repository has no compile_commands.json.
+when the repository has no compile_commands.json. Python goes to its own
+analyzer; `"backends": {"python": false}` in .codemap/rules.json sends it to
+tree-sitter instead.
 """
 
 import sys
@@ -32,7 +35,11 @@ def plan(root, config=None):
     has_db = (root / "compile_commands.json").exists()
     if has_db:
         out.append(("gcc", c_files))
-    rest = [f for f in files if Path(f).suffix in syntax.EXT and not (has_db and f in set(c_files))]
+    # Python has an analyzer of its own; tree-sitter reads it only when that one is turned off
+    py = [f for f in files if f.endswith(".py")] if (config or {}).get("backends", {}).get("python", True) else []
+    if py:
+        out.append(("python", py))
+    rest = [f for f in files if Path(f).suffix in syntax.EXT and not (has_db and f in set(c_files)) and f not in set(py)]
     disabled = set((config or {}).get("languages", {}).get("disable", []))
     rest = [f for f in rest if syntax.LANG_NAME.get(syntax.EXT[Path(f).suffix], syntax.EXT[Path(f).suffix]) not in disabled]
     if rest:
@@ -55,6 +62,9 @@ def build(root, scope=None, jobs=None, cc=None, config=None):
                     n.setdefault("lang", "cpp" if Path(n.get("file") or "").suffix in (".cc", ".cpp", ".cxx", ".hpp", ".hh") else "c")
             part["stats"]["files"] = len(files)
             part["stats"]["languages"] = {"c": len(files)}
+        elif name == "python":
+            from . import python
+            part = python.build(root, files)
         else:
             from . import syntax
             missing = sorted({syntax.EXT[Path(f).suffix] for f in files if syntax.language(syntax.EXT[Path(f).suffix]) is None})

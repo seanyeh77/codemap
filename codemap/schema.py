@@ -36,13 +36,18 @@ Edge (a relation from src to dst, both node ids)
   kind      "call" | "indirect" | a rule or adapter kind ("route", "inject", "callback", ...)
   source    how it is known, strongest first:
               "compiler"   a compiler recorded the call (C/C++)
-              "static"     a language's own analyzer resolved it
+              "static"     a language's own analyzer resolved it (Python: codemap.backends.python)
               "syntax"     parsed with tree-sitter and matched by name
               "rule"       a codemap rule inferred it from the source text
               "framework"  a framework adapter: the framework makes this call
   rule      str?  the rule or adapter that made it ("fnptr_assign", "pytest.fixture")
   by        "name"?  a syntax edge whose receiver's type is unknown, matched on a method name
                      defined once in the repository
+  resolution        a static edge: "exact" (names decide the target), "inferred" (a type does),
+                    "ambiguous" (one of several targets, each with an edge); a call with no
+                    target found gets no edge and is counted as unresolved
+  infer     {how, type}?  how the receiver's type was found: self, cls, super, constructor,
+                    annotation, return, assign, attribute, override; and the class
 """
 
 VERSION = 2

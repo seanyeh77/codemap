@@ -88,6 +88,14 @@ def cmd_index(a):
         gb = idx["backends"]["gcc"]
         print(f'{gb["nodes"]} functions, {gb["edges"]} compiler edges, {st["indirect"]} indirect '
               f'({st.get("indirect_unresolved", "?")} unresolved), {st["compiler_inserted"]} compiler-inserted calls dropped')
+    if "python" in idx["backends"]:
+        px = idx["backends"]["python"]
+        r = px["resolution"]
+        print(f'python: {px["files"]} files, {px["nodes"]} definitions, calls {r.get("exact", 0)} exact, '
+              f'{r.get("inferred", 0)} inferred, {r.get("ambiguous", 0)} ambiguous, {r.get("unresolved", 0)} unresolved '
+              f'({r.get("builtin", 0)} on built-in types not counted)')
+        for err in px.get("errors", [])[:5]:
+            print(f"  could not parse {err}")
     if "syntax" in idx["backends"]:
         sx = idx["backends"]["syntax"]
         print(f'tree-sitter: {sx["files"]} files ({", ".join(f"{k} {v}" for k, v in sorted(sx["languages"].items()))}), '
