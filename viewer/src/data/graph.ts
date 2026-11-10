@@ -170,7 +170,14 @@ export class Index {
     if (!this.funcs[e.d]) return { label: t('外部'), title: t('外部函式'), text: t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? e.d) + '`' }) }
     const ty = e.infer?.type ? '`' + e.infer.type + '`' : t('這個類別')
     const how = e.infer?.how
-    const because = how === 'self' ? t('`self` 是 {v1} 的物件，方法依繼承順序找到 {v2}。', { v1: ty, v2: to })
+    // element:<how>: the object came out of a container, and the container's elements are known from <how>
+    const FROM: Record<string, string> = { annotation: '型別註記', append: 'append() 放進去的值', extend: 'extend() 放進去的值', setitem: '[鍵] = 值 的指定',
+      literal: '容器字面值裡寫的值', comprehension: '推導式產生的值', return: '函式的回傳值' }
+    const elem = how?.startsWith('element:') ? how.slice(8) : null
+    const because = elem ? (this.funcs[e.d]?.kind === 'method' || e.infer?.type
+      ? t('物件是從容器取出的元素；容器的元素型別來自{v1}，是 {v2}，所以方法是 {v3}。', { v1: t(FROM[elem] ?? elem), v2: ty, v3: to })
+      : t('呼叫的是從容器取出的函式；容器裡的值來自{v1}，其中有 {v2}。', { v1: t(FROM[elem] ?? elem), v2: to }))
+      : how === 'self' ? t('`self` 是 {v1} 的物件，方法依繼承順序找到 {v2}。', { v1: ty, v2: to })
       : how === 'cls' ? t('`cls` 是 {v1}，方法依繼承順序找到 {v2}。', { v1: ty, v2: to })
         : how === 'super' ? t('`super()` 從 {v1} 的父類別找到 {v2}。', { v1: ty, v2: to })
           : how === 'constructor' ? t('物件由 {v1}() 建立，所以方法是 {v2}。', { v1: ty, v2: to })
@@ -181,7 +188,8 @@ export class Index {
                     : how === 'override' ? t('子類別覆寫了這個方法，`self` 也可能是子類別的物件。')
                       : t('名稱經由 import 或同一個模組，確定指向 {v1}。', { v1: to })
     if (e.resolution === 'ambiguous') return { label: t('可能目標之一'), title: t('可能目標之一'),
-      text: t('這個呼叫有多個可能的目標（型別是聯集，或子類別覆寫了方法），每一個都列出，{v1} 是其中之一。', { v1: to }) + because }
+      text: (e.infer?.partial ? t('容器裡還有型別不明的值，實際目標可能不只列出的這些；{v1} 是其中之一。', { v1: to })
+        : t('這個呼叫有多個可能的目標（型別是聯集，或子類別覆寫了方法），每一個都列出，{v1} 是其中之一。', { v1: to })) + because }
     if (e.resolution === 'inferred') return { label: t('型別推論'), title: t('型別推論'), text: because + t('型別是 codemap 從程式碼推得的，沒有執行程式確認。') }
     return { label: t('符號解析'), title: t('符號解析'), text: because }
   }

@@ -17,9 +17,17 @@ The map has four layers:
      (aliases, relative, cycles), module functions, classes, `self`/`cls`,
      the MRO and `super()` decide a target exactly; constructors,
      annotations (`X | Y`, `Optional`, `Union`), return values, assignments
-     and instance attributes (`self.client = Client()`) infer one. Each edge
-     says `resolution`: `exact`, `inferred`, or `ambiguous` (a union, or a
-     method a subclass overrides: every target gets an edge). A call nothing
+     and instance attributes (`self.client = Client()`) infer one, and so do
+     containers: `list[User]`, `dict[str, User]`, literals, comprehensions,
+     `append`/`add`/`extend`/`d[k] = v`, then `for`, `enumerate`, `.items()`,
+     `[i]`, `.pop()`, `.get()`, `list()`/`sorted()`; the edge records where
+     the element type came from (`element:annotation`, `element:append`, ...).
+     An object made by a constructor is exactly its class; `self`, `cls`, an
+     annotation or a parameter only bound it, so a method a subclass
+     overrides makes the call `ambiguous`. Each edge says `resolution`:
+     `exact`, `inferred`, or `ambiguous` (a union, an override, a dispatch
+     table: every target gets an edge; a container that also holds values
+     of unknown type marks its targets `partial`). A call nothing
      decides gets no edge and is counted as unresolved; it is never matched
      on its name across the repository. Edges: `static`.
    - `syntax`: for the other languages, tree-sitter reads definitions, calls and imports, and joins a
@@ -207,8 +215,12 @@ The build is one self-contained `index.html`, so it can be served by
 ## Limits
 
 - Python types are followed through constructors, annotations, returns,
-  assignments and attributes, not through loops, containers (`for row in
-  rows`), or arguments without annotations; those calls stay unresolved.
+  assignments, attributes and containers, not through arguments without
+  annotations, `**kwargs`, `getattr`, or rows read from files (`for row in
+  csv.DictReader(...)`); those calls stay unresolved.
+- Edges are per function, not per call site: inside `Base.run`, `self.execute()`
+  stays ambiguous when a subclass overrides `execute`, even if every caller
+  happens to pass a `Base`.
 - In the other tree-sitter languages the calls come from names, not types: a method called on an
   object whose type codemap cannot see is joined only when one definition in
   the repository has that name (and never for names every container has, such

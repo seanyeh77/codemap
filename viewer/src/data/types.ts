@@ -46,7 +46,7 @@ export interface Edge {
   /** static: exact (the name decides it), inferred (a type did), ambiguous (one of several targets) */
   resolution?: 'exact' | 'inferred' | 'ambiguous'
   /** static: how the receiver's type was found, and the type */
-  infer?: { how: string; type: string | null }
+  infer?: { how: string; type: string | null; partial?: boolean }
   via?: string
   slot?: string
   /** table_install: the table the function is listed in */

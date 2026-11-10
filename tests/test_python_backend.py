@@ -66,6 +66,42 @@ class Resolve(unittest.TestCase):
         self.assertIn("ambiguous", self.res("main", "Admin.run"))            # either: User | Admin
         self.assertIn("ambiguous", self.res("main", "User.run"))
 
+    # containers: the element type, and where it came from
+
+    def how(self, src, dst):
+        return {e["infer"]["how"] for e in self.calls[(src, dst)]}
+
+    def test_container_elements(self):
+        self.assertEqual(self.how("team", "User.describe"), {"element:annotation"})   # users: list[User]; load() -> list[User]
+        self.assertEqual(self.how("team", "Admin.grant"), {"element:append"})         # staff.append(Admin(...)); list(staff).pop()
+        self.assertEqual(self.how("team", "Repo.save"), {"element:setitem"})          # by_name["r"] = Repo(); .items()
+        self.assertEqual(self.how("team", "User.run"), {"element:comprehension"})     # [User(...) for ...][0]
+        self.assertEqual(self.how("Team.describe_all", "User.describe"), {"element:annotation"})   # self.members: list[User]
+        self.assertEqual(self.res("team", "User.describe"), {"inferred"})
+
+    def test_exact_type_is_not_ambiguous(self):
+        # b = User(...) is exactly a User: Admin overriding run() does not matter
+        b = [e for e in self.calls[("exact_vs_bound", "User.run")] if e["line"] == 32]
+        self.assertEqual([e["resolution"] for e in b], ["inferred"])
+        self.none_at("exact_vs_bound", "Admin.run", 32)
+        # [User(...) for ...][0] is exactly a User too
+        self.assertEqual(self.res("team", "User.run"), {"inferred"})
+        self.none("team", "Admin.run")
+        # u: User is a bound: an Admin fits, so both
+        self.assertEqual({e["resolution"] for e in self.calls[("exact_vs_bound", "Admin.run")]}, {"ambiguous"})
+
+    def test_partial_container_is_ambiguous(self):
+        # HANDLERS also holds a lambda of unknown type: team is one target, not the one target
+        es = self.calls[("dispatch", "team")]
+        self.assertEqual({e["resolution"] for e in es}, {"ambiguous"})
+        self.assertTrue(all(e["infer"].get("partial") for e in es))
+
+    def test_closure_from_a_return(self):
+        self.assertEqual(self.res("dispatch", "make_rule.rule"), {"inferred"})     # make_rule(1)(2)
+
+    def none_at(self, src, dst, line):
+        self.assertFalse([e for e in self.calls.get((src, dst), []) if e["line"] == line])
+
     # 2C: no guessing
 
     def test_unknown_object_gets_no_edge(self):
