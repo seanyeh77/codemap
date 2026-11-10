@@ -330,14 +330,22 @@ The build is one self-contained `index.html`, so it can be served by
     stopped run or two runs at once never leave half an entry; temporary
     files older than an hour are removed.
   - An entry that cannot be read, does not have the expected shape, or
-    whose checksum does not match what it would replay is removed and its
-    program analyzed in full: no part of it is replayed.
+    whose checksum does not match is removed and its program analyzed in
+    full: no part of it is replayed. The checksum covers the whole entry:
+    the questions and answers that decide whether it is used, and the
+    results it would replay.
   - The key includes the helper's code, codemap's version, TypeScript and
     Node, and each entry records its format: entries of another version are
     never used, and are replaced.
   - A program's new entry replaces its old one; an entry no run has used
     for 14 days is removed, and beyond 2 GB
-    (`CODEMAP_TS_CACHE_MB`) the least recently used go.
+    (`CODEMAP_TS_CACHE_MB`) the least recently used go; an entry the
+    current run used is never removed.
+  - Each run adds one line to `.codemap/cache/typescript/log.jsonl` (the
+    last 1,000 runs): programs replayed and rebuilt, why, entries, size and
+    time, to see the hit rate and the invalidation reasons in real use.
+  - `benchmarks/ts_cache_regression.py` replays a repository's last commits
+    with and without the cache and compares the graphs at every commit.
 - A function a library hands back (`const [x, setX] = useState()`, a
   solid-js setter) is a call to that library, `inferred`, named by its
   declared type (`react.Dispatch`) or by the function that returned it

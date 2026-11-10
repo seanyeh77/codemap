@@ -231,9 +231,58 @@ rebuilt before, 12 after).
 - Steps that change `query-core` (16) or the devtools (02, 08, 18) rebuild 30 to 50 programs: the
   limit of a program as the unit.
 - At steps 05, 15 and 30 the graph was compared with a run without the cache on the same commit:
-  every edge (in order), node and count was the same.
+  every edge (in order), node and count was the same. The regression run below compares every step.
 - The cache ended at 54 entries, 78 MB: an entry is replaced when its program is rebuilt, and the
   entries an earlier format of the prototype left were removed.
+
+### Correctness regression: every commit compared
+
+`benchmarks/ts_cache_regression.py` replays the same 30 commits from an empty cache and, at every
+commit, indexes with the cache and without it and compares the two: every edge in order, every node,
+every count. It is the regression suite for the cache: rerun it after any change to the helper.
+
+    uv run python benchmarks/ts_cache_regression.py /path/to/a/copy --commits 30 --out /tmp/regress
+
+The run with the code of this commit (the checksum covering the whole entry):
+
+| Step | Commit | Files changed (個) | TS/JS changed (個) | Replayed (個) | Rebuilt (個) | Why rebuilt | With the cache (s) | Without (s) | Edges (條) | Same graph |
+|---:|---|---:|---:|---:|---:|---|---:|---:|---:|---|
+| 00 | 3ccb007 | 0 | 0 | 0 | 54 | no entry 54 | 174.2 | 163.8 | 101303 | yes |
+| 01 | 8f5144b | 1 | 0 | 54 | 0 |  | 3.7 | 159.5 | 101303 | yes |
+| 02 | f69b28a | 12 | 10 | 25 | 29 | content 28, no entry 1 | 100.5 | 163.6 | 102412 | yes |
+| 03 | e712412 | 3 | 2 | 47 | 7 | content 6, no entry 1 | 42.9 | 168.0 | 102485 | yes |
+| 04 | 16d863a | 1 | 0 | 54 | 0 |  | 4.1 | 159.4 | 102485 | yes |
+| 05 | 925168e | 205 | 0 | 4 | 50 | content 50 | 165.8 | 167.5 | 102485 | yes |
+| 06 | f078a2b | 8 | 5 | 44 | 10 | content 9, no entry 1 | 40.6 | 158.8 | 102454 | yes |
+| 07 | b165677 | 3 | 1 | 53 | 1 | content 1 | 8.1 | 161.8 | 102454 | yes |
+| 08 | c4ed956 | 7 | 6 | 24 | 30 | content 30 | 101.8 | 165.8 | 102517 | yes |
+| 09 | 284abac | 201 | 0 | 4 | 50 | content 50 | 178.6 | 189.7 | 102517 | yes |
+| 10 | 9dbf992 | 1 | 0 | 54 | 0 |  | 4.2 | 166.9 | 102517 | yes |
+| 11 | a8c2a17 | 14 | 5 | 42 | 12 | content 10, no entry 2 | 70.5 | 167.1 | 102529 | yes |
+| 12 | c34ce05 | 2 | 0 | 54 | 0 |  | 4.4 | 168.5 | 102529 | yes |
+| 13 | 2cdba60 | 5 | 4 | 47 | 7 | content 7 | 46.2 | 173.4 | 102558 | yes |
+| 14 | d07ed19 | 5 | 0 | 54 | 0 |  | 3.6 | 168.1 | 102558 | yes |
+| 15 | 00dc8de | 3 | 2 | 47 | 7 | content 7 | 48.6 | 166.5 | 102583 | yes |
+| 16 | b6add89 | 3 | 2 | 4 | 50 | content 50 | 181.5 | 172.1 | 102596 | yes |
+| 17 | 172fd2a | 14 | 0 | 54 | 0 |  | 4.0 | 153.5 | 102596 | yes |
+| 18 | a4d72f7 | 8 | 7 | 24 | 30 | content 30 | 95.3 | 169.0 | 103007 | yes |
+| 19 | d01e358 | 204 | 0 | 4 | 50 | content 50 | 171.1 | 172.0 | 103007 | yes |
+| 20 | 025773a | 8 | 7 | 47 | 7 | content 7 | 47.2 | 159.9 | 103066 | yes |
+| 21 | f4199ab | 6 | 4 | 47 | 7 | content 7 | 41.3 | 167.1 | 103232 | yes |
+| 22 | 82fe952 | 14 | 0 | 54 | 0 |  | 4.0 | 171.8 | 103232 | yes |
+| 23 | 3875d1d | 201 | 0 | 4 | 50 | content 50 | 165.5 | 155.9 | 103232 | yes |
+| 24 | 9705a4c | 1 | 1 | 53 | 1 | content 1 | 18.2 | 156.5 | 103232 | yes |
+| 25 | ef6f3e0 | 1 | 1 | 53 | 1 | content 1 | 17.8 | 162.0 | 103232 | yes |
+| 26 | cb755b9 | 7 | 1 | 50 | 4 | content 4 | 27.3 | 174.3 | 103232 | yes |
+| 27 | 5174c71 | 6 | 0 | 54 | 0 |  | 4.4 | 167.5 | 103232 | yes |
+| 28 | e676aa7 | 2 | 1 | 47 | 7 | content 7 | 42.9 | 171.9 | 103232 | yes |
+| 29 | 9a9ded3 | 10 | 3 | 47 | 7 | content 7 | 41.6 | 152.0 | 103232 | yes |
+| 30 | 8f6da1e | 7 | 0 | 54 | 0 |  | 3.5 | 152.7 | 103232 | yes |
+
+- The graph with the cache was the same as without it at all 31 commits (101,303 to 103,232 edges).
+- Steps 1 to 30: 417 of 1,620 programs rebuilt; 1,689.2 s with the cache (median 41.5 s), 4,962.8 s
+  without it (median 167.0 s, from 152.0 s to 189.7 s). The cache's per-step times include the
+  questions asked again (about 2 s on a warm step).
 
 A program is the unit: case 4 shows its limit. A body changed in a package that 50 programs import
 rebuilds those 50, though only one function's calls changed.

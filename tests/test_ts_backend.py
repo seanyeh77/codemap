@@ -236,9 +236,11 @@ class TsProgramCache(unittest.TestCase):
             bad_edge = json.loads(entry.read_text())
             bad_edge["delta"]["edges"][0]["line"] = "x"
             other = dict(good, format=0)
+            dropped = json.loads(entry.read_text())
+            dropped["probe"].pop(next(k for k in dropped["probe"] if k.endswith("math.ts")))    # one question lost
             flipped = json.loads(entry.read_text())
             flipped["delta"]["edges"][0]["dst"] = "ext:tampered"                         # parses, well formed, wrong
-            for damage, why in (("{not json", "corrupt"), (json.dumps(bad_edge), "corrupt"), ("", "corrupt"), (json.dumps(flipped), "corrupt"),
+            for damage, why in (("{not json", "corrupt"), (json.dumps(bad_edge), "corrupt"), ("", "corrupt"), (json.dumps(flipped), "corrupt"), (json.dumps(dropped), "corrupt"),
                                 (json.dumps(other), "format")):
                 entry = self.entries(root)[0] if self.entries(root) else entry
                 entry.write_text(damage)
@@ -247,6 +249,56 @@ class TsProgramCache(unittest.TestCase):
                 self.same(r, full)
                 self.assertEqual(r["stats"]["errors"], full["stats"]["errors"])
                 self.assertEqual(self.run_ts(root, True)["stats"]["cache"]["replayed"], 1)   # rewritten whole
+
+    def test_concurrent_writers(self):
+        # two indexes of the same program at once, from an empty cache: one whole entry, and the next run
+        # replays it to the same graph
+        import json, subprocess, sys, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            code = ("import json, sys; from pathlib import Path; from codemap import backends, scope; from codemap.backends import ts;"
+                    "r = Path(sys.argv[1]); f = dict(backends.plan(r))['typescript'];"
+                    "print(json.dumps(ts.build(r, f, scope.test_files(f))['stats']['cache']))")
+            env = dict(__import__("os").environ, CODEMAP_TS_CACHE="1")
+            procs = [subprocess.Popen([sys.executable, "-c", code, str(root)], stdout=subprocess.PIPE, text=True, env=env,
+                                      cwd=str(Path(__file__).parent.parent)) for _ in range(2)]
+            outs = [json.loads(p.communicate(timeout=300)[0]) for p in procs]
+            self.assertEqual([o["rebuilt"] for o in outs], [1, 1])
+            self.assertEqual(len(self.entries(root)), 1)
+            self.assertEqual(list((root / ".codemap" / "cache" / "typescript").glob("*.tmp")), [])
+            warm = self.run_ts(root, True)
+            self.assertEqual(warm["stats"]["cache"]["replayed"], 1)
+            self.same(warm, self.run_ts(root, False))
+
+    def test_eviction(self):
+        # unused for 14 days, or beyond the size limit least recently used first; never an entry this run used
+        import os, tempfile, time
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            self.run_ts(root, True)
+            [used] = self.entries(root)
+            cache = used.parent
+            old = time.time() - 15 * 86400
+            unused_old = cache / ("a" * 12 + "-" + "1" * 40 + ".json")
+            unused_new = cache / ("b" * 12 + "-" + "2" * 40 + ".json")
+            for f, t in ((unused_old, old), (unused_new, time.time() - 60)):
+                f.write_text("{}" + " " * 200000)
+                os.utime(f, (t, t))
+            os.utime(used, (old, old))                       # old too, but used by the next run
+            r = self.run_ts(root, True)
+            self.assertEqual(r["stats"]["cache"]["replayed"], 1)
+            self.assertFalse(unused_old.exists())
+            self.assertTrue(unused_new.exists() and used.exists())
+            # a limit smaller than the entries: the unused go, the one in use stays
+            with mock.patch.dict(os.environ, {"CODEMAP_TS_CACHE_MB": "0.01"}):
+                r = self.run_ts(root, True)
+            self.assertFalse(unused_new.exists())
+            self.assertTrue(used.exists())
+            self.assertEqual((r["stats"]["cache"]["replayed"], r["stats"]["cache"]["entries"]), (1, 1))
+            log = (cache / "log.jsonl").read_text().splitlines()
+            self.assertEqual(len(log), 3)
+            self.assertEqual(__import__("json").loads(log[-1])["replayed"], 1)
 
     def test_temporary_files_and_version(self):
         import os, tempfile, time

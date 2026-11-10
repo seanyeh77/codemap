@@ -578,12 +578,14 @@ function answer(q) {
   return v;
 }
 
+const checksum = (probe, member, delta) => digest(JSON.stringify([probe, member, delta]));
+
 // an entry this helper can replay whole: checked before anything is replayed, so a damaged entry
 // never leaves half its results behind
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 const strs = (a) => Array.isArray(a) && a.every((x) => typeof x === 'string');
 function wellFormed(entry) {
-  if (!isObj(entry) || entry.format !== FORMAT || entry.sum !== digest(JSON.stringify(entry.delta)) || !isObj(entry.probe) || !isObj(entry.member) || !isObj(entry.delta)) return false;
+  if (!isObj(entry) || entry.format !== FORMAT || entry.sum !== checksum(entry.probe, entry.member, entry.delta) || !isObj(entry.probe) || !isObj(entry.member) || !isObj(entry.delta)) return false;
   const d = entry.delta;
   return Number.isInteger(d.owned) && isObj(d.nodes) && Object.values(d.nodes).every((n) => isObj(n) && typeof n.name === 'string')
     && Array.isArray(d.edges) && d.edges.every((e) => isObj(e) && typeof e.src === 'string' && typeof e.dst === 'string'
@@ -623,8 +625,9 @@ function save(k, r, d) {
     const ignore = path.join(CACHE, '.gitignore');          // local to this checkout, never committed
     if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n');
     const tmp = `${k.file}.${process.pid}.tmp`;
-    // the checksum covers what is replayed: a changed byte that still parses is caught too
-    fs.writeFileSync(tmp, JSON.stringify({ format: FORMAT, sum: digest(JSON.stringify(d)), probe: r.probe, member: r.member, delta: d }));
+    // the checksum covers everything read back: the questions and answers that decide whether the
+    // entry is used, and the results replayed; a changed or missing byte that still parses is caught
+    fs.writeFileSync(tmp, JSON.stringify({ format: FORMAT, sum: checksum(r.probe, r.member, d), probe: r.probe, member: r.member, delta: d }));
     fs.renameSync(tmp, k.file);
     // the entries this one replaces: the same program before a change
     for (const f of fs.readdirSync(CACHE)) {
@@ -659,6 +662,20 @@ function prune() {
     cacheStats.entries++;
   }
   cacheStats.mb = Math.round(total / 1048576 * 10) / 10;
+}
+
+// one line per run in log.jsonl (the last 1,000 runs): how often the cache is hit in real use, how big
+// it gets, and why programs are rebuilt
+function logRun(ms) {
+  try {
+    const f = path.join(CACHE, 'log.jsonl');
+    let lines = [];
+    try { lines = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean); } catch (e) { /* first run */ }
+    lines.push(JSON.stringify({ at: new Date().toISOString(), ms, programs: groups.size, ...cacheStats }));
+    const tmp = `${f}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, lines.slice(-1000).join('\n') + '\n');
+    fs.renameSync(tmp, f);
+  } catch (e) { /* a read-only checkout: no log */ }
 }
 
 // what one program adds to the run's results
@@ -1403,7 +1420,7 @@ for (const [, g] of groups) {
     errors.push(`${g.config ? g.config.rel : '(default options)'}: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' ') : e}`);
   }
 }
-if (CACHE) prune();
+if (CACHE) { prune(); logRun(Date.now() - started); }
 
 for (const n of Object.values(nodes)) if (n.defined && broken.has(n.file)) n.types_incomplete = true;
 for (const e of edges) {
