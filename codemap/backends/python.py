@@ -91,6 +91,9 @@ class Klass:
         self.subclasses = []
 
 
+# annotations that say nothing about the value: a call on it has no target to infer
+UNTYPED = {"typing.Any", "typing_extensions.Any", "object", "builtins.object"}
+
 class Analyzer:
     def __init__(self, root, files, tests=None):
         self.root = Path(root)
@@ -454,7 +457,7 @@ class Analyzer:
         for t, _ in self.types(expr, m, None):
             if t[0] == "cls":
                 out.add(("inst", t[1], False))          # an annotation is a bound: a subclass's object fits too
-            elif t[0] == "ext":
+            elif t[0] == "ext" and t[1] not in UNTYPED:
                 out.add(("ext", t[1]))
         return out
 

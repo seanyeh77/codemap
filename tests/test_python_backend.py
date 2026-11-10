@@ -25,6 +25,11 @@ class Resolve(unittest.TestCase):
     def none(self, src, dst):
         self.assertNotIn((src, dst), self.calls)
 
+    def test_untyped_annotations(self):
+        # ev: Any, other: object: nothing to infer from, so the calls are unresolved, not edges to typing.Any
+        self.assertFalse([e for e in self.idx["edges"] if e["src"] == "untyped.py:handler"
+                          and e.get("source") == "static" and e["kind"] == "call"])
+
     # 2A: names
 
     def test_imports(self):
@@ -115,7 +120,7 @@ class Resolve(unittest.TestCase):
         for dst in ("Other.run", "User.run", "Admin.run", "Repo.save"):
             self.none("unknown", dst)
         st = self.idx["backends"]["python"]["resolution"]
-        self.assertEqual(st["unresolved"], 2)
+        self.assertEqual(st["unresolved"], 4)                     # 2 here, 2 in untyped.py (Any, object)
         self.assertTrue(all(e["source"] == "static" for e in self.idx["edges"]))
 
     def test_builtin_methods_are_not_unresolved(self):
