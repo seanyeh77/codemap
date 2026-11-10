@@ -29,6 +29,7 @@ import builtins
 import re
 from pathlib import Path
 
+from ..scope import is_test
 from ..source import lines
 
 BUILTINS = set(dir(builtins))
@@ -393,11 +394,14 @@ class Analyzer:
                 return self.classes[c].methods[name]
         return None
 
-    def overrides(self, cid, name):
-        """Methods of the same name in subclasses: where self.m() may also go."""
+    def overrides(self, cid, name, prod=True):
+        """Methods of the same name in subclasses: where self.m() may also go. Production code is not
+        reached by a subclass a test defines."""
         out, todo = [], list(self.classes[cid].subclasses)
         while todo:
             s = todo.pop()
+            if prod and is_test(self.classes[s].module.file):
+                continue
             if name in self.classes[s].methods:
                 out.append(self.classes[s].methods[name])
             todo.extend(self.classes[s].subclasses)
@@ -494,7 +498,7 @@ class Analyzer:
         if isinstance(expr, ast.Attribute):
             out = set()
             for (t, ev) in self.types(expr.value, m, f, depth + 1):
-                out |= self._attr(t, ev, expr.attr, depth)
+                out |= self._attr(t, ev, expr.attr, depth, not is_test(m.file))
             return out
         if isinstance(expr, ast.Call):
             fn = expr.func
@@ -649,7 +653,7 @@ class Analyzer:
                         if t[0] in ("inst", "func", "cls", "module", "ext", "coll")}
         return out
 
-    def _attr(self, t, ev, name, depth):
+    def _attr(self, t, ev, name, depth, prod=True):
         kind = t[0]
         if kind == "module":
             ref = self.member(t[1], name)
@@ -686,6 +690,8 @@ class Analyzer:
                 base, puts = set(), []
                 for a in attrs:
                     akind, x, g = a[0], a[1], a[2]
+                    if prod and g is not None and is_test(g.module.file):
+                        continue                     # what a test stores in an attribute is not production's
                     if akind == "ann":
                         base |= {(tt, "attribute") for tt in self.ann(x, km)}
                     elif akind == "expr":
@@ -734,7 +740,7 @@ class Analyzer:
                 # an object whose class is only a bound (self, cls, an annotation) may be a subclass's:
                 # its overrides are possible targets too; one made by a constructor is exactly that class
                 if how in ("inst", "cls") and not exact:
-                    out += [(o, "override", cid, how) for o in self.overrides(cid, self.nodes[meth]["name"].rsplit(".", 1)[-1])]
+                    out += [(o, "override", cid, how) for o in self.overrides(cid, self.nodes[meth]["name"].rsplit(".", 1)[-1], not is_test(m.file))]
             elif t[0] == "ext":
                 out.append(("ext:" + t[1], ev, None, "ext"))
             elif t[0] == "unknown":

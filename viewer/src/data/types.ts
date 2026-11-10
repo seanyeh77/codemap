@@ -22,6 +22,10 @@ export interface Func {
   /** A framework calls it by itself: a route handler, a test, an event handler */
   entry?: { framework: string; kind: string; text: string }
   decorators?: string[]
+  /** defined in a test file */
+  scope?: 'test'
+  /** Go: its package did not type-check fully; calls inside may be missing */
+  types_incomplete?: boolean
 }
 
 /** How an edge is known: the first three are calls written in the code, the last two are inferred. */
@@ -47,6 +51,8 @@ export interface Edge {
   resolution?: 'exact' | 'inferred' | 'ambiguous'
   /** static: how the receiver's type was found, and the type */
   infer?: { how: string; type: string | null; partial?: boolean }
+  /** the target is in a package codemap could not read: known by name only */
+  ph?: boolean
   /** Go: a call run as a goroutine (go) or when the function returns (defer) */
   mode?: 'go' | 'defer'
   via?: string
@@ -140,6 +146,10 @@ export interface Stats {
   languages?: Record<string, number>
   /** framework adapters that ran */
   frameworks?: string[]
+  /** functions defined in test files */
+  tests?: number
+  /** per backend: type-checker messages, packages read as placeholders, packages with incomplete types */
+  limits?: Record<string, { messages: number; placeholders: string[]; incomplete: number }>
 }
 
 export interface Graph {

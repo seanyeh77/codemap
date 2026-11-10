@@ -1,5 +1,7 @@
 package store
 
+import "errors"
+
 // Store keeps values by key.
 type Store interface {
 	Get(key string) string
@@ -29,4 +31,22 @@ func Pick(onDisk bool) Store {
 		return disk{dir: "/tmp/"}
 	}
 	return New()
+}
+
+// ValidationError says what is wrong with a key.
+type ValidationError struct{ Key string }
+
+func (e *ValidationError) Error() string { return "bad key " + e.Key }
+
+// Validate returns only *ValidationError, or nil.
+func Validate(key string) error {
+	if key == "" {
+		return &ValidationError{Key: key}
+	}
+	return nil
+}
+
+// Check returns an error made outside the repository.
+func Check(key string) error {
+	return errors.New("check " + key)
 }

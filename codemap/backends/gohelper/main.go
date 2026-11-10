@@ -37,6 +37,10 @@ type Node struct {
 	Params  []string `json:"params,omitempty"`
 	Class   string   `json:"class,omitempty"`
 	Bases   []string `json:"bases,omitempty"`
+	// the package did not type-check fully: calls inside may be missing
+	TypesIncomplete bool `json:"types_incomplete,omitempty"`
+	// an outside package that could not be read: the node is known by name only
+	Placeholder bool `json:"placeholder,omitempty"`
 }
 
 type Infer struct {
@@ -83,6 +87,10 @@ type Analyzer struct {
 	errors       []string
 	counts       map[string]int
 	lits         map[*ast.FuncLit]string // closures: their node ids
+	placeholders map[string]bool         // import paths read as empty stand-ins
+	broken       map[string]int          // file -> type errors in it
+	ifaceUsed    map[*types.Func]*types.Interface // outside interface methods called somewhere
+	ifaceRecv    map[*types.Func]types.Type
 	where        map[ast.Expr]*Pkg       // the package an assigned value belongs to
 }
 
@@ -97,7 +105,8 @@ func main() {
 	}
 	a := &Analyzer{root: in.Root, fset: token.NewFileSet(), pkgs: map[string]*Pkg{}, fake: map[string]*types.Package{},
 		nodes: map[string]*Node{}, ids: map[types.Object]string{}, assigns: map[*types.Var][]ast.Expr{},
-		unresolved: map[string]int{}, counts: map[string]int{}, lits: map[*ast.FuncLit]string{}, where: map[ast.Expr]*Pkg{}}
+		unresolved: map[string]int{}, counts: map[string]int{}, lits: map[*ast.FuncLit]string{}, where: map[ast.Expr]*Pkg{},
+		placeholders: map[string]bool{}, broken: map[string]int{}, ifaceUsed: map[*types.Func]*types.Interface{}, ifaceRecv: map[*types.Func]types.Type{}}
 	a.std = importer.ForCompiler(a.fset, "source", nil)
 	a.module = readModule(in.Root)
 	a.load(in.Files)
@@ -118,6 +127,7 @@ func main() {
 	for _, k := range keys {
 		a.calls(a.pkgs[k])
 	}
+	a.implements()
 	top := [][2]any{}
 	for k, v := range a.unresolved {
 		top = append(top, [2]any{k, v})
@@ -144,7 +154,8 @@ func main() {
 	}
 	out := map[string]any{"nodes": a.nodes, "edges": a.edges, "stats": map[string]any{
 		"files": files, "languages": map[string]int{"go": files}, "nodes": defs, "edges": len(a.edges),
-		"packages": len(a.pkgs), "resolution": a.counts, "unresolved_top": top, "errors": a.errors}}
+		"packages": len(a.pkgs), "resolution": a.counts, "unresolved_top": top, "errors": a.errors,
+		"placeholders": sortedKeys(a.placeholders), "incomplete_files": len(a.broken)}}
 	if a.edges == nil {
 		out["edges"] = []Edge{}
 	}
@@ -153,6 +164,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "codemap-gohelper:", err)
 		os.Exit(2)
 	}
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := []string{}
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func readModule(root string) string {
@@ -245,6 +265,7 @@ func (a *Analyzer) Import(p string) (*types.Package, error) {
 	t := types.NewPackage(p, path.Base(p))
 	t.MarkComplete()
 	a.fake[p] = t
+	a.placeholders[p] = true
 	return t, nil
 }
 
@@ -273,6 +294,10 @@ func (a *Analyzer) check(pk *Pkg) {
 	errs := 0
 	conf := types.Config{Importer: a, Error: func(err error) {
 		errs++
+		if te, ok := err.(types.Error); ok { // the file it is in: an error in a test file says nothing of the others
+			f, _ := a.rel(te.Pos)
+			a.broken[f]++
+		}
 		if errs <= 3 {
 			a.errors = append(a.errors, err.Error())
 		}
@@ -336,7 +361,7 @@ func (a *Analyzer) define(pk *Pkg) {
 				if r == "" && pk.Name != "main" {
 					shown = pk.Name + "." + name
 				}
-				n := &Node{Name: shown, File: file, Line: line, End: end, Defined: true, Lang: "go", Kind: kind}
+				n := &Node{Name: shown, File: file, Line: line, End: end, Defined: true, Lang: "go", Kind: kind, TypesIncomplete: a.broken[file] > 0}
 				for _, fl := range d.Type.Params.List {
 					for _, nm := range fl.Names {
 						n.Params = append(n.Params, nm.Name)
@@ -489,7 +514,7 @@ func unparen(e ast.Expr) ast.Expr {
 
 // concrete: the non-interface types a variable or field holds, from the values given to it, and
 // how they were found; ok is false when some value's type is unknown or an interface.
-func (a *Analyzer) concrete(v *types.Var, seen map[*types.Var]bool) (ts []types.Type, how string, ok bool) {
+func (a *Analyzer) concrete(v *types.Var, seen map[*types.Var]bool, prod bool) (ts []types.Type, how string, ok bool) {
 	if seen[v] {
 		return nil, "", false
 	}
@@ -499,7 +524,13 @@ func (a *Analyzer) concrete(v *types.Var, seen map[*types.Var]bool) (ts []types.
 		return nil, "", false
 	}
 	how = "assign"
+	n := 0
 	for _, e := range vals {
+		// production code does not run what a test stores: a test's fake is not a production value
+		if prod && a.isTest(e.Pos()) {
+			continue
+		}
+		n++
 		pk := a.where[e]
 		if pk == nil {
 			return nil, "", false
@@ -521,7 +552,7 @@ func (a *Analyzer) concrete(v *types.Var, seen map[*types.Var]bool) (ts []types.
 			// the value is itself an interface: follow it one step if it is a plain variable
 			if id, ok := e.(*ast.Ident); ok {
 				if w, ok := pk.Info.Uses[id].(*types.Var); ok {
-					more, _, ok2 := a.concrete(w, seen)
+					more, _, ok2 := a.concrete(w, seen, prod)
 					if !ok2 {
 						return nil, "", false
 					}
@@ -541,7 +572,15 @@ func (a *Analyzer) concrete(v *types.Var, seen map[*types.Var]bool) (ts []types.
 		}
 		ts = append(ts, t)
 	}
+	if n == 0 {
+		return nil, "", false
+	}
 	return ts, how, true
+}
+
+// isTest: the position is in a _test.go file.
+func (a *Analyzer) isTest(pos token.Pos) bool {
+	return strings.HasSuffix(a.fset.Position(pos).Filename, "_test.go")
 }
 
 func (a *Analyzer) calledFunc(pk *Pkg, call *ast.CallExpr) *types.Func {
@@ -630,7 +669,7 @@ func (a *Analyzer) id(obj types.Object) string {
 	}
 	ext := "ext:" + p + name
 	if _, ok := a.nodes[ext]; !ok {
-		a.nodes[ext] = &Node{Name: p + name, File: "", Defined: false}
+		a.nodes[ext] = &Node{Name: p + name, File: "", Defined: false, Placeholder: obj.Pkg() != nil && a.placeholders[obj.Pkg().Path()]}
 	}
 	return ext
 }
@@ -688,9 +727,6 @@ func (a *Analyzer) emit(owner string, pos token.Pos, kind, mode string, ts []tar
 	}
 	for _, t := range ts {
 		r := res
-		if strings.HasPrefix(t.id, "ext:") && r == "ambiguous" {
-			r = "inferred"
-		}
 		e := Edge{Src: owner, Dst: t.id, File: file, Line: line, Col: col, Kind: kind, Source: "static", Resolution: r, Mode: mode}
 		if t.how != "" {
 			e.Infer = &Infer{How: t.how, Type: t.typ, Partial: t.partial}
@@ -838,7 +874,7 @@ func (a *Analyzer) call(pk *Pkg, call *ast.CallExpr, owner, mode string) {
 			a.builtin++
 			return
 		case *types.Var: // handler(): a function value
-			if ts := a.funcValues(obj); len(ts) > 0 {
+			if ts := a.funcValues(obj, !a.isTest(call.Pos())); len(ts) > 0 {
 				a.emit(owner, call.Pos(), "call", mode, ts, "inferred")
 				return
 			}
@@ -858,7 +894,7 @@ func (a *Analyzer) call(pk *Pkg, call *ast.CallExpr, owner, mode string) {
 				if pn, ok := pk.Info.Uses[x].(*types.PkgName); ok { // a package we could not read
 					ext := "ext:" + pn.Imported().Path() + "." + f.Sel.Name
 					if _, ok := a.nodes[ext]; !ok {
-						a.nodes[ext] = &Node{Name: ext[4:], Defined: false}
+						a.nodes[ext] = &Node{Name: ext[4:], Defined: false, Placeholder: a.placeholders[pn.Imported().Path()]}
 					}
 					a.emit(owner, call.Pos(), "call", mode, []target{{id: ext}}, "exact")
 					return
@@ -872,7 +908,7 @@ func (a *Analyzer) call(pk *Pkg, call *ast.CallExpr, owner, mode string) {
 			return
 		case types.FieldVal: // s.handle(): a function in a field
 			if v, ok := sel.Obj().(*types.Var); ok {
-				if ts := a.funcValues(v); len(ts) > 0 {
+				if ts := a.funcValues(v, !a.isTest(call.Pos())); len(ts) > 0 {
 					for i := range ts {
 						ts[i].how = "field"
 					}
@@ -906,10 +942,13 @@ func (a *Analyzer) call(pk *Pkg, call *ast.CallExpr, owner, mode string) {
 }
 
 // funcValues: the functions a variable or field of function type holds, from the values given to it.
-func (a *Analyzer) funcValues(v *types.Var) []target {
+func (a *Analyzer) funcValues(v *types.Var, prod bool) []target {
 	var out []target
 	partial := false
 	for _, e := range a.assigns[v] {
+		if prod && a.isTest(e.Pos()) {
+			continue // a test's stand-in, not what production code calls
+		}
 		pk := a.where[e]
 		e = unparen(e)
 		switch x := e.(type) {
@@ -957,8 +996,9 @@ func (a *Analyzer) dispatch(pk *Pkg, call *ast.CallExpr, f *ast.SelectorExpr, re
 			v, _ = s.Obj().(*types.Var)
 		}
 	}
+	prod := !a.isTest(call.Pos())
 	if v != nil {
-		if ts, how, ok := a.concrete(v, map[*types.Var]bool{}); ok && len(ts) > 0 {
+		if ts, how, ok := a.concrete(v, map[*types.Var]bool{}, prod); ok && len(ts) > 0 {
 			var out []target
 			seen := map[string]bool{}
 			for _, t := range ts {
@@ -977,12 +1017,20 @@ func (a *Analyzer) dispatch(pk *Pkg, call *ast.CallExpr, f *ast.SelectorExpr, re
 		}
 	}
 	iface, _ := recv.Underlying().(*types.Interface)
+	// an interface of another module, or error: its implementations are mostly outside the
+	// repository, so the call is to the interface method itself; the repository's own
+	// implementations are linked to it by "implements" relations, not by a call at every site
+	if fn.Pkg() == nil || a.pkgs[fn.Pkg().Path()] == nil {
+		a.ifaceUsed[fn] = iface
+		a.emit(owner, call.Pos(), "call", mode, []target{{id: a.ifaceID(fn, recv), how: "interface", typ: typeName(recv)}}, "exact")
+		return
+	}
 	var out []target
 	seen := map[string]bool{}
 	for _, tn := range a.named {
 		t := tn.Type()
-		if types.IsInterface(t) {
-			continue
+		if types.IsInterface(t) || prod && a.isTest(tn.Pos()) {
+			continue // a test's fake implements it only for the tests
 		}
 		if !types.Implements(t, iface) && !types.Implements(types.NewPointer(t), iface) {
 			continue
@@ -995,30 +1043,58 @@ func (a *Analyzer) dispatch(pk *Pkg, call *ast.CallExpr, f *ast.SelectorExpr, re
 			}
 		}
 	}
-	// an interface of another module, or error, may also be implemented outside the repository
-	outside := fn.Pkg() == nil || a.pkgs[fn.Pkg().Path()] == nil
-	for i := range out {
-		out[i].partial = outside
-	}
-	if len(out) == 0 {
-		a.emit(owner, call.Pos(), "call", mode, []target{{id: a.id(fn), how: "interface", typ: typeName(recv)}}, "inferred")
+	if len(out) == 0 { // nothing in the production code implements it: the interface method itself
+		a.emit(owner, call.Pos(), "call", mode, []target{{id: a.id(fn), how: "interface", typ: typeName(recv)}}, "exact")
 		return
 	}
-	res := "inferred"
-	if outside {
-		res = "ambiguous"
-	}
 	if len(out) > 1 {
-		res = "ambiguous"
-	}
-	if res == "ambiguous" {
-		for i := range out {
-			_ = i
-		}
 		a.emitAmbiguous(owner, call.Pos(), mode, out)
 		return
 	}
-	a.emit(owner, call.Pos(), "call", mode, out, res)
+	a.emit(owner, call.Pos(), "call", mode, out, "inferred")
+}
+
+// ifaceID: the node of an outside interface's method: error.Error, io.Writer.Write.
+func (a *Analyzer) ifaceID(fn *types.Func, recv types.Type) string {
+	p := ""
+	if n, ok := recv.(*types.Named); ok && n.Obj().Pkg() != nil {
+		p = n.Obj().Pkg().Path() + "."
+	}
+	name := p + typeName(recv) + "." + fn.Name()
+	id := "ext:" + name
+	if _, ok := a.nodes[id]; !ok {
+		a.nodes[id] = &Node{Name: name, Defined: false, Kind: "interface method"}
+	}
+	a.ifaceRecv[fn] = recv
+	return id
+}
+
+// implements: for each outside interface method called somewhere, the repository's methods that
+// implement it, as relations of kind "implements" (method -> interface method). They say what
+// may run behind an err.Error() without claiming that every call site reaches each of them.
+func (a *Analyzer) implements() {
+	for fn, iface := range a.ifaceUsed {
+		recv := a.ifaceRecv[fn]
+		dst := a.ifaceID(fn, recv)
+		for _, tn := range a.named {
+			t := tn.Type()
+			if types.IsInterface(t) || !types.Implements(t, iface) && !types.Implements(types.NewPointer(t), iface) {
+				continue
+			}
+			m, _ := methodOf(t, fn.Name())
+			if m == nil {
+				continue
+			}
+			src, ok := a.ids[m]
+			if !ok {
+				continue
+			}
+			n := a.nodes[src]
+			a.edges = append(a.edges, Edge{Src: src, Dst: dst, File: n.File, Line: n.Line, Col: 1, Kind: "implements",
+				Source: "static", Resolution: "exact", Infer: &Infer{How: "implements", Type: typeName(recv)}})
+			a.counts["implements"]++
+		}
+	}
 }
 
 func (a *Analyzer) emitAmbiguous(owner string, pos token.Pos, mode string, ts []target) {

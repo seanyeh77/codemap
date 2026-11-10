@@ -26,10 +26,20 @@ export class Index {
   private files: Map<string, string[]> | null = null
   readonly g: Graph
 
+  /** method -> the outside interface methods it implements (error.Error): relations, not calls */
+  impls = new Map<string, Edge[]>()
+  /** interface method -> the repository's methods that implement it */
+  implementers = new Map<string, Edge[]>()
+
   constructor(g: Graph) {
     this.g = g
     this.funcs = g.funcs
     for (const e of g.edges) {
+      if (e.k === 'implements') {
+        push(this.impls, e.s, e)
+        push(this.implementers, e.d, e)
+        continue
+      }
       push(this.out, e.s, e)
       push(this.inn, e.d, e)
     }
@@ -167,7 +177,12 @@ export class Index {
 
   /** A call the Python analyzer resolved: through names (exact), a type (inferred), or one of several targets. */
   staticEdge(e: Edge, to: string): { label: string; title: string; text: string } {
-    if (!this.funcs[e.d]) return { label: t('外部'), title: t('外部函式'), text: t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? e.d) + '`' }) }
+    if (!this.funcs[e.d]) {
+      const what = e.infer?.how === 'interface' ? t('呼叫的是 interface 方法 {v1}；實際執行的實作在執行時才決定，repo 外也可能有實作，所以不連到任何一個。', { v1: '`' + (e.dn ?? e.d) + '`' })
+        : t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? e.d) + '`' })
+      return { label: e.infer?.how === 'interface' ? t('interface 方法') : t('外部'), title: t('外部函式'),
+        text: what + (e.ph ? t('這個套件沒有載入（不在 module 快取或需要下載），只知道名稱。') : '') }
+    }
     const ty = e.infer?.type ? '`' + e.infer.type + '`' : t('這個類別')
     const how = e.infer?.how
     // element:<how>: the object came out of a container, and the container's elements are known from <how>
@@ -257,6 +272,14 @@ export function entryText(e: { kind: string; text: string }): string {
     topology: '拓樸', component: '元件', lifecycle: '生命週期', callback: '回呼' }
   const k = KIND[e.kind] ? t(KIND[e.kind]) : e.kind
   return e.text && e.text !== e.kind ? `${k} ${e.text}` : k
+}
+
+/** The graph without test code: its functions, and the edges from or to them. */
+export function production(g: Graph): Graph {
+  if (!Object.values(g.funcs).some((f) => f.scope === 'test')) return g
+  const funcs = Object.fromEntries(Object.entries(g.funcs).filter(([, f]) => f.scope !== 'test'))
+  const test = (id: string) => g.funcs[id]?.scope === 'test'
+  return { ...g, funcs, edges: g.edges.filter((e) => !test(e.s) && !test(e.d)) }
 }
 
 /** Add v to the list at m[k]. */

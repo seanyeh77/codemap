@@ -159,16 +159,21 @@ def build(root, index, config=None):
         c_only = {k: v for k, v in nodes.items() if v.get("lang", "c") in ("c", "cpp") or not v.get("defined")}
         lay = arch.layout(dict(index, nodes=c_only, edges=[e for e in index["edges"] if e["src"] in c_only and e["dst"] in c_only]), config)
     else:
-        lay = arch.layout(index, config)
+        # the architecture is production code's: test files are left out of the diagram
+        prod = {k: v for k, v in nodes.items() if v.get("scope") != "test"}
+        lay = arch.layout(dict(index, nodes=prod, edges=[e for e in index["edges"] if e["src"] in prod and e["dst"] in prod]), config)
     funcs = {}
     for nid, n in nodes.items():
         if not repo_func(n):
             continue
         # tree-sitter knows where a definition ends; for C the body is found in the text
         end = n["end"] if n.get("end") else max(c_body_end(root / n["file"], n["line"]), n["line"])
-        funcs[nid] = dict(name=n["name"], file=n["file"], line=n["line"], end=end,
-                          comp=arch.component(n["file"], config))
-        for k in ("lang", "kind", "entry", "decorators"):
+        comp = arch.component(n["file"], config)
+        # test code is a component of its own: server_test.go is not part of internal/httpapi's map
+        if n.get("scope") == "test" and not any(p in ("test", "tests", "testing", "__tests__") for p in comp.split("/")):
+            comp += " (tests)"
+        funcs[nid] = dict(name=n["name"], file=n["file"], line=n["line"], end=end, comp=comp)
+        for k in ("lang", "kind", "entry", "decorators", "scope", "types_incomplete"):
             if n.get(k) and not (k == "lang" and n[k] == "c") and not (k == "kind" and n[k] == "function"):
                 funcs[nid][k] = n[k]
         # a repo function with the name of an external library's function replaces it for whoever
@@ -202,6 +207,8 @@ def build(root, index, config=None):
             x["dn"] = dn["name"] if dn else e["dst"]
             if dn and dn.get("file") and not in_repo(dn["file"]):
                 x["ext"] = dn["file"]
+            if dn and dn.get("placeholder"):
+                x["ph"] = True                 # a package codemap could not read: known by name only
         edges.append(x)
     headers = header_files(root)
     fdocs = docs.files_docs(root, sorted({f["file"] for f in funcs.values()} | headers))
@@ -269,6 +276,11 @@ def build(root, index, config=None):
                           static=sum(1 for x in edges if x["src"] == "static"),
                           # the analyzers' results, per backend: python, go
                           resolution={name: b["resolution"] for name, b in index.get("backends", {}).items() if b.get("resolution")},
+                          # what the analyzers could not do fully, for the reader to weigh their results
+                          limits={name: dict(messages=len(b.get("errors", [])), placeholders=b.get("placeholders", []),
+                                             incomplete=b.get("incomplete_files", 0))
+                                  for name, b in index.get("backends", {}).items() if b.get("errors") or b.get("placeholders")},
+                          tests=sum(1 for n in nodes.values() if n.get("scope") == "test" and repo_func(n)),
                           languages={k: v for b in index.get("backends", {}).values() for k, v in b.get("languages", {}).items()},
                           frameworks=index.get("frameworks", [])),
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),

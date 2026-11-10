@@ -85,4 +85,7 @@ def build(root, scope=None, jobs=None, cc=None, config=None):
                                  + "; install codemap again to get them (uv tool install codemap)\n")
             part = syntax.build(root, files)
         parts.append((name, part))
-    return schema.merge(parts)
+    from .. import scope
+    idx = schema.merge(parts)
+    scope.mark(idx["nodes"])
+    return idx

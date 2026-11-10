@@ -99,6 +99,12 @@ class Resolve(unittest.TestCase):
     def test_closure_from_a_return(self):
         self.assertEqual(self.res("dispatch", "make_rule.rule"), {"inferred"})     # make_rule(1)(2)
 
+    def test_test_subclass_does_not_reach_production(self):
+        # FakeUser (in tests/) overrides describe: User.run's self.describe() stays exact
+        self.assertEqual(self.res("User.run", "User.describe"), {"exact"})
+        self.none("User.run", "FakeUser.describe")
+        self.assertEqual(self.idx["nodes"]["tests/test_models.py:FakeUser"].get("scope"), "test")
+
     def none_at(self, src, dst, line):
         self.assertFalse([e for e in self.calls.get((src, dst), []) if e["line"] == line])
 

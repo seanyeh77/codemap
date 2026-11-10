@@ -30,10 +30,17 @@ Node (a function, method, class, module-level code, or an outside name)
   bases     [str]?  a class's parents as written ("app_manager.OSKenApp", "PacketProcessor")
   class     str?    for a method, the id of its class
   entry     {framework, kind, text}?  set by a framework adapter: called by the framework
+  scope     "test"?  defined in a test file (codemap/scope.py); production code has no scope field.
+                    Production type inference ignores what test code stores or defines
+  types_incomplete  bool?  Go: the package did not type-check fully (a module not available, a
+                    newer Go); its calls may be missing
+  placeholder bool?  an outside node from a package codemap could not read: known by name only
 
 Edge (a relation from src to dst, both node ids)
   file, line, col   where the evidence is
-  kind      "call" | "indirect" | a rule or adapter kind ("route", "inject", "callback", ...)
+  kind      "call" | "indirect" | "ref" (a function handed on as a value) | "implements" (a method
+            of the repository implements an outside interface method; not a call) | a rule or
+            adapter kind ("route", "inject", "callback", ...)
   source    how it is known, strongest first:
               "compiler"   a compiler recorded the call (C/C++)
               "static"     a language's own analyzer resolved it (Python: codemap.backends.python)

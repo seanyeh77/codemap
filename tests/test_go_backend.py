@@ -73,6 +73,40 @@ class GoResolve(unittest.TestCase):
             self.assertEqual(amb[0]["infer"]["how"], "interface")
         self.assertNotIn("Counter.Get", str(self.idx["edges"]))
 
+    # outside interfaces, production and test
+
+    def at(self, file, line):
+        return [e for e in self.idx["edges"] if e["file"].endswith(file) and e["line"] == line]
+
+    def test_outside_interface_is_one_node(self):
+        # err from errors.New: only the interface method error.Error, no fan-out to the repo's error types
+        es = self.at("server/clock.go", 37)
+        self.assertEqual([(e["dst"], e["resolution"]) for e in es], [("ext:error.Error", "exact")])
+        # err from store.Validate, which returns only *ValidationError: narrowed to that type
+        es = self.at("server/clock.go", 35)
+        self.assertEqual([(e["dst"].split(":", 1)[1], e["resolution"]) for e in es], [("ValidationError.Error", "inferred")])
+        # the repository's implementations hang from the interface method as relations, not calls
+        imp = [e for e in self.idx["edges"] if e["kind"] == "implements"]
+        self.assertEqual([(e["src"].split(":", 1)[1], e["dst"]) for e in imp], [("ValidationError.Error", "ext:error.Error")])
+
+    def test_production_ignores_test_values(self):
+        # production Stamp: c.Now() is time.Now; the closure TestStamp stores is not production's
+        self.assertIn(("ext:time.Now", "inferred"), [(e["dst"], e["resolution"]) for e in self.at("server/clock.go", 30)])
+        self.assertNotIn("TestStamp", str(self.at("server/clock.go", 30)))
+        # c.St.Get: the test's fakeStore is not a candidate in production
+        self.assertEqual([e["dst"].split(":", 1)[1] for e in self.at("server/clock.go", 28)], ["mem.Get"])
+        # in the test itself, both values the field may hold
+        self.assertEqual({e["dst"].removeprefix("ext:").split(":", 1)[-1] for e in self.at("server/clock_test.go", 19)},
+                         {"time.Now", "TestStamp.func2"})
+        self.assertEqual({e["resolution"] for e in self.at("server/clock_test.go", 19)}, {"ambiguous"})
+        self.assertEqual(self.idx["nodes"]["server/clock_test.go:TestStamp"].get("scope"), "test")
+        self.assertNotIn("scope", self.idx["nodes"]["server/clock.go:Clocked.Stamp"])
+
+    def test_partial_candidate(self):
+        # c.Done() holds the caller's function (unknown) or noop: noop is one target, not the one
+        es = self.at("server/clock.go", 29)
+        self.assertEqual([(e["dst"].split(":", 1)[1], e["resolution"], e["infer"].get("partial")) for e in es], [("noop", "ambiguous", True)])
+
     def test_net_http_route(self):
         from codemap import frameworks
         idx = frameworks.run(ROOT, backends.build(ROOT))

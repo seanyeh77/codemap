@@ -72,6 +72,10 @@ export function Detail(p: Props) {
         { label: t('定義'), value: link(f.file, f.line) },
         { label: t('元件'), value: f.comp },
         // a framework calls it by itself: no line of the repository does
+        // the outside interfaces it implements: what may run it behind err.Error(), without a call edge per site
+        ...(p.ix.impls.get(p.sel.id)?.length ? [{ label: t('實作'), value: <span>{p.ix.impls.get(p.sel.id)!.map((e, i) => <span key={e.d}>{i ? t('、') : ''}<UI.InlineCode>{p.ix.bareName(e.d, e)}</UI.InlineCode></span>)}<span className="muted">{t('（經由這些 interface 的呼叫可能執行到它）')}</span></span> }] : []),
+        ...(f.types_incomplete ? [{ label: t('分析限制'), value: <span className="muted">{t('這個檔案的型別檢查不完整（缺少 module 或需要較新的 Go），裡面可能漏掉一些呼叫。')}</span> }] : []),
+        ...(f.scope === 'test' ? [{ label: t('範圍'), value: t('測試程式碼') }] : []),
         ...(f.entry ? [{ label: t('由框架呼叫'), value: <span>{t('{v1}：{v2}', { v1: f.entry.framework, v2: entryText(f.entry) })}</span> }] : []),
         // two rows, each number right after its own word: 「1 個 caller · 0 個 callee」 was read as caller · 0
         { label: t('被誰呼叫'),

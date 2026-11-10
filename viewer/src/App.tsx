@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from './ui'
 import { t } from './i18n'
-import { Index, isEnv, push } from './data/graph'
+import { Index, isEnv, production, push } from './data/graph'
 import { usePrefs } from './data/hooks'
 import { rank } from './data/search'
 import { revealTop } from './scroll'
@@ -125,8 +125,9 @@ interface ShellProps {
 }
 
 function Shell(p: ShellProps) {
-  const ix = useMemo(() => new Index(p.graph), [p.graph])
   const pr = usePrefs()
+  // production code by default: test files, and what they call or set, come in only when asked for
+  const ix = useMemo(() => new Index(pr.tests ? p.graph : production(p.graph)), [p.graph, pr.tests])
   const qc = useQueryClient()
   const isLive = !!p.meta
   const first = useMemo(() => ix.firstFunc(), [ix])

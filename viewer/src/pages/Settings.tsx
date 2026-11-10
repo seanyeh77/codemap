@@ -63,6 +63,13 @@ export function Settings(p: Props) {
           ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: LANG[b] ?? b, value: <span><UI.Term text={b === 'go'
             ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值；interface 只連到真的實作它的型別。找不到目標的呼叫不會畫線。')
             : t('以 Python 的 ast 解析 import、類別與簡單的型別，不靠名稱猜。找不到目標的呼叫不會畫線。')}>{t('靜態分析')}</UI.Term>{t('：')}{t('{v1} 條確定、{v2} 條型別推論、{v3} 條有多個可能目標、{v4} 處無法解析', { v1: r.exact ?? 0, v2: r.inferred ?? 0, v3: r.ambiguous ?? 0, v4: r.unresolved ?? 0 })}</span> })),
+          // what an analyzer could not do fully: its results are not to be read as complete
+          ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: LANG[b] ?? b }), value: <span>
+            {b === 'go' ? <>{t('build tag 只依檔名判斷，vendor 目錄沒有特別處理。')}<br /></> : null}
+            {l.placeholders.length ? <>{t('{v1} 個套件沒有載入（不在 module 快取或需要下載），呼叫它們的地方只知道名稱：{v2}', { v1: l.placeholders.length, v2: l.placeholders.slice(0, 4).join(t('、')) + (l.placeholders.length > 4 ? t(' 等') : '') })}<br /></> : null}
+            {l.incomplete ? <>{t('{v1} 個檔案的型別檢查不完整，裡面可能漏掉一些呼叫；這些函式的詳細資料會註明。', { v1: l.incomplete })}<br /></> : null}
+            {l.messages ? <span className="muted">{t('型別檢查訊息 {v1} 則，不代表分析失敗：其餘的呼叫照常解析。', { v1: l.messages })}</span> : null}
+          </span> })),
           ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term text={t('以 tree-sitter 讀出定義與呼叫，依名稱對到定義，沒有經過編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l]).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對到的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
           isLive ? { label: t('索引建立時間'), value: when(p.meta!.indexed) } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
@@ -101,6 +108,10 @@ export function Settings(p: Props) {
           <div className="grow"><div>{t('流程預設顯示外部函式')}</div><div className="small muted">{t('例如 libc、UCX 的函式。')}</div></div>
           <UI.Switch label={t('流程預設顯示外部函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
         </div>
+        {g.stats.tests ? <div className="set-row">
+          <div className="grow"><div>{t('包含測試程式碼')}</div><div className="small muted">{t('在流程、影響範圍與搜尋裡列出測試檔裡的 {v1} 個函式，以及測試對正式程式碼的呼叫。架構圖一律只畫正式程式碼，正式程式碼的型別推論也不採用測試放進去的替身。', { v1: g.stats.tests })}</div></div>
+          <UI.Switch label={t('包含測試程式碼')} checked={pr.tests} onChange={(v) => save('tests', v)} />
+        </div> : null}
       </UI.SettingsSection>
       <UI.SettingsSection title={t('版面')}>{radios(t('原始碼面板'), 'panel', [['right', t('右側')], ['below', t('下方')]])}</UI.SettingsSection>
     </>

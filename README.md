@@ -234,10 +234,21 @@ The build is one self-contained `index.html`, so it can be served by
   assignments, attributes and containers, not through arguments without
   annotations, `**kwargs`, `getattr`, or rows read from files (`for row in
   csv.DictReader(...)`); those calls stay unresolved.
-- Go: an interface from outside the repository (`error`, `io.Writer`) has
-  implementations outside it too, so its repository candidates are
-  `ambiguous` and `partial`. Values read through channels, maps and slices
-  are not followed.
+- Go: a call through an interface from outside the repository (`error`,
+  `io.Writer`) goes to the interface method itself (`error.Error`), unless
+  the values the receiver holds name its type; the repository's methods that
+  implement such an interface are linked to it by `implements` relations,
+  which are not calls. Build tags are judged by file name only, vendor
+  directories get no special handling, packages that cannot be read are
+  placeholders known by name, and a file that does not type-check fully is
+  marked; the settings page lists all of this. Values read through channels,
+  maps and slices are not followed.
+- Test code (`_test.go`, `test_*.py`, `tests/`, `*.test.ts`, Java
+  `src/test/`) has `scope: "test"`. The architecture diagram and the type
+  inference of production code leave it out: a closure a test stores in a
+  field, a fake that implements an interface, or a subclass a test defines
+  never becomes a target of a production call. The viewer shows test code in
+  flows, impact and search only when "Include test code" is on.
 - Edges are per function, not per call site: inside `Base.run`, `self.execute()`
   stays ambiguous when a subclass overrides `execute`, even if every caller
   happens to pass a `Base`.
