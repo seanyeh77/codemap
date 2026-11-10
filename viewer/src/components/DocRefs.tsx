@@ -58,5 +58,7 @@ export function langLabel(file: string): string | undefined {
   if (/\.json$/i.test(base)) return 'JSON'
   if (/\.ya?ml$/i.test(base)) return 'YAML'
   if (/\.(txt|log)$/i.test(base)) return t('純文字')
+  // the design system's code view takes TypeScript for JavaScript otherwise
+  if (/\.[cm]?tsx?$/i.test(base)) return 'TypeScript'
   return undefined
 }

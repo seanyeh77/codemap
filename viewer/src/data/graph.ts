@@ -177,6 +177,8 @@ export class Index {
 
   /** A call the Python analyzer resolved: through names (exact), a type (inferred), or one of several targets. */
   staticEdge(e: Edge, to: string): { label: string; title: string; text: string } {
+    if (!this.funcs[e.d] && e.eg) return { label: t('外部候選'), title: t('外部候選'),
+      text: t('接收者的型別有幾種可能（例如聯集），每一種都有同名的方法 {v1}，而且都在 repo 外：這是同一個呼叫的幾個外部候選，不是 repo 內的不同實作。每個候選仍各自保留一條邊。', { v1: to }) }
     if (!this.funcs[e.d]) {
       const what = e.infer?.how === 'interface' ? t('呼叫的是 interface 方法 {v1}；實際執行的實作在執行時才決定，repo 外也可能有實作，所以不連到任何一個。', { v1: '`' + (e.dn ?? e.d) + '`' })
         : t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? e.d) + '`' })
@@ -224,6 +226,8 @@ export class Index {
     if (e.resolution === 'exact' && how === 'jsx') return { label: 'JSX', title: 'JSX', text: because }
     if (e.resolution === 'exact' && e.mode) return { label: e.mode, title: e.mode, text: when + because }
     if (e.resolution === 'exact' && how === 'embedding') return { label: t('內嵌提升'), title: t('內嵌提升'), text: because }
+    if (e.resolution === 'ambiguous' && e.eg) return { label: t('外部候選'), title: t('外部候選'),
+      text: t('接收者的型別有幾種可能（例如聯集），每一種都有同名的方法 {v1}，而且都在 repo 外：這是同一個呼叫的幾個外部候選，不是 repo 內的不同實作。每個候選仍各自保留一條邊。', { v1: to }) + when }
     if (e.resolution === 'ambiguous') return { label: t('可能目標之一'), title: t('可能目標之一'),
       text: (e.infer?.partial ? t('容器裡還有型別不明的值，實際目標可能不只列出的這些；{v1} 是其中之一。', { v1: to })
         : t('這個呼叫有多個可能的目標（型別是聯集，或子類別覆寫了方法），每一個都列出，{v1} 是其中之一。', { v1: to })) + because + when }

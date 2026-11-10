@@ -131,6 +131,20 @@ class TsResolve(unittest.TestCase):
         # const [n, setN] = useValue(0): the library's function, named by its declared type
         self.assertEqual(self.how(self.get("counterHook", "fakelib.Setter")), ("inferred", "returned"))
 
+    def test_external_candidates_in_viewer(self):
+        # id: string | number: two outside candidates of one name; the edges stay, the viewer groups them
+        from codemap import view
+        es = [e for e in self.calls[("fmt", "String.toString", "call")] + self.calls[("fmt", "Number.toString", "call")]]
+        self.assertEqual({e["resolution"] for e in es}, {"ambiguous"})
+        g = view.build(ROOT, self.idx, {})
+        vs = [x for x in g["edges"] if x["s"].endswith(":fmt")]
+        self.assertEqual({x["d"] for x in vs if x.get("eg")}, {"ext:String.toString", "ext:Number.toString"})
+        self.assertEqual(len({x["c"] for x in vs}), 1)
+        a = g["stats"]["ambiguity"]["typescript"]
+        self.assertEqual((a["external_edges"], a["external_sites"]), (2, 1))
+        self.assertGreater(a["repo_sites"], 5)                                  # overrides, interfaces, callbacks
+        self.assertFalse(any(x.get("eg") for x in g["edges"] if x["s"].endswith(":use")))   # MemStore, FileStore: repo
+
     def test_decorators(self):
         # run when the class is defined: from the class, not from the method they mark
         self.assertEqual(self.how(self.get("Api", "Route")), ("exact", "decorator"))

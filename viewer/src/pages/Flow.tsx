@@ -47,7 +47,29 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
       if (g) g.push(k)
       else groups.set(cid, [k])
     }
-    const rows = [...groups].map(([cid, ks]) => ({ name: ix.bareName(cid, ks[0]), l: ks[0].l, n: node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks) }))
+    let rows = [...groups].map(([cid, ks]) => ({ name: ix.bareName(cid, ks[0]), l: ks[0].l, n: node(cid, ks[0], `${key}/${cid}@${ks[0].l}`, [...c.path, c.fid], key, ks) }))
+    // one call whose candidates are all outside methods of one name (String.toString, Number.toString):
+    // one row, opened to show each candidate with its own edge
+    const sites = new Map<string, typeof rows>()
+    for (const r of rows) {
+      const e = index[r.n.id]?.edge
+      if (dir === 'down' && e?.eg) {
+        const k = `${e.f}:${e.l}:${e.c ?? ''}`
+        sites.set(k, [...(sites.get(k) ?? []), r])
+      }
+    }
+    for (const [k, rs] of sites) {
+      if (rs.length < 2) continue
+      const e = index[rs[0].n.id].edge!
+      const method = (e.dn ?? e.d).split('.').pop() ?? ''
+      const types = rs.map((r) => { const x = index[r.n.id].edge!; return (x.dn ?? x.d).replace(/^ext:/, '').split('.').slice(0, -1).join('.') })
+      const g: TreeNode = { id: `${key}/eg:${k}`, name: method, meta: t('（外部：{v1}）', { v1: types.join(t('、')) }), path: `${e.f}:${e.l}`, muted: true,
+        tags: [<UI.Tag key="eg">{t('外部候選 ×{n}', { n: rs.length })}</UI.Tag>], children: rs.map((r) => r.n) }
+      g.ariaLabel = [method, t('（外部：{v1}）', { v1: types.join(t('、')) }), t('外部候選 ×{n}', { n: rs.length }), g.path].join(t('，'))
+      const first = rows.indexOf(rs[0])
+      rows = rows.filter((r) => !rs.includes(r))
+      rows.splice(Math.min(first, rows.length), 0, { name: method, l: e.l, n: g })
+    }
     // stages the project named in .codemap/rules.json (phases): each starts at its `from` call
     const stages = dir === 'down' && ix.funcs[c.fid] ? ix.g.phases?.[ix.funcs[c.fid].name] ?? [] : []
     // a stage starts at the line of its `from` call: a call written inside it (its argument) goes with it
@@ -180,6 +202,7 @@ export function Flow(p: FlowProps) {
             p.ix.g.stats.edges ? t('C/C++ 由編譯器確認') : '',
             p.ix.g.stats.resolution?.python ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
             p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到實作它的型別；go、defer 和當作函式值傳遞的另有標示') : '',
+            p.ix.g.stats.resolution?.typescript ? t('TypeScript 與 JavaScript 由 TypeScript 編譯器依名稱與型別確定目標；經覆寫、interface 或函式值的呼叫另有標示') : '',
             p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對到定義，「依名稱推測」的只憑方法名稱') : ''].filter(Boolean).join(t('；')) })}</p>
     </UI.Card>
   )

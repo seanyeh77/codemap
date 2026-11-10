@@ -129,6 +129,33 @@ def symbols(root, files):
     return out
 
 
+BACKEND_OF = {"python": "python", "go": "go", "typescript": "typescript", "javascript": "typescript"}
+
+
+def external_candidates(edges, funcs):
+    """Marks the candidates of an ambiguous call that are all outside methods of the same name
+    (id.toString() with id: string | number: String.toString, Number.toString) with "eg", so the
+    viewer can show them as one group; the edges themselves stay as they are. Returns per backend
+    the ambiguous edges and call sites split into those and the rest (candidates in the repository)."""
+    sites = {}
+    for x in edges:
+        if x.get("resolution") == "ambiguous":
+            sites.setdefault((x["s"], x["f"], x["l"], x.get("c")), []).append(x)
+    out = {}
+    for (s, *_), xs in sites.items():
+        names = {(x.get("dn") or x["d"]).rsplit(".", 1)[-1] for x in xs}
+        external = all(x["d"] not in funcs for x in xs) and len(names) == 1
+        if external:
+            for x in xs:
+                x["eg"] = True
+        b = BACKEND_OF.get(funcs.get(s, {}).get("lang"), "other")
+        o = out.setdefault(b, dict(repo_edges=0, repo_sites=0, external_edges=0, external_sites=0))
+        kind = "external" if external else "repo"
+        o[kind + "_edges"] += len(xs)
+        o[kind + "_sites"] += 1
+    return out
+
+
 def build(root, index, config=None):
     """The whole graph the viewer works with, without source text."""
     root = Path(root)
@@ -202,6 +229,8 @@ def build(root, index, config=None):
         for k in ("rule", "via", "slot", "saved_from", "name", "read_at", "table", "by", "resolution", "infer", "mode"):
             if e.get(k) is not None:
                 x[k] = e[k]
+        if e.get("resolution") == "ambiguous" and e.get("col"):
+            x["c"] = e["col"]                  # several candidates of one call: the column tells the call apart
         if e["dst"] not in funcs:
             dn = nodes.get(e["dst"])
             x["dn"] = dn["name"] if dn else e["dst"]
@@ -210,6 +239,7 @@ def build(root, index, config=None):
             if dn and dn.get("placeholder"):
                 x["ph"] = True                 # a package codemap could not read: known by name only
         edges.append(x)
+    ambiguity = external_candidates(edges, funcs)
     headers = header_files(root)
     fdocs = docs.files_docs(root, sorted({f["file"] for f in funcs.values()} | headers))
     # scripts that read or set an environment variable can be opened from the search too
@@ -281,6 +311,9 @@ def build(root, index, config=None):
                                              incomplete=b.get("incomplete_files", 0))
                                   for name, b in index.get("backends", {}).items() if b.get("errors") or b.get("placeholders")},
                           tests=sum(1 for n in nodes.values() if n.get("scope") == "test" and repo_func(n)),
+                          # ambiguous calls whose candidates are all outside methods of one name apart
+                          # from those with candidates in the repository, per backend
+                          ambiguity=ambiguity,
                           # the compiler that read the code, so a result can be reproduced
                           compilers={name: dict(version=b["typescript"], source=b.get("typescript_from"))
                                      for name, b in index.get("backends", {}).items() if b.get("typescript")},

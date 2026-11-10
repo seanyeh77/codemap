@@ -78,3 +78,5 @@ export function counterHook() {
   const [n, setN] = useValue(0);
   setN(n + 1);
 }
+
+export function fmt(id: string | number) { return id.toString(); }

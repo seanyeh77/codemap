@@ -49,6 +49,11 @@ export interface Edge {
   by?: 'name'
   /** static: exact (the name decides it), inferred (a type did), ambiguous (one of several targets) */
   resolution?: 'exact' | 'inferred' | 'ambiguous'
+  /** an ambiguous call's column: tells the candidates of one call from those of another on its line */
+  c?: number
+  /** an ambiguous call whose candidates are all outside methods of one name (String.toString,
+   *  Number.toString): shown as one group of outside candidates, each edge kept */
+  eg?: boolean
   /** static: how the receiver's type was found, and the type */
   infer?: { how: string; type: string | null; partial?: boolean }
   /** the target is in a package codemap could not read: known by name only */
@@ -148,6 +153,8 @@ export interface Stats {
   frameworks?: string[]
   /** functions defined in test files */
   tests?: number
+  /** ambiguous edges and call sites per backend: candidates in the repository, or only outside methods of one name */
+  ambiguity?: Record<string, { repo_edges: number; repo_sites: number; external_edges: number; external_sites: number }>
   /** the compiler that read each backend's files: version and where it came from */
   compilers?: Record<string, { version: string; source?: string }>
   /** per backend: type-checker messages, packages read as placeholders, packages with incomplete types */
