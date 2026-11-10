@@ -43,7 +43,7 @@ Edge (a relation from src to dst, both node ids)
             adapter kind ("route", "inject", "callback", ...)
   source    how it is known, strongest first:
               "compiler"   a compiler recorded the call (C/C++)
-              "static"     a language's own analyzer resolved it (Python: codemap.backends.python)
+              "static"     a language's own analyzer resolved it (codemap.backends.python, .go, .ts)
               "syntax"     parsed with tree-sitter and matched by name
               "rule"       a codemap rule inferred it from the source text
               "framework"  a framework adapter: the framework makes this call
@@ -52,9 +52,16 @@ Edge (a relation from src to dst, both node ids)
                      defined once in the repository
   resolution        a static edge: "exact" (names decide the target), "inferred" (a type does),
                     "ambiguous" (one of several targets, each with an edge); a call with no
-                    target found gets no edge and is counted as unresolved
-  infer     {how, type}?  how the receiver's type was found: self, cls, super, constructor,
-                    annotation, return, assign, attribute, override; and the class
+                    target found gets no edge and is counted as unresolved.
+                    "exact" is about the edge's target, which may be an interface or abstract
+                    method (Go "error.Error", a TS interface member): then the method that is
+                    called is certain, not the code that runs. Which implementation runs is
+                    in "implements" relations, or in "ambiguous" edges when the repository's
+                    implementations or the receiver's values are known
+  infer     {how, type}?  how the target was found: self, cls, super, constructor,
+                    annotation, return, assign, attribute, override (Python); interface,
+                    embedding, closure, field, funcvalue, methodvalue, methodexpr (Go, TS);
+                    this, type, new, jsx, returned (TS); and the class or type
 """
 
 VERSION = 2

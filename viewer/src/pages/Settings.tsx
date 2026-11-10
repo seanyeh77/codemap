@@ -27,6 +27,8 @@ function when(sec: number) {
   return Date.now() - d.getTime() < 7 * 864e5 ? t('{v1}（{v2}）', { v1: UI.format.relative(d), v2: exact }) : exact
 }
 
+// a backend reads more than one language: typescript reads JavaScript too
+const BACKEND: Record<string, string> = { typescript: 'TypeScript / JavaScript' }
 const LANG: Record<string, string> = { python: 'Python', java: 'Java', go: 'Go', typescript: 'TypeScript', javascript: 'JavaScript', html: 'HTML', css: 'CSS', cpp: 'C++' }
 
 export function Settings(p: Props) {
@@ -60,17 +62,20 @@ export function Settings(p: Props) {
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
           { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
           // one row per language analyzer: how many calls each resolved, and how
-          ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: LANG[b] ?? b, value: <span><UI.Term text={b === 'go'
+          ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: BACKEND[b] ?? LANG[b] ?? b, value: <span><UI.Term text={b === 'go'
             ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值；interface 只連到真的實作它的型別。找不到目標的呼叫不會畫線。')
+            : b === 'typescript' ? t('以 TypeScript 官方編譯器解析 import、類別、繼承、型別、interface、函式值與 JSX；.d.ts 與 node_modules 只提供型別。找不到目標的呼叫不會畫線。')
             : t('以 Python 的 ast 解析 import、類別與簡單的型別，不靠名稱猜。找不到目標的呼叫不會畫線。')}>{t('靜態分析')}</UI.Term>{t('：')}{t('{v1} 條確定、{v2} 條型別推論、{v3} 條有多個可能目標、{v4} 處無法解析', { v1: r.exact ?? 0, v2: r.inferred ?? 0, v3: r.ambiguous ?? 0, v4: r.unresolved ?? 0 })}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
-          ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: LANG[b] ?? b }), value: <span>
+          ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>
             {b === 'go' ? <>{t('build tag 只依檔名判斷，vendor 目錄沒有特別處理。')}<br /></> : null}
-            {l.placeholders.length ? <>{t('{v1} 個套件沒有載入（不在 module 快取或需要下載），呼叫它們的地方只知道名稱：{v2}', { v1: l.placeholders.length, v2: l.placeholders.slice(0, 4).join(t('、')) + (l.placeholders.length > 4 ? t(' 等') : '') })}<br /></> : null}
+            {l.placeholders.length ? <>{(b === 'typescript'
+              ? t('{v1} 個套件找不到（沒有安裝 node_modules），呼叫它們的地方只知道 import 的名稱：{v2}', { v1: l.placeholders.length, v2: l.placeholders.slice(0, 4).join(t('、')) + (l.placeholders.length > 4 ? t(' 等') : '') })
+              : t('{v1} 個套件沒有載入（不在 module 快取或需要下載），呼叫它們的地方只知道名稱：{v2}', { v1: l.placeholders.length, v2: l.placeholders.slice(0, 4).join(t('、')) + (l.placeholders.length > 4 ? t(' 等') : '') }))}<br /></> : null}
             {l.incomplete ? <>{t('{v1} 個檔案的型別檢查不完整，裡面可能漏掉一些呼叫；這些函式的詳細資料會註明。', { v1: l.incomplete })}<br /></> : null}
             {l.messages ? <span className="muted">{t('型別檢查訊息 {v1} 則，不代表分析失敗：其餘的呼叫照常解析。', { v1: l.messages })}</span> : null}
           </span> })),
-          ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term text={t('以 tree-sitter 讀出定義與呼叫，依名稱對到定義，沒有經過編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l]).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對到的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
+          ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term text={t('以 tree-sitter 讀出定義與呼叫，依名稱對到定義，沒有經過編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l] && !(l === 'javascript' && st.resolution?.typescript)).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對到的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
           isLive ? { label: t('索引建立時間'), value: when(p.meta!.indexed) } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [

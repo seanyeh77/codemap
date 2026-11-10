@@ -88,22 +88,28 @@ def cmd_index(a):
         gb = idx["backends"]["gcc"]
         print(f'{gb["nodes"]} functions, {gb["edges"]} compiler edges, {st["indirect"]} indirect '
               f'({st.get("indirect_unresolved", "?")} unresolved), {st["compiler_inserted"]} compiler-inserted calls dropped')
-    for lang in ("python", "go"):
+    for lang in ("python", "go", "typescript"):
         if lang not in idx["backends"]:
             continue
         px = idx["backends"][lang]
         r = px["resolution"]
         print(f'{lang}: {px["files"]} files, {px["nodes"]} definitions, calls {r.get("exact", 0)} exact, '
-              f'{r.get("inferred", 0)} inferred, {r.get("ambiguous", 0)} ambiguous, {r.get("unresolved", 0)} unresolved '
-              f'({r.get("builtin", 0)} on built-in types not counted)')
+              f'{r.get("inferred", 0)} inferred, {r.get("ambiguous", 0)} ambiguous, {r.get("unresolved", 0)} unresolved'
+              + (f' ({r.get("builtin", 0)} on built-in types not counted)' if lang == "python" else ""))
         errs = px.get("errors", [])
         if errs:
             # a package the type checker could not fully read (a module not downloaded, a newer Go):
             # the calls around it are still mapped
-            print(f"  {len(errs)} messages from the {'type checker' if lang == 'go' else 'parser'}, first: "
+            print(f"  {len(errs)} messages from the {'parser' if lang == 'python' else 'type checker'}, first: "
                   + "; ".join(e.replace(str(root) + "/", "") for e in errs[:3]))
     if "syntax-go" in idx["backends"]:
         print(f'go: {idx["backends"]["syntax-go"]["files"]} files read by tree-sitter (no Go toolchain)')
+    if "syntax-typescript" in idx["backends"]:
+        print(f'typescript: {idx["backends"]["syntax-typescript"]["files"]} files read by tree-sitter (no Node or no TypeScript)')
+    if "typescript" in idx["backends"] and idx["backends"]["typescript"].get("placeholders"):
+        tb = idx["backends"]["typescript"]
+        print(f'  TypeScript {tb.get("typescript")} from {tb.get("typescript_from")}; modules not found: '
+              + ", ".join(tb["placeholders"][:8]) + (" ..." if len(tb["placeholders"]) > 8 else ""))
     if "syntax" in idx["backends"]:
         sx = idx["backends"]["syntax"]
         print(f'tree-sitter: {sx["files"]} files ({", ".join(f"{k} {v}" for k, v in sorted(sx["languages"].items()))}), '

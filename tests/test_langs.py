@@ -25,8 +25,11 @@ class Polyglot(unittest.TestCase):
 
     def test_languages(self):
         go = "go" if shutil.which("go") else "syntax-go"      # go/types, or tree-sitter without a Go toolchain
-        self.assertEqual(self.idx["backends"]["syntax"]["languages"],
-                         {"java": 1, "typescript": 2, "html": 1, "css": 1})
+        if "typescript" in self.idx["backends"]:                # the TypeScript compiler, when Node and TypeScript are here
+            self.assertEqual(self.idx["backends"]["syntax"]["languages"], {"java": 1, "html": 1, "css": 1})
+            self.assertEqual(self.idx["backends"]["typescript"]["languages"], {"typescript": 2})
+        else:
+            self.assertEqual(self.idx["backends"]["syntax-typescript"]["languages"], {"typescript": 2})
         self.assertEqual(self.idx["backends"][go]["languages"], {"go": 2})
         self.assertEqual(self.idx["backends"]["python"]["languages"], {"python": 7})     # its own backend
 
@@ -55,6 +58,14 @@ class Polyglot(unittest.TestCase):
         self.has("Store.Put", "normalize")
 
     def test_typescript_and_html(self):
+        if "typescript" in self.idx["backends"]:
+            self.has("go", "format", "static")                    # import { format } from './util'
+            self.has("go", "show", "static")                      # const show = () => ...
+            self.has("go", "Counter.bump", "static")              # const counter = new Counter(): its type decides
+            self.has("<page>", "go")                              # onclick="go()", a function the compiler read
+            self.has("<page>", "<module>")
+            self.assertIn("ext:Console.log", self.idx["nodes"])
+            return
         self.has("go", "format")                                 # import { format } from './util'
         self.has("go", "show")                                   # const show = () => ...
         self.has("go", "Counter.bump", by="name")
@@ -97,7 +108,7 @@ class Polyglot(unittest.TestCase):
     def test_viewer_graph(self):
         g = view.build(ROOT, rules.run(ROOT, dict(self.idx, edges=list(self.idx["edges"])), {}), {})
         self.assertEqual(g["stats"]["languages"]["go"], 2)
-        self.assertGreater(g["stats"]["syntax"], 10)
+        self.assertGreater(g["stats"]["syntax"], 5)
         self.assertGreater(g["stats"]["static"], 15)
         f = g["funcs"]["api/main.py:read_user"]
         self.assertEqual((f["lang"], f["entry"]["kind"], f["end"]), ("python", "route", 10))

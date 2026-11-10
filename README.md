@@ -1,7 +1,8 @@
 # codemap
 
 A static map of a codebase for people and AI agents: C and C++ through the
-compiler, Python, Java, Go, TypeScript, JavaScript and HTML/CSS through
+compiler; Python, Go and TypeScript/JavaScript through their own analyzers;
+Java and HTML/CSS (and the others, when their analyzer cannot run) through
 tree-sitter. It never runs the program, so it works on code that takes too long
 to run, and on code that is half rewritten.
 
@@ -40,12 +41,41 @@ The map has four layers:
      and method expressions are `exact`. A call through an interface goes to
      the repository's types that implement it, checked with
      `types.Implements` and never by method name; values a variable or field
-     was given (`&Server{}`, a constructor's return) narrow it first. Calls
+     was given (`&Server{}`, a constructor's return) narrow it first. A call
+     through an interface from outside the repository (`err.Error()`) goes to
+     the interface method itself, and so does a call through a repository
+     interface that nothing in the repository implements. Calls
      through function values, struct fields and closures follow what was
      stored in them. `go` and `defer` calls carry `mode`; a function handed on
      as a value (`m.HandleFunc("GET /x", s.page)`) is an edge of kind `ref`,
      and the `net/http` adapter turns those into routes. Without a Go
      toolchain the Go files go to tree-sitter. Edges: `static`.
+   - `typescript`: the TypeScript compiler API (TypeScript 5 or 6), through a
+     small Node helper, reads TypeScript and JavaScript. Each `tsconfig.json`
+     or `jsconfig.json` is one program (files no config lists get default
+     options with `allowJs`), so the compiler resolves imports, exports,
+     aliases, re-exports, namespaces, classes, constructors, inheritance and
+     `super`. A call decided by a name or by the receiver's static type (an
+     annotation, a return type, an assignment, generics, `this`) is `exact`
+     when no subclass overrides the method; unions, overrides and several
+     implementations of an interface are `ambiguous`; values decide calls
+     through variables, fields, props and callbacks (`let cb = save`,
+     `new Button(save)`, `<Editor onSave={save}/>`, `useCallback(fn)`, a
+     function that returns a closure) and are `inferred`, or `ambiguous` when
+     a parameter may be given anything else. JSX elements are calls to their
+     components; a function passed as a value is a `ref`. A function with no
+     name of its own is a node named after the nearest named one
+     (`Page.fn1`); the methods of an object literal keep their names
+     (`tipFor.show`). `.d.ts` files and `node_modules` are read for types
+     only: what they declare is an `ext:` node, named by its import
+     (`react.useState`) or its type (`Array.map`). Without `node_modules`, a
+     package's names are known by their imports only (placeholders, listed on
+     the settings page) and the calls on its values stay unresolved; nothing
+     is guessed in their place. TypeScript comes from the repository's
+     `node_modules`, or from codemap's cache (`~/.cache/codemap/typescript`,
+     installed there once with npm); without Node or TypeScript the files go
+     to tree-sitter. `"backends": {"typescript": false}` in
+     `.codemap/rules.json` sends them there too. Edges: `static`.
    - `syntax`: for the other languages, tree-sitter reads definitions, calls and imports, and joins a
      call to a definition when the name decides it (the same file, an import,
      `self`/`this`, the package in Go, a name defined once). Edges: `syntax`;
@@ -79,7 +109,8 @@ Python 3.10+. The tree-sitter grammars are wheels with the parser inside, so
 nothing is downloaded when codemap runs. The `diagram` extra adds
 Pillow for measuring text in the architecture diagram, and the `viewer` extra
 adds FastAPI and uvicorn for `codemap serve`. The viewer itself ships prebuilt
-inside the package, so Node.js is not needed where codemap runs.
+inside the package. Node.js is needed only to read TypeScript and JavaScript
+with the TypeScript compiler (tree-sitter reads them otherwise).
 
 GCC must be installed: `-fcallgraph-info` is a GCC option, so units are
 compiled with `gcc` (or `g++`) even when `compile_commands.json` says `cc` or
@@ -153,6 +184,7 @@ Optional `.codemap/rules.json`:
 ```json
 {
   "scope": ["src/libibtrace", "src/ibmon"],
+  "source_scope": {"production": ["tests/tools"], "test": ["examples/"]},
   "disable": ["exec"],
   "components": {"src/libibtrace/hooks": "hooks"},
   "describe": {"src/libibtrace": "Preloaded into the traced program; records each verbs, UCP and UCT call into the ring."},
@@ -169,6 +201,12 @@ Optional `.codemap/rules.json`:
 
 Custom rules are where project-specific patterns go once someone has agreed
 they are worth tracking.
+
+`source_scope` overrides which files are test code (see Limits) for some paths:
+a file or directory listed under `production` or `test` gets that scope whatever
+its name, and the longest listed path wins. Test files are still indexed; only
+the production graph and the type inference of production code leave them out.
+(`scope`, above, is different: it limits what is indexed at all.)
 
 `describe` says what a component is for, in the project's own words. Without
 it the overview shows the top comment of the component's main file and says
@@ -243,8 +281,26 @@ The build is one self-contained `index.html`, so it can be served by
   placeholders known by name, and a file that does not type-check fully is
   marked; the settings page lists all of this. Values read through channels,
   maps and slices are not followed.
+- TypeScript/JavaScript: values are followed through variables, fields,
+  parameters, props, `bind`, `useCallback` and functions that return
+  functions, not through arrays, maps, promises or React state
+  (`const [x, setX] = useState()`: `setX()` stays unresolved, as do calls on
+  `any`). A call through a parameter is `ambiguous` with `partial`: the
+  repository's call sites are known, other callers are not. An interface of a
+  library is dispatched only when a class of the repository says it
+  implements it; otherwise its methods are named by their type
+  (`Array.map`, `Document.getElementById`). A file that does not type-check
+  fully (often: no `node_modules`) is marked like a Go file.
+- `exact` means the edge's target is certain, not that one piece of code
+  runs. When the target is an interface or abstract method (`error.Error`,
+  `Handler.Handle` in a repository with no implementation of `Handler`, a
+  TypeScript interface member), the call certainly goes through that method,
+  but which implementation runs is decided at run time. codemap shows the
+  known implementations as `implements` relations, and when it can see them
+  (the repository's implementations, or the values the receiver holds) it
+  writes `ambiguous` edges to each of them instead.
 - Test code (`_test.go`, `test_*.py`, `tests/`, `*.test.ts`, Java
-  `src/test/`) has `scope: "test"`. The architecture diagram and the type
+  `src/test/`, or as `source_scope` says) has `scope: "test"`. The architecture diagram and the type
   inference of production code leave it out: a closure a test stores in a
   field, a fake that implements an interface, or a subclass a test defines
   never becomes a target of a production call. The viewer shows test code in

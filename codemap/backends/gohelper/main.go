@@ -73,6 +73,7 @@ type Pkg struct {
 
 type Analyzer struct {
 	root, module string
+	tests        map[string]bool // absolute paths of test files, or nil for the _test.go convention
 	fset         *token.FileSet
 	pkgs         map[string]*Pkg // import path (x_test: path + "_test")
 	std          types.Importer
@@ -98,6 +99,7 @@ func main() {
 	var in struct {
 		Root  string   `json:"root"`
 		Files []string `json:"files"`
+		Tests []string `json:"tests"` // the test files, after .codemap/rules.json; missing: the _test.go convention
 	}
 	if err := json.NewDecoder(os.Stdin).Decode(&in); err != nil {
 		fmt.Fprintln(os.Stderr, "codemap-gohelper:", err)
@@ -107,6 +109,12 @@ func main() {
 		nodes: map[string]*Node{}, ids: map[types.Object]string{}, assigns: map[*types.Var][]ast.Expr{},
 		unresolved: map[string]int{}, counts: map[string]int{}, lits: map[*ast.FuncLit]string{}, where: map[ast.Expr]*Pkg{},
 		placeholders: map[string]bool{}, broken: map[string]int{}, ifaceUsed: map[*types.Func]*types.Interface{}, ifaceRecv: map[*types.Func]types.Type{}}
+	if in.Tests != nil {
+		a.tests = map[string]bool{}
+		for _, f := range in.Tests {
+			a.tests[filepath.Join(in.Root, f)] = true
+		}
+	}
 	a.std = importer.ForCompiler(a.fset, "source", nil)
 	a.module = readModule(in.Root)
 	a.load(in.Files)
@@ -578,9 +586,13 @@ func (a *Analyzer) concrete(v *types.Var, seen map[*types.Var]bool, prod bool) (
 	return ts, how, true
 }
 
-// isTest: the position is in a _test.go file.
+// isTest: the position is in a test file (_test.go, or as .codemap/rules.json says).
 func (a *Analyzer) isTest(pos token.Pos) bool {
-	return strings.HasSuffix(a.fset.Position(pos).Filename, "_test.go")
+	name := a.fset.Position(pos).Filename
+	if a.tests != nil {
+		return a.tests[name]
+	}
+	return strings.HasSuffix(name, "_test.go")
 }
 
 func (a *Analyzer) calledFunc(pk *Pkg, call *ast.CallExpr) *types.Func {

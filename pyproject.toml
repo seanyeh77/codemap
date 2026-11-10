@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codemap"
 version = "0.3.0"
-description = "Static code maps for people and AI: call graphs for C/C++ (compiler) and Python, Java, Go, TypeScript, JavaScript, HTML/CSS (tree-sitter), framework adapters, validated tours"
+description = "Static code maps for people and AI: call graphs for C/C++ (compiler), Python, Go and TypeScript/JavaScript (their own analyzers), Java and HTML/CSS (tree-sitter), framework adapters, validated tours"
 requires-python = ">=3.10"
 # tree-sitter grammars come as wheels with the parser inside: nothing is downloaded at run time
 dependencies = [
@@ -36,4 +36,4 @@ testpaths = ["tests"]
 norecursedirs = ["fixtures"]
 
 [tool.setuptools.package-data]
-codemap = ["viewer_dist/index.html", "viewer_dist/assets/*", "backends/gohelper/main.go", "backends/gohelper/go.mod"]
+codemap = ["viewer_dist/index.html", "viewer_dist/assets/*", "backends/gohelper/main.go", "backends/gohelper/go.mod", "backends/tshelper/main.js"]

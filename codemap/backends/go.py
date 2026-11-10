@@ -64,14 +64,14 @@ def helper():
     return exe, None
 
 
-def build(root, files):
+def build(root, files, tests=None):
     """The partial index for the Go files, or None (with the reason on stderr) to fall back."""
     exe, why = helper()
     if exe is None:
         sys.stderr.write(f"codemap: Go files read by tree-sitter ({why})\n")
         return None
     try:
-        p = subprocess.run([str(exe)], input=json.dumps(dict(root=str(Path(root).resolve()), files=files)),
+        p = subprocess.run([str(exe)], input=json.dumps(dict(root=str(Path(root).resolve()), files=files, tests=tests)),
                            env=_env(), capture_output=True, text=True, timeout=1800)
         if p.returncode != 0:
             raise RuntimeError((p.stderr.strip().splitlines() or ["?"])[-1])

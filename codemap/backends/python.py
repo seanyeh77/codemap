@@ -29,7 +29,7 @@ import builtins
 import re
 from pathlib import Path
 
-from ..scope import is_test
+from ..scope import is_test as _convention
 from ..source import lines
 
 BUILTINS = set(dir(builtins))
@@ -92,8 +92,9 @@ class Klass:
 
 
 class Analyzer:
-    def __init__(self, root, files):
+    def __init__(self, root, files, tests=None):
         self.root = Path(root)
+        self.tests = set(tests) if tests is not None else None
         self.modules, self.by_file, self.short = {}, {}, {}
         self.nodes, self.funcs, self.classes = {}, {}, {}
         self.edges, self.unresolved, self.errors, self.builtin = [], {}, [], 0
@@ -110,6 +111,10 @@ class Analyzer:
 
     # ------------------------------------------------------------------ modules
 
+
+    def is_test(self, path):
+        """A test file: as .codemap/rules.json says when the build passed the list, else by convention."""
+        return path in self.tests if self.tests is not None else _convention(path)
     def _names(self, rel):
         """The dotted names a file is imported by: from the top of its package, and from the root."""
         p = Path(rel)
@@ -400,7 +405,7 @@ class Analyzer:
         out, todo = [], list(self.classes[cid].subclasses)
         while todo:
             s = todo.pop()
-            if prod and is_test(self.classes[s].module.file):
+            if prod and self.is_test(self.classes[s].module.file):
                 continue
             if name in self.classes[s].methods:
                 out.append(self.classes[s].methods[name])
@@ -498,7 +503,7 @@ class Analyzer:
         if isinstance(expr, ast.Attribute):
             out = set()
             for (t, ev) in self.types(expr.value, m, f, depth + 1):
-                out |= self._attr(t, ev, expr.attr, depth, not is_test(m.file))
+                out |= self._attr(t, ev, expr.attr, depth, not self.is_test(m.file))
             return out
         if isinstance(expr, ast.Call):
             fn = expr.func
@@ -690,7 +695,7 @@ class Analyzer:
                 base, puts = set(), []
                 for a in attrs:
                     akind, x, g = a[0], a[1], a[2]
-                    if prod and g is not None and is_test(g.module.file):
+                    if prod and g is not None and self.is_test(g.module.file):
                         continue                     # what a test stores in an attribute is not production's
                     if akind == "ann":
                         base |= {(tt, "attribute") for tt in self.ann(x, km)}
@@ -728,7 +733,9 @@ class Analyzer:
     def targets(self, call, m, f):
         """[(node id, evidence, receiver class or None, kind)] a call can go to."""
         out = []
-        for t, ev in self.types(call.func, m, f):
+        # a set: in a fixed order, so the evidence an edge keeps does not change from run to run;
+        # a constructor is the strongest (x: Path, then x = Path(x))
+        for t, ev in sorted(self.types(call.func, m, f), key=lambda x: (x[1] != "constructor", repr(x[1]), repr(x[0]))):
             if t[0] == "func":
                 out.append((t[1], ev, None, "func"))
             elif t[0] == "cls":                     # User(): the constructor runs
@@ -740,7 +747,7 @@ class Analyzer:
                 # an object whose class is only a bound (self, cls, an annotation) may be a subclass's:
                 # its overrides are possible targets too; one made by a constructor is exactly that class
                 if how in ("inst", "cls") and not exact:
-                    out += [(o, "override", cid, how) for o in self.overrides(cid, self.nodes[meth]["name"].rsplit(".", 1)[-1], not is_test(m.file))]
+                    out += [(o, "override", cid, how) for o in self.overrides(cid, self.nodes[meth]["name"].rsplit(".", 1)[-1], not self.is_test(m.file))]
             elif t[0] == "ext":
                 out.append(("ext:" + t[1], ev, None, "ext"))
             elif t[0] == "unknown":
@@ -828,8 +835,8 @@ class Analyzer:
             todo.extend(ast.iter_child_nodes(n))
 
 
-def build(root, files):
-    a = Analyzer(root, files)
+def build(root, files, tests=None):
+    a = Analyzer(root, files, tests)
     a.run()
     # module nodes only when code runs at the top of the file
     used = {e["src"] for e in a.edges} | {e["dst"] for e in a.edges}

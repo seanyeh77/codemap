@@ -29,6 +29,11 @@ EXT = {
 # the language a person names: tsx is TypeScript
 LANG_NAME = {"tsx": "typescript"}
 
+
+def is_dts(f):
+    """A TypeScript declaration file (x.d.ts, x.d.mts, x.d.css.ts): types for the compiler, not code."""
+    return bool(re.search(r"\.d\.([cm]?ts|[^/.]+\.ts)$", f))
+
 _LANGS = {}
 
 
@@ -437,8 +442,9 @@ FAMILY = {"typescript": "js", "javascript": "js", "c": "c", "cpp": "c"}
 FAMILY.update({k: k for k in ("python", "java", "go")})
 
 
-def build(root, files):
-    """Nodes and edges for the files this backend reads (paths from the root)."""
+def build(root, files, others=None):
+    """Nodes and edges for the files this backend reads (paths from the root). others: the parts other
+    backends built, whose scripts a page can load and whose functions its handlers can call."""
     root = Path(root)
     by_lang, nodes, calls, imports, errors = {}, {}, [], {}, []
     for f in files:
@@ -466,6 +472,8 @@ def build(root, files):
             calls += c
             imports[f] = im
     fileset = set(files)
+    known = {k: n for p in (others or []) for k, n in p.get("nodes", {}).items() if n.get("defined")}
+    scripts = {n["file"] for n in known.values() if n.get("lang") in ("javascript", "typescript")}
 
     # where a name is defined: in a file, in the whole repository, as a method of a class
     in_file, top, methods, classes = {}, {}, {}, {}
@@ -577,14 +585,16 @@ def build(root, files):
         for src, (ln, col) in loads:
             target = (Path(f).parent / src.split("?")[0]).as_posix().lstrip("./") if not re.match(r"^[a-z]+:|^//", src) else None
             target = re.sub(r"[^/]+/\.\./", "", target) if target else None
-            if target in fileset:
+            if target in fileset or target in scripts:
                 mid = f"{target}:<module>"
                 nodes.setdefault(mid, dict(name=Path(target).name, file=target, line=1, end=len(lines(root / target)) or 1,
                                            defined=True, lang=LANG_NAME.get(EXT.get(Path(target).suffix, ""), EXT.get(Path(target).suffix)),
                                            kind="stylesheet" if target.endswith(".css") else "module"))
                 edges.append(dict(src=pid, dst=mid, file=f, line=ln, col=col, kind="loads", source="syntax"))
         for name, (ln, col) in handlers:
-            dst = one([x for x in top.get(name, []) if nodes[x].get("lang") in ("javascript", "typescript")])
+            dst = one([x for x in top.get(name, []) if nodes[x].get("lang") in ("javascript", "typescript")]
+                      + [k for k, n in known.items() if n.get("lang") in ("javascript", "typescript")
+                         and n.get("kind") == "function" and n["name"] == name])
             if dst:
                 edges.append(dict(src=pid, dst=dst, file=f, line=ln, col=col, kind="call", source="syntax"))
 

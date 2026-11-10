@@ -221,7 +221,7 @@ def layout(index, config=None):
     # an interposer sits below the components it hooks, though it draws no call arrow
     order = set(links) | {(a, b) for a, b, _ in interposed if a in boxes and b in boxes}
     for _ in boxes:                     # longest path; cycles stop at the iteration limit
-        for (a, b) in order:
+        for (a, b) in sorted(order):    # in a fixed order: with a cycle, the layers depend on it
             if layer[b] < layer[a] + 1 <= len(boxes):
                 layer[b] = layer[a] + 1
     links = Counter({ab: v for ab, v in links.items() if layer[ab[1]] > layer[ab[0]]})

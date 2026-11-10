@@ -201,7 +201,12 @@ export class Index {
                 : how === 'assign' ? t('物件由賦值傳過來，來源是 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
                   : how === 'attribute' ? t('這是 self 的屬性，在類別裡被設成 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
                     : how === 'override' ? t('子類別覆寫了這個方法，`self` 也可能是子類別的物件。')
-                      : how === 'interface' ? t('經由 interface 呼叫；{v1} 實作了這個 interface（由 go/types 檢查，不是只比方法名稱），所以可能是 {v2}。', { v1: ty, v2: to })
+                      : how === 'interface' ? t('經由 interface 呼叫；{v1} 實作了這個 interface（由型別檢查器確認，不是只比方法名稱），所以可能是 {v2}。', { v1: ty, v2: to })
+                      : how === 'this' ? t('`this` 是 {v1} 的物件，方法依繼承找到 {v2}。', { v1: ty, v2: to })
+                      : how === 'type' ? t('TypeScript 編譯器確定接收者的型別是 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
+                      : how === 'new' ? t('`new` 建立物件時執行 {v1}。', { v1: to })
+                      : how === 'jsx' ? t('JSX 元素會呼叫元件 {v1}。', { v1: to })
+                      : how === 'returned' ? t('呼叫的是另一個函式回傳的函式 {v1}。', { v1: to })
                         : how === 'embedding' ? t('{v1} 內嵌（embed）了別的型別，方法是從內嵌的型別提升上來的 {v2}。', { v1: ty, v2: to })
                           : how === 'closure' ? t('呼叫的是存在變數或欄位裡的 func literal（closure）{v1}。', { v1: to })
                             : how === 'field' ? t('呼叫的是 struct 欄位裡的函式；程式在別處把 {v1} 存進這個欄位。', { v1: to })
@@ -212,6 +217,10 @@ export class Index {
     // Go: when the call runs, before which of its targets it reaches
     const when = e.mode === 'go' ? t('以 goroutine 執行（go），呼叫的一方不等它結束。') : e.mode === 'defer' ? t('延到所在的函式結束時才執行（defer）。') : ''
     if (e.k === 'ref' && e.resolution === 'exact') return { label: t('當作函式值'), title: t('當作函式值'), text: because }
+    // the repository's interface method, nothing in production implements it: the method is certain, the code that runs is not
+    if (e.resolution === 'exact' && how === 'interface') return { label: t('interface 方法'), title: t('interface 方法'),
+      text: t('呼叫的是 interface 方法 {v1}：呼叫哪個方法是確定的，但實際執行哪個實作要到執行時才決定；正式程式碼裡沒有這個 interface 的實作。', { v1: to }) }
+    if (e.resolution === 'exact' && how === 'jsx') return { label: 'JSX', title: 'JSX', text: because }
     if (e.resolution === 'exact' && e.mode) return { label: e.mode, title: e.mode, text: when + because }
     if (e.resolution === 'exact' && how === 'embedding') return { label: t('內嵌提升'), title: t('內嵌提升'), text: because }
     if (e.resolution === 'ambiguous') return { label: t('可能目標之一'), title: t('可能目標之一'),
