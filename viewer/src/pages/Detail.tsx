@@ -55,6 +55,10 @@ export function Detail(p: Props) {
   const who = p.ix.callerInfo(p.sel.id), nCallees = p.ix.calleeCount(p.sel.id)
   const nCallers = who.sure + who.guessed
   const ext = new Set(p.ix.callees(p.sel.id, true).filter((x) => !p.ix.funcs[x.d] && !inferred(x)).map((x) => x.d)).size
+  // where each caller calls it from: one row per caller and line, repository functions only
+  const callSites = [...new Map(p.ix.callers(p.sel.id).filter((x) => p.ix.funcs[x.s] && x.k !== 'constructor' && x.k !== 'destructor')
+    .map((x) => [x.s + ':' + x.f + ':' + x.l, x] as const)).values()].sort((a, b) => a.f.localeCompare(b.f) || a.l - b.l)
+  const twins = Object.entries(p.ix.funcs).filter(([id, g]) => id !== p.sel.id && g.name === f.name).sort(([, a], [, b]) => a.file.localeCompare(b.file))
   // the same caller calling it on several lines (one merged row in the flow tree)
   const sites = e ? p.ix.callers(p.sel.id).filter((x) => x.s === e.s && x.src === e.src && x.f === e.f).sort((a, b) => a.l - b.l) : []
   const here = p.sel.id === p.start
@@ -82,8 +86,14 @@ export function Detail(p: Props) {
         { label: t('被誰呼叫'),
           value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}
             {/* the callers by name, compiler-seen first: a count alone sends people to the flow page to learn who */}
-            {nCallers ? <>{t('：')}{who.names.slice(0, 3).map((n, i) => <span key={n + i}>{i ? t('、') : ''}<UI.InlineCode>{n}</UI.InlineCode></span>)}{nCallers > 3 ? t(' 等') : ''}</> : null}
+            {/* each caller with the line it calls from, so a file:line needs no detour through the impact page */}
+            {nCallers ? <span className="entry-list">{callSites.slice(0, 6).map((c) => (
+              <span key={c.s + c.l} className="entry-row"><button type="button" className="linklike" onClick={() => p.goFlow(c.s)}>{p.ix.funcs[c.s].name}</button>{' '}{link(c.f, c.l)}{c.k === 'ref' ? <span className="muted">{t('（當作值傳出）')}</span> : null}</span>))}
+              {callSites.length > 6 ? <span className="entry-row muted">{t('另有 {v1} 處，見流程頁的「往上」', { v1: callSites.length - 6 })}</span> : null}</span> : null}
             {who.main ? t('。程式的起點，由 C 執行環境在程式啟動時呼叫') : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
+        // other definitions of the same name: which one a reader landed on is not obvious from the name
+        ...(twins.length ? [{ label: t('同名'), value: <span className="entry-list">{twins.map(([id, g]) => (
+          <span key={id} className="entry-row"><button type="button" className="linklike" onClick={() => p.goFlow(id)}>{g.name}</button>{' '}{link(g.file, g.line)}{t('（{v1}）', { v1: g.comp })}</span>))}</span> }] : []),
         { label: t('呼叫誰'),
           value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次。流程樹的 ×N 是呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}</span> },
         // calls the compiler never saw: inside #if/#ifdef blocks this build leaves out

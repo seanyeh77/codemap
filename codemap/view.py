@@ -257,9 +257,13 @@ def build(root, index, config=None):
         # what the component is for: the top comment of its main.c, else of its file with most functions
         mine = sorted({f["file"] for f in funcs.values() if f["comp"] == cid})
         base = Path(cid).name
-        main = [f for f in mine if Path(f).name == "main.c"] \
+        # main.c, a package's __init__.py or __main__.py, a file whose comment names the component; a
+        # component of one file is that file. Several files and none of these: no file speaks for the
+        # whole component (harness/checks.py "Protected ..." beside the editable controller.py), so the
+        # viewer lists each file's first line instead
+        main = [f for f in mine if Path(f).name in ("main.c", "__init__.py", "__main__.py", "main.go")] \
             + [f for f in mine if base in (fdocs.get(f) or {}).get("text", "")] \
-            + sorted(mine, key=lambda f: -sum(1 for g in funcs.values() if g["file"] == f))
+            + (mine if len(mine) == 1 else [])
         # a component's own comment; one borrowed from a header of another component would describe that one
         doc = next((fdocs[f] for f in main if f in fdocs and arch.component(fdocs[f]["file"], config) == cid), None)
         # what the project says the component is for wins over any file's comment
@@ -267,6 +271,9 @@ def build(root, index, config=None):
             doc = dict(text=config["describe"][cid], file=".codemap/rules.json", line=0, own=True)
         if doc:
             comp["doc"] = doc
+        else:
+            comp["file_docs"] = [dict(file=f, text=fdocs[f]["text"], line=fdocs[f].get("line", 1)) for f in mine
+                                 if f in fdocs and fdocs[f].get("file", f) == f][:12]
         comps.append(comp)
     shared_order = {cid: i for i, cid in enumerate(lay["shared"])}       # dependencies last
     comps.sort(key=lambda c: (c["shared"], shared_order[c["id"]] if c["shared"] else c["layer"] or 0, c["id"]))
@@ -318,6 +325,9 @@ def build(root, index, config=None):
                           compilers={name: dict(version=b["typescript"], source=b.get("typescript_from"), cache=b.get("cache"))
                                      for name, b in index.get("backends", {}).items() if b.get("typescript")},
                           languages={k: v for b in index.get("backends", {}).values() for k, v in b.get("languages", {}).items()},
+                          # which analyzers read the code: the settings page shows the compiler only for gcc
+                          backends=sorted(index.get("backends", {})),
+                          unresolved={name: b["unresolved_top"] for name, b in index.get("backends", {}).items() if b.get("unresolved_top")},
                           frameworks=index.get("frameworks", [])),
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),
                files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},

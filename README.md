@@ -30,7 +30,11 @@ The map has four layers:
      table: every target gets an edge; a container that also holds values
      of unknown type marks its targets `partial`). A call nothing
      decides gets no edge and is counted as unresolved; it is never matched
-     on its name across the repository. Edges: `static`.
+     on its name across the repository. A function handed on as a value
+     (`hub.spawn(self._monitor_loop)`, `Thread(target=run)`, `{"x": handler}`,
+     `self.cb = f`) is an edge of kind `ref` from where it is handed on. An
+     annotation of `Any` or `object` names no type, so calls on it stay
+     unresolved. Edges: `static`.
    - `go`: Go's own `go/types`, through a small helper (standard library
      only) that codemap builds with the local Go toolchain into
      `~/.cache/codemap` the first time. Packages come from `go.mod` files

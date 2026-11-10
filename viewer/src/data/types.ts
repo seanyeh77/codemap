@@ -84,6 +84,8 @@ export interface Comp {
   callers: number
   /** What it is for: the top comment of its main file, and where that comment is. */
   doc?: Doc
+  /** no comment speaks for the whole component: each file's first comment, so files of different roles are told apart */
+  file_docs?: { file: string; text: string; line: number }[]
   /** python: a group of Python tools, not C code (no functions are indexed) */
   lang?: 'python'
   /** python: its scripts, and the first line of each one's docstring */
@@ -149,6 +151,10 @@ export interface Stats {
   resolution?: Record<string, Record<string, number>>
   /** files read per language */
   languages?: Record<string, number>
+  /** the analyzers that read the code: gcc, python, go, typescript, syntax-* */
+  backends?: string[]
+  /** per backend: the call texts that most often had no target, with their counts */
+  unresolved?: Record<string, [string, number][]>
   /** framework adapters that ran */
   frameworks?: string[]
   /** functions defined in test files */
@@ -203,7 +209,7 @@ export interface Graph {
     arrays: { name: string; file: string; line: number; size: string; text: string; value?: string }[]
     env: { fid: string; f: string; l: number; use: number; name: string | null }[]
     /** variables set only when not set already */
-    env_if_unset?: { name: string; fid: string; f: string; l: number; check: number; says?: boolean }[]
+    env_if_unset?: { name: string; fid: string; f: string; l: number; check: number; says?: boolean; how?: 'setdefault' }[]
     /** fixed error codes handed back: return ENOSYS, errno = EAGAIN */
     errors?: { code: string; fid: string; f: string; l: number; how: 'return' | 'errno' }[]
     /** file-scope variables changed with a plain store, not an atomic operation */
@@ -214,6 +220,8 @@ export interface Graph {
     loss?: { fid: string; f: string; l: number; var: string; text: string; via: { fid: string; f: string; l: number }[]; said: { fid: string; f: string; l: number }[] }[]
     /** what stays after the process ends unless removed (shm_open with O_CREAT), who removes it, and calls that end the program in the components that make it */
     leftovers?: { fid: string; f: string; l: number; call: string; remove: string; removed: { fid: string; f: string; l: number; via: string[] }[]; stops: { fid: string; f: string; l: number; name: string }[] }[]
+    /** the languages each check reads (writes, stops, arrays, ...): c, python, go, typescript */
+    covers?: Record<string, string[]>
   }
   /** Calls inside #if/#ifdef blocks the compiler did not record, by the function called. */
   uncompiled?: Record<string, { f: string; l: number; cond: string; by: string }[]>

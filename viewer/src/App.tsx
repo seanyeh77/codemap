@@ -7,7 +7,7 @@ import { usePrefs } from './data/hooks'
 import { rank } from './data/search'
 import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
-import { written, type Graph, type GrepHit, type Meta, type Sel } from './data/types'
+import { written, type Func, type Graph, type GrepHit, type Meta, type Sel } from './data/types'
 import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, TRACED, edgeId, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
@@ -285,6 +285,11 @@ function Shell(p: ShellProps) {
   const moved = (v: View) => { if (v !== view) requestAnimationFrame(() => UI.focusMain()) }
   const goFlow = (id: string, edge: Sel['edge'] = null) => { setFileAt(null); setStart(id); setSel({ id, edge, key: 'root' }); setView('flow'); moved('flow') }
   const goImpact = (id: string) => { setFileAt(null); setStart(id); setSel({ id, edge: null, key: null }); setView('impact'); moved('impact') }
+  // the impact page starts from the function the reader has open, not from where the flow began
+  const switchView = (v: View) => {
+    if (v === 'impact' && view !== 'impact' && ix.funcs[sel.id] && sel.id !== start) goImpact(sel.id)
+    else setView(v)
+  }
 
   function select(item: PaletteItem) {
     setRecent((r) => [item, ...r.filter((x) => x.id !== item.id)].slice(0, 6))
@@ -369,11 +374,11 @@ function Shell(p: ShellProps) {
       <a className="ui-skip" href="#nav" onClick={(e) => { e.preventDefault(); (document.querySelector<HTMLElement>('.mobile-only:not([hidden]) [role=tab][aria-selected=true], nav [aria-current=page]') ?? document.querySelector<HTMLElement>('nav a, nav button'))?.focus() }}>{t('跳到導覽')}</a>
       {tablet ? (
         <UI.Drawer open={navOpen} onClose={() => setNavOpen(false)} title={t('導覽')} side="left" width={280}>
-          <UI.SideNav value={view} onChange={(v) => { setView(v as View); setNavOpen(false) }}
+          <UI.SideNav value={view} onChange={(v) => { switchView(v as View); setNavOpen(false) }}
             brand={<><span className="brand-mark" /><span>codemap</span></>} sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
         </UI.Drawer>
       ) : (
-        <UI.SideNav value={view} onChange={(v) => setView(v as View)} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)}
+        <UI.SideNav value={view} onChange={(v) => switchView(v as View)} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)}
           brand={<><span className="brand-mark" />{collapsed ? null : <span>codemap</span>}</>}
           sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
       )}
@@ -405,7 +410,7 @@ function Shell(p: ShellProps) {
           { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
         ]} />
         <div className="mobile-only">
-          <UI.MobileTabBar value={view} onChange={(v) => setView(v as View)} items={[...navItems(), nav('settings')]} />
+          <UI.MobileTabBar value={view} onChange={(v) => switchView(v as View)} items={[...navItems(), nav('settings')]} />
         </div>
       </main>
     </div>
@@ -425,12 +430,16 @@ function paletteItems(ix: Index): PaletteItem[] {
   const items: PaletteItem[] = []
   // static functions of the same name in different files: say so, the first one is not the only one
   const sameName = new Map<string, number>()
-  for (const f of Object.values(ix.funcs)) sameName.set(f.name, (sameName.get(f.name) ?? 0) + 1)
+  const byName = new Map<string, Func[]>()
+  for (const f of Object.values(ix.funcs)) {
+    sameName.set(f.name, (sameName.get(f.name) ?? 0) + 1)
+    byName.set(f.name, [...(byName.get(f.name) ?? []), f])
+  }
   for (const [id, f] of Object.entries(ix.funcs)) {
     const twins = sameName.get(f.name)! - 1
     items.push({ id: 'f:' + id, kind: ({ method: '方法', class: '類別', module: '模組', page: '頁面', stylesheet: '樣式表' } as Record<string, string>)[f.kind ?? ''] ?? '函式', label: f.name, code: true, keywords: [f.file],
       // functions of the same name differ only by their path: shown in full, never shortened
-      detail: `${twins ? '`' + `${f.file}:${f.line}` + '`' : short(`${f.file}:${f.line}`)} · ${f.comp}` + (twins ? t('（另有 {n} 個同名函式）', { n: twins }) : ''),
+      detail: `${twins ? '`' + `${f.file}:${f.line}` + '`' : short(`${f.file}:${f.line}`)} · ${f.comp}` + (twins ? t('（同名的還有 {v1}）', { v1: (byName.get(f.name) ?? []).filter((g) => g !== f).slice(0, 3).map((g) => '`' + `${g.file}:${g.line}` + '`').join(t('、')) + (twins > 3 ? t(' 等') : '') }) : ''),
       weight: ix.callers(id).length + ix.callees(id, false).length, target: { type: 'func', id } })
   }
   for (const c of ix.g.comps) {

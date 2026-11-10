@@ -406,9 +406,10 @@ def _name_of(arg, text, before, params):
 
 def writes(root, funcs):
     """[{fid, f, l, call, name? | runtime, format?, param?}]: calls that create or write a file, and
-    POSIX shared memory objects created with shm_open(O_CREAT) (/dev/shm/ibtrace.<pid>)."""
+    POSIX shared memory objects created with shm_open(O_CREAT) (/dev/shm/ibtrace.<pid>).
+    C and C++ by their calls and flags; Python, Go and JavaScript/TypeScript by theirs."""
     out = []
-    for fid, f, text, at in _bodies(root, funcs):
+    for fid, f, text, at in _bodies(root, {k: v for k, v in funcs.items() if lang_of(v["file"]) == "c"}):
         params = None
         for m in WRITE_CALL.finditer(text):
             call = m.group(1)
@@ -428,18 +429,148 @@ def writes(root, funcs):
             if params is None:
                 params = _params(root, f)
             out.append(dict(fid=fid, f=f["file"], l=at(m.start()), call=call, **_name_of(path, text, m.start(), params)))
+    out += py_writes(root, funcs)
+    out += _text_writes(root, funcs)
+    return sorted(out, key=lambda w: (w["f"], w["l"]))
+
+
+# file extension -> the language a check reads; JavaScript goes with TypeScript (one analyzer)
+LANGS = {".c": "c", ".h": "c", ".cc": "c", ".cpp": "c", ".cxx": "c", ".hpp": "c", ".hh": "c", ".py": "python",
+         ".go": "go", ".ts": "typescript", ".tsx": "typescript", ".mts": "typescript", ".cts": "typescript",
+         ".js": "typescript", ".jsx": "typescript", ".mjs": "typescript", ".cjs": "typescript"}
+
+
+def lang_of(path):
+    return LANGS.get(Path(path).suffix.lower())
+
+
+def _innermost(funcs_in_file, line):
+    """The function (id) whose definition encloses line, the innermost one."""
+    best = None
+    for fid, f in funcs_in_file:
+        if f["line"] <= line <= (f.get("end") or f["line"]) and (best is None or f["line"] >= best[1]["line"]):
+            best = (fid, f)
+    return best[0] if best else None
+
+
+PY_WRITE_MODE = re.compile(r"[wax+]")
+PY_OS_FLAGS = re.compile(r"\bO_(CREAT|WRONLY|RDWR|APPEND|TRUNC)\b")
+
+
+def _py_path(node, params):
+    """What a Python path expression holds: a literal name, an f-string format, a parameter, else its text."""
+    import ast
+    while isinstance(node, ast.Call) and isinstance(node.func, (ast.Name, ast.Attribute)) \
+            and ast.unparse(node.func) in ("str", "os.fspath", "Path", "pathlib.Path") and len(node.args) == 1:
+        node = node.args[0]                                     # str(path), Path(name): the same file
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return dict(name=node.value)
+    if isinstance(node, ast.JoinedStr):
+        return dict(runtime=True, format="".join(v.value if isinstance(v, ast.Constant) else "{" + ast.unparse(v.value) + "}"
+                                                for v in node.values))
+    if isinstance(node, ast.Name) and node.id in params:
+        return dict(runtime=True, param=node.id)
+    return dict(runtime=True, expr=ast.unparse(node)[:80])
+
+
+def py_writes(root, funcs):
+    """Python: open() or Path.open() in a writing mode, Path.write_text/write_bytes, os.open with a
+    creating or writing flag, and the target of os.replace/os.rename and shutil.copy/move."""
+    import ast
+    by_file = {}
+    for fid, f in funcs.items():
+        if lang_of(f["file"]) == "python" and f.get("end"):
+            by_file.setdefault(f["file"], []).append((fid, f))
+    out = []
+    for file, fs in sorted(by_file.items()):
+        try:
+            tree = ast.parse(lines_text(Path(root) / file))
+        except (SyntaxError, ValueError, OSError):
+            continue
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Call):
+                continue
+            fn, args = n.func, n.args
+            kw = {k.arg: k.value for k in n.keywords if k.arg}
+            dotted = ast.unparse(fn)
+            mode = None
+            path = call = None
+            if isinstance(fn, ast.Name) and fn.id == "open" or dotted in ("io.open", "codecs.open"):
+                mode, path, call = (args[1] if len(args) > 1 else kw.get("mode")), (args[0] if args else kw.get("file")), dotted
+            elif isinstance(fn, ast.Attribute) and fn.attr == "open" and dotted != "os.open" and not dotted.endswith(("gzip.open", "tarfile.open", "zipfile.open")):
+                mode, path, call = (args[0] if args else kw.get("mode")), fn.value, "open"
+            elif isinstance(fn, ast.Attribute) and fn.attr in ("write_text", "write_bytes"):
+                path, call = fn.value, fn.attr
+            elif dotted == "os.open":
+                flags = ast.unparse(args[1]) if len(args) > 1 else ""
+                if not PY_OS_FLAGS.search(flags):
+                    continue
+                path, call = (args[0] if args else None), "os.open"
+            elif dotted in ("os.replace", "os.rename", "shutil.copy", "shutil.copy2", "shutil.copyfile", "shutil.move"):
+                path, call = (args[1] if len(args) > 1 else kw.get("dst")), dotted
+            else:
+                continue
+            if call in ("open", "io.open", "codecs.open") or call.endswith(".open") and call != "os.open":
+                if not (isinstance(mode, ast.Constant) and isinstance(mode.value, str) and PY_WRITE_MODE.search(mode.value)):
+                    continue                                        # read mode, or a mode only known at run time
+            fid = _innermost(fs, n.lineno)
+            if path is None or fid is None:
+                continue
+            f = funcs[fid]
+            params = {a.arg for a in getattr(_def_node(tree, f), "args", ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], defaults=[])).args}
+            out.append(dict(fid=fid, f=file, l=n.lineno, call=call, **_py_path(path, params)))
+    return out
+
+
+def _def_node(tree, f):
+    import ast
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.lineno <= f["line"] <= n.lineno + len(n.decorator_list) \
+                and n.name == f["name"].rsplit(".", 1)[-1]:
+            return n
+    return None
+
+
+GO_WRITE = re.compile(r"\b(os\.Create|os\.WriteFile|ioutil\.WriteFile|os\.OpenFile)\s*\(")
+TS_WRITE = re.compile(r"(?<![\w$])((?:fs|fsp|fs\.promises)\.(?:writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream|copyFileSync|copyFile|renameSync|rename))\s*\(")
+
+
+def _text_writes(root, funcs):
+    """Go: os.Create, os.WriteFile, os.OpenFile with a creating or writing flag. JavaScript and
+    TypeScript: fs.writeFile, appendFile, createWriteStream, and the target of copyFile and rename."""
+    out = []
+    for lang, rx in (("go", GO_WRITE), ("typescript", TS_WRITE)):
+        for fid, f, text, at in _bodies(root, {k: v for k, v in funcs.items() if lang_of(v["file"]) == lang}):
+            for m in rx.finditer(text):
+                call = m.group(1)
+                args, _ = _args(text, m.end() - 1)
+                if call == "os.OpenFile" and not (len(args) > 1 and re.search(r"\bO_(CREATE|WRONLY|RDWR|APPEND|TRUNC)\b", args[1])):
+                    continue
+                path = args[1] if call.rsplit(".", 1)[-1].startswith(("copyFile", "rename")) and len(args) > 1 else args[0] if args else ""
+                lit = re.fullmatch(r"([\"'`])((?:\\.|(?!\1).)*)\1", path)
+                info = dict(name=lit.group(2)) if lit and not (lit.group(1) == "`" and "${" in lit.group(2)) \
+                    else dict(runtime=True, format=lit.group(2)) if lit else dict(runtime=True, expr=path[:80])
+                out.append(dict(fid=fid, f=f["file"], l=at(m.start()), call=call, **info))
     return out
 
 
 # ---- places worth a look -------------------------------------------------
 
 STOPS = ("abort", "exit", "_exit", "_Exit", "quick_exit")
+# the same in the languages the static analyzers read: calls to the library that ends the process
+STATIC_STOPS = {"python": ("sys.exit", "os._exit", "os.abort"),
+                "go": ("os.Exit", "log.Fatal", "log.Fatalf", "log.Fatalln"),
+                "typescript": ("process.exit", "process.abort")}
 
 
 def stops(edges):
-    """[{fid, f, l, name}]: calls that end the process, from the compiler's call graph."""
+    """[{fid, f, l, name}]: calls that end the process, from the compiler's call graph, and for
+    Python, Go and JavaScript/TypeScript from the analyzers' calls into the standard library."""
+    static = {n for names in STATIC_STOPS.values() for n in names}
     return sorted(({"fid": e["s"], "f": e["f"], "l": e["l"], "name": e["dn"]} for e in edges
-                   if e.get("src") == "compiler" and e.get("dn") in STOPS and e.get("ext")),
+                   if e.get("src") == "compiler" and e.get("dn") in STOPS and e.get("ext")
+                   or e.get("src") == "static" and e.get("k", "call") == "call" and str(e.get("d", "")).startswith("ext:")
+                   and e.get("dn") in static),
                   key=lambda x: (x["f"], x["l"]))
 
 
@@ -679,11 +810,30 @@ def leftovers(root, funcs, edges):
     return out
 
 
+# the languages each check reads: where a repository has none of them, the check found nothing
+# because it did not look, and the viewer says so instead of "none found"
+COVERS = dict(writes=("c", "python", "go", "typescript"), stops=("c", "python", "go", "typescript"),
+              arrays=("c",), env=("c",), env_if_unset=("c", "python"), errors=("c",), plain_writes=("c",),
+              limits=("c",), loss=("c",), leftovers=("c",))
+
+
 def worth_checking(root, funcs, edges, files, symbols):
-    return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, funcs),
-                env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs),
-                plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, funcs),
-                loss=data_loss(root, funcs, edges), leftovers=leftovers(root, funcs, edges))
+    c_funcs = {k: v for k, v in funcs.items() if lang_of(v["file"]) == "c"}
+    return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, c_funcs),
+                env_if_unset=env_if_unset(root, c_funcs) + py_env_if_unset(root, funcs), errors=error_codes(root, c_funcs),
+                plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, c_funcs),
+                loss=data_loss(root, c_funcs, edges), leftovers=leftovers(root, c_funcs, edges),
+                covers={k: list(v) for k, v in COVERS.items()})
+
+
+def py_env_if_unset(root, funcs):
+    """Python: os.environ.setdefault("X", ...) sets X only when it is not set already."""
+    out = []
+    for fid, f, text, at in _bodies(root, {k: v for k, v in funcs.items() if lang_of(v["file"]) == "python"}):
+        for m in re.finditer(r"os\.environ\.setdefault\(\s*['\"](\w+)['\"]", text):
+            out.append(dict(name=m.group(1), fid=fid, f=f["file"], l=at(m.start()), check=at(m.start()), says=False,
+                            how="setdefault"))
+    return out
 
 
 def macro_value(root, funcs, name):

@@ -78,7 +78,11 @@ export function Settings(p: Props) {
             : b === 'typescript' ? t('以 TypeScript 官方編譯器解析 import、類別、繼承、型別、interface、函式值與 JSX；.d.ts 與 node_modules 只提供型別。找不到目標的呼叫不會畫線。')
             : t('以 Python 的 ast 解析 import、類別與簡單的型別，不靠名稱猜。找不到目標的呼叫不會畫線。')}>{t('靜態分析')}</UI.Term>{st.compilers?.[b] ? t('（TypeScript {v1}）', { v1: st.compilers[b].version }) : ''}{t('：')}{t('{v1} 條確定、{v2} 條型別推論、{v3} 條有多個可能目標、{v4} 處無法解析', { v1: r.exact ?? 0, v2: r.inferred ?? 0, v3: r.ambiguous ?? 0, v4: r.unresolved ?? 0 })}
             {st.compilers?.[b]?.cache ? <><br /><span className="muted">{cacheText(st.compilers[b].cache!)}</span></> : null}
-            {st.ambiguity?.[b] ? <><br /><span className="muted">{t('多個可能目標：repo 內的候選 {v1} 條（{v2} 個呼叫）；外部同名方法的候選 {v3} 條（{v4} 個呼叫，例如聯集型別上的 toString）', { v1: st.ambiguity[b].repo_edges, v2: st.ambiguity[b].repo_sites, v3: st.ambiguity[b].external_edges, v4: st.ambiguity[b].external_sites })}</span></> : null}</span> })),
+            {st.ambiguity?.[b] ? <><br /><span className="muted">{t('多個可能目標：repo 內的候選 {v1} 條（{v2} 個呼叫）；外部同名方法的候選 {v3} 條（{v4} 個呼叫，例如聯集型別上的 toString）', { v1: st.ambiguity[b].repo_edges, v2: st.ambiguity[b].repo_sites, v3: st.ambiguity[b].external_edges, v4: st.ambiguity[b].external_sites })}</span></> : null}
+            {/* which calls had no target: the reader sees what the flow and impact pages may be missing */}
+            {st.unresolved?.[b]?.length ? <details className="unresolved"><summary>{t('最常無法解析的呼叫（前 {v1} 種）', { v1: st.unresolved[b].length })}</summary>
+              <span className="entry-list">{st.unresolved[b].map(([call, n]) => <span key={call} className="entry-row"><UI.InlineCode>{call}</UI.InlineCode>{t(' × {v1}', { v1: n })}</span>)}</span>
+              <span className="muted">{t('多半是型別不知道的物件或參數上的方法；用搜尋找呼叫的文字可以看到每個位置。')}</span></details> : null}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
           ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>
             {b === 'go' ? <>{t('build tag 只依檔名判斷，vendor 目錄沒有特別處理。')}<br /></> : null}
@@ -104,10 +108,13 @@ export function Settings(p: Props) {
       </UI.SettingsSection>
       <UI.SettingsSection title={t('建立索引')} description={t('設定檔：.codemap/rules.json')}>
         <UI.DetailList items={[
-          { label: t('編譯資料庫'), value: <UI.InlineCode>compile_commands.json</UI.InlineCode> },
-          { label: t('編譯器'), value: g.config.cc ? <UI.InlineCode>{g.config.cc}</UI.InlineCode> : t('依 compile_commands.json（gcc 或 g++）') },
+          // the compiler rows belong to C and C++: a repository of Python, Go or TypeScript is read without one
+          ...(!st.backends || st.backends.includes('gcc') ? [
+            { label: t('編譯資料庫'), value: <UI.InlineCode>compile_commands.json</UI.InlineCode> },
+            { label: t('編譯器'), value: g.config.cc ? <UI.InlineCode>{g.config.cc}</UI.InlineCode> : t('依 compile_commands.json（gcc 或 g++）') },
+          ] : [{ label: t('分析器'), value: t('不需要編譯，直接讀原始碼：{v1}', { v1: st.backends.map((b) => BACKEND[b] ?? LANG[b] ?? b).join(t('、')) }) }]),
           { label: t('範圍'), value: g.config.scope?.length ? <span className="chips">{g.config.scope.map((s) => <UI.InlineCode key={s}>{s}</UI.InlineCode>)}</span> : t('整個 repo') },
-          { label: t('失敗的檔案'), value: t('{v1} 個', { v1: st.failed ?? 0 }) },
+          ...(!st.backends || st.backends.includes('gcc') ? [{ label: t('失敗的檔案'), value: t('{v1} 個', { v1: st.failed ?? 0 }) }] : []),
         ]} />
       </UI.SettingsSection>
     </>

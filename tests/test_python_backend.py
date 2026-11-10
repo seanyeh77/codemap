@@ -30,6 +30,15 @@ class Resolve(unittest.TestCase):
         self.assertFalse([e for e in self.idx["edges"] if e["src"] == "untyped.py:handler"
                           and e.get("source") == "static" and e["kind"] == "call"])
 
+    def test_handed_on(self):
+        refs = {(e["src"].split(":", 1)[1], e["dst"].split(":", 1)[1], e["line"]) for e in self.idx["edges"]
+                if e["kind"] == "ref" and e["src"].startswith("handed.py:")}
+        self.assertEqual(refs, {("table", "work", 10),                      # a dict value
+                                ("Loop.__init__", "Loop.tick", 15),         # Thread(target=self.tick)
+                                ("Loop.__init__", "work", 16),              # self.cb = work
+                                ("Loop.tick", "work", 21)})                 # a list element; self.tick there is its own owner
+        self.assertEqual(self.res("Loop.__init__", "Loop.tick"), {"exact"})  # h() is also an ordinary call
+
     # 2A: names
 
     def test_imports(self):

@@ -95,7 +95,8 @@ def cmd_index(a):
         r = px["resolution"]
         print(f'{lang}: {px["files"]} files, {px["nodes"]} definitions, calls {r.get("exact", 0)} exact, '
               f'{r.get("inferred", 0)} inferred, {r.get("ambiguous", 0)} ambiguous, {r.get("unresolved", 0)} unresolved'
-              + (f' ({r.get("builtin", 0)} on built-in types not counted)' if lang == "python" else ""))
+              + (f' ({r.get("builtin", 0)} on built-in types not counted)' if lang == "python" else "")
+              + (f', {px["refs"]} functions handed on as values' if px.get("refs") else ""))
         errs = px.get("errors", [])
         if errs:
             # a package the type checker could not fully read (a module not downloaded, a newer Go):

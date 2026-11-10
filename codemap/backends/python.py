@@ -765,12 +765,16 @@ class Analyzer:
         return uniq
 
     def run(self):
+        # functions handed on as values are looked at after every call: the type cache cuts cycles
+        # with an empty answer, so asking about a name earlier could change what a call resolves to
+        later = []
         for m in self.by_file.values():
             scopes = [(f"{m.file}:<module>", None, list(self._module_level(m.tree)))]
             for fid, f in self.funcs.items():
                 if f.module is m:
                     scopes.append((fid, f, list(self._own(f.node))))
             for owner, f, nodes in scopes:
+                later.append((owner, f, m, nodes))
                 for n in nodes:
                     if not isinstance(n, ast.Call):
                         continue
@@ -804,6 +808,53 @@ class Analyzer:
                             if partial:
                                 e["infer"]["partial"] = True       # the container also holds things of unknown type
                         self.edges.append(e)
+        for owner, f, m, nodes in later:
+            self._refs(owner, f, m, nodes)
+
+    @staticmethod
+    def _handed_on(nodes):
+        """Names and dotted names used as a value that leaves the expression: an argument
+        (hub.spawn(self._monitor_loop), Thread(target=run)), an element of a list, tuple, set or dict
+        ({"x": handler}), a returned value, or a value stored in an attribute or item (self.cb = f).
+        A plain local assignment (h = self.f) is left out: the call through h already resolves to f."""
+        for n in nodes:
+            vals = []
+            if isinstance(n, ast.Call):
+                vals = list(n.args) + [k.value for k in n.keywords]
+            elif isinstance(n, (ast.List, ast.Tuple, ast.Set)):
+                vals = list(n.elts)
+            elif isinstance(n, ast.Dict):
+                vals = [v for v in n.values if v is not None]
+            elif isinstance(n, ast.Return) and n.value is not None:
+                vals = [n.value]
+            elif isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None:
+                targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+                if any(isinstance(t, (ast.Attribute, ast.Subscript)) for t in targets):
+                    vals = [n.value]
+            for v in vals:
+                if isinstance(v, ast.Starred):
+                    v = v.value
+                if isinstance(v, (ast.Name, ast.Attribute)):
+                    yield v
+
+    def _refs(self, owner, f, m, nodes):
+        """Edges of kind "ref": a function of the repository handed on as a value, which whoever
+        receives it calls later (a thread, an event loop, a handler table)."""
+        for v in self._handed_on(nodes):
+            got = [x for x in self.targets(ast.Call(func=v, args=[], keywords=[]), m, f)
+                   if x[0] != owner and x[3] not in ("init", "ext", "unknown", "builtin") and x[0] in self.nodes]
+            if not got:
+                continue
+            many = len(got) > 1
+            for dst, ev, cid, how in got:
+                res = "ambiguous" if many else "exact" if ev in EXACT_FROM else "inferred"
+                e = dict(src=owner, dst=dst, file=m.file, line=v.lineno, col=v.col_offset + 1, kind="ref",
+                         source="static", resolution=res,
+                         infer=dict(how="funcvalue" if how == "func" else "methodvalue",
+                                    type=self.nodes[cid]["name"] if cid in self.nodes else None))
+                if ev not in EXACT_FROM:
+                    e["infer"]["via"] = ev
+                self.edges.append(e)
 
     @staticmethod
     def _direct(call):
@@ -846,11 +897,13 @@ def build(root, files, tests=None):
     nodes = {k: v for k, v in a.nodes.items() if v.get("kind") != "module" or k in used}
     counts = {}
     for e in a.edges:
-        counts[e["resolution"]] = counts.get(e["resolution"], 0) + 1
+        if e["kind"] == "call":
+            counts[e["resolution"]] = counts.get(e["resolution"], 0) + 1
     counts["unresolved"] = sum(a.unresolved.values())
     counts["builtin"] = a.builtin
+    refs = sum(1 for e in a.edges if e["kind"] == "ref")
     top = sorted(a.unresolved.items(), key=lambda kv: -kv[1])[:20]
     stats = dict(files=len(a.by_file), languages={"python": len(a.by_file)},
                  nodes=sum(1 for n in nodes.values() if n.get("defined")), edges=len(a.edges),
-                 resolution=counts, unresolved_top=top, errors=a.errors)
+                 resolution=counts, refs=refs, unresolved_top=top, errors=a.errors)
     return dict(nodes=nodes, edges=a.edges, stats=stats)
