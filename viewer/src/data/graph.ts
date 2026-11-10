@@ -295,7 +295,13 @@ export function production(g: Graph): Graph {
   const test = (id: string) => g.funcs[id]?.scope === 'test'
   // what was left out, so the overview can still say the tests are there
   const hidden_tests = Object.entries(g.funcs).filter(([id]) => test(id)).map(([id, f]) => ({ id, name: f.name, file: f.file, line: f.line, comp: f.comp }))
-  return { ...g, funcs, edges: g.edges.filter((e) => !test(e.s) && !test(e.d)), hidden_tests }
+  // per function, the test functions that call it: the panel says they are hidden rather than leaving them out silently
+  const hidden_callers: Record<string, number> = {}
+  for (const id of new Set(g.edges.filter((e) => test(e.s) && !test(e.d)).map((e) => e.s + '>' + e.d))) {
+    const d = id.slice(id.indexOf('>') + 1)
+    hidden_callers[d] = (hidden_callers[d] ?? 0) + 1
+  }
+  return { ...g, funcs, edges: g.edges.filter((e) => !test(e.s) && !test(e.d)), hidden_tests, hidden_callers }
 }
 
 /** Add v to the list at m[k]. */

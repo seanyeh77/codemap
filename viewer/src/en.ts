@@ -731,4 +731,9 @@ export const EN: Record<string, string> = {
   "repo 外：": "Outside the repo:",
   "第 5 層以下的列前面的 L5、L6 是從起點算起的層數。": " From the fifth level down, L5, L6 before a row is its depth counted from the start.",
   "流程、影響範圍與搜尋預設不列出測試程式碼；在設定頁開啟「包含測試程式碼」後會列出。": "The flow, impact and search pages leave test code out by default; turn on Include test code in Settings to list it.",
+  "背景工作": "Background task",
+  "（由 {v1} 以 {v2} 啟動，": " (started by {v1} with {v2}, ",
+  "；呼叫的是 {v1}": "; calls {v1}",
+  "只列 except Exception、except BaseException 與不寫型別的 except，而且處理區塊裡沒有再 raise 的；指定型別的 except 不列。": "Only except Exception, except BaseException and bare except whose block does not raise again; an except naming a specific type is not listed.",
+  "另有 {v1} 個測試函式呼叫它，沒有列出；在設定頁開啟「包含測試程式碼」後會列出。": "{v1} test functions also call it and are not listed; turn on Include test code in Settings to list them.",
 }

@@ -6,8 +6,11 @@ import { prefs } from './prefs'
 import { setLang } from './i18n'
 import { useSyncExternalStore } from 'react'
 import './app.css'
+import { listenEarly } from './early'
 
 UI.initTheme()
+
+listenEarly()
 UI.setTheme(prefs.get().theme)
 setLang(prefs.get().lang)
 

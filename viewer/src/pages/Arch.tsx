@@ -410,6 +410,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     for (const f of all) if (!g.comps.some((c) => c.id === f.comp)) m.set(f.comp, [...(m.get(f.comp) ?? []), f])
     return [...m].sort(([a], [b]) => a.localeCompare(b))
   }, [p.ix, g])
+  const spawns = (g.spawns ?? []).filter((x) => p.ix.funcs[x.target] && p.ix.funcs[x.fid]?.scope !== 'test')
   const reads = cRepo ? [] : (g.reads ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
   const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
   // a variable the program only sets (PYTHONPATH for a child process) belongs here too, outside a C repository
@@ -451,11 +452,14 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，顯示元件主要檔案（main.c、__init__.py 或只有一個檔案時那個檔案）的開頭註解；沒有主要檔案時列出各檔案的。元件的用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
       </section>
       {g.docs?.length ? <Docs docs={g.docs} /> : null}
-      {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length ? (
+      {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length ? (
         <section>
           <h3 className="small" id="ov-entry" tabIndex={-1}>{t('進入與結束')}</h3>
           <UI.DetailList items={[
             // a program's own entry outside C (main, or code run as a script): where a command line starts
+            // a function the program starts in the background: a loop that runs beside the event handlers
+            ...spawns.map((x, i) => ({ label: t('背景工作'), value: <span><button type="button" className="linklike" onClick={() => p.onPick(x.target)}>{p.ix.funcs[x.target].name}</button>
+              <span className="muted">{t('（由 {v1} 以 {v2} 啟動，', { v1: p.ix.funcs[x.fid]?.name ?? x.fid, v2: x.call })}</span>{at(`spawn${i}`, x.f, x.l)}<span className="muted">{t('）')}</span></span> })),
             ...mains.map((id) => ({ label: t('程式入口'), value: <span>{line(id, 'main' + id)}{p.ix.callerInfo(id).sure ? <span className="muted">{t('（由 {v1} 呼叫）', { v1: list(p.ix.callerInfo(id).names.slice(0, 2)) })}</span> : null}</span> })),
             ...lifecycle.map((e, i) => ({
               label: e.k === 'constructor' ? t('載入時自動執行') : t('結束時自動執行'),
@@ -544,6 +548,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <p className="small muted">{t('只列出程式碼裡的事實，是否有問題要看實際用法。')}</p>
                     {applies('broad') ? <>
           <h4 className="small" id="ov-broad" tabIndex={-1}>{t('捕捉所有例外後繼續執行')}</h4>
+          <p className="small muted">{t('只列 except Exception、except BaseException 與不寫型別的 except，而且處理區塊裡沒有再 raise 的；指定型別的 except 不列。')}</p>
           {broad.length ? <UI.DetailList items={broad.map((x, i) => ({
             label: `except ${x.what}`,
             value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，沒有再拋出', { v1: x.then })}</span></span>,

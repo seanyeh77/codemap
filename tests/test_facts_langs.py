@@ -94,3 +94,16 @@ class Commands(unittest.TestCase):
             self.assertEqual([v["cmd"] for v in cmds[0]["via"]], ["ip netns exec l3-r{asn} ip -j route"])
             broad = facts.broad_excepts(d, funcs)
             self.assertEqual([(b["fid"], b["l"], b["what"]) for b in broad], [("cmd.py:guard", 16, "Exception")])
+
+
+class Spawns(unittest.TestCase):
+    def test_background(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "app.py").write_text("from eventlet import hub\n\n\nclass App:\n    def __init__(self):\n        self.t = hub.spawn(self._loop)\n\n    def _loop(self):\n        pass\n\n    def other(self):\n        print(self._loop)\n")
+            funcs = {"app.py:App.__init__": dict(name="App.__init__", file="app.py", line=5, end=6),
+                     "app.py:App._loop": dict(name="App._loop", file="app.py", line=8, end=9),
+                     "app.py:App.other": dict(name="App.other", file="app.py", line=11, end=12)}
+            edges = [dict(s="app.py:App.__init__", d="app.py:App._loop", f="app.py", l=6, k="ref"),
+                     dict(s="app.py:App.other", d="app.py:App._loop", f="app.py", l=12, k="ref")]   # print() is not a spawner
+            self.assertEqual([(x["fid"], x["call"], x["target"]) for x in facts.py_spawns(d, funcs, edges)],
+                             [("app.py:App.__init__", "hub.spawn", "app.py:App._loop")])

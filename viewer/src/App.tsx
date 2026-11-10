@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from './ui'
+import { early, stopEarly } from './early'
 import { t } from './i18n'
 import { Index, isEnv, production, push } from './data/graph'
 import { usePrefs } from './data/hooks'
@@ -132,7 +133,8 @@ function Shell(p: ShellProps) {
   const isLive = !!p.meta
   const first = useMemo(() => ix.firstFunc(), [ix])
   // where the address points: the page, and what is chosen on it (#flow?s=main&k=…)
-  const init = useMemo(() => parseHash(), [])
+  // #harness/routing.py:108 or #parse_fib: an address someone typed by hand opens the function there
+  const init = useMemo(() => typedHash(ix), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const [view, setView] = useState<View>(init.view ?? 'arch')
   const [collapsed, setCollapsed] = useState(false)
   // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
@@ -156,7 +158,9 @@ function Shell(p: ShellProps) {
   const [cat, setCatState] = useState(lastCat)
   const setCat = (c: string) => { lastCat = c; setCatState(c) }
   const [alertOpen, setAlertOpen] = useState(true)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(early.search)
+  // from here the palette's own Ctrl K listens; the page says it is ready for the early listener
+  useEffect(() => { early.search = false; stopEarly(); document.body.dataset.codemapReady = '1' }, [])
   const tablet = useTablet()
   const [navOpen, setNavOpen] = useState(false)
   const [recent, setRecent] = useState<PaletteItem[]>([])
@@ -186,8 +190,12 @@ function Shell(p: ShellProps) {
             ? ((s) => s ? ` · ${t(s.kind === 'macro' ? '{v1} 巨集定義' : '{v1} 全域變數宣告', { v1: s.name })}`
               : /^#\s*define\b/.test(h.text) ? ` · ${t('巨集定義')}` : ` · ${t('在函式之外')}`)(symAt.get(`${h.file}:${h.line}`))
             : ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? ` · ${t('在函式之外')}` : ` · ${t('這個檔案不在 build 裡，只找得到文字，沒有呼叫關係')}`)
+      // a call on this line to a name defined more than once: which definition it reaches
+      const twinCalls = fid ? [...new Set(ix.callees(fid, true).filter((e) => e.l === h.line && e.f === h.file && ix.funcs[e.d]
+        && Object.values(ix.funcs).some((g) => g !== ix.funcs[e.d] && g.name.split('.').pop() === ix.funcs[e.d].name.split('.').pop())).map((e) => e.d))] : []
+      const reaches = twinCalls.length ? t('；呼叫的是 {v1}', { v1: twinCalls.map((d) => `${ix.funcs[d].file}:${ix.funcs[d].line}`).join(t('、')) }) : ''
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
-        detail: `${h.file}:${h.line}` + where, target: { type: 'file', f: h.file, l: h.line } }
+        detail: `${h.file}:${h.line}` + where + reaches, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
   }, [typed, isLive, grepLive.data, ix])
   const ranked = useMemo(() => rank(palette, query, 40), [palette, query])
@@ -236,7 +244,7 @@ function Shell(p: ShellProps) {
   }, [here])
   useEffect(() => {
     const onPop = () => {
-      const h = parseHash()
+      const h = typedHash(ix)
       if (!h.view) return
       setFileAt(null)
       setView(h.view)
@@ -560,6 +568,18 @@ function parseHash(): Loc {
   const q = new URLSearchParams(query)
   const get = (k: string) => q.get(k) ?? undefined
   return { view: Object.hasOwn(PAGES, v) ? (v as View) : null, c: get('c'), e: get('e'), s: get('s'), f: get('f'), k: get('k'), d: get('d') }
+}
+
+/** The address, also when typed by hand: #harness/routing.py:108 or #parse_fib opens that function's flow. */
+function typedHash(ix: Index): Loc {
+  const h = parseHash()
+  const raw = decodeURIComponent(location.hash.slice(1))
+  if (h.view || !raw) return h
+  const m = /^(.+?):(\d+)$/.exec(raw)
+  const id = m ? Object.keys(ix.funcs).filter((k) => ix.funcs[k].file === m[1] && ix.funcs[k].line <= +m[2] && +m[2] <= ix.funcs[k].end)
+    .sort((a, b) => ix.funcs[b].line - ix.funcs[a].line)[0]
+    : ix.funcs[raw] ? raw : Object.keys(ix.funcs).find((k) => ix.funcs[k].name === raw || ix.funcs[k].name.split('.').pop() === raw)
+  return id ? { view: 'flow', s: id } : h
 }
 
 /** The address for a page and its choice; only what that page uses goes in. */

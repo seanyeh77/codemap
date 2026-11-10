@@ -1363,7 +1363,7 @@ def py_commands(root, funcs, edges):
 
 def broad_excepts(root, funcs):
     """Python: `except Exception` (or BaseException, or a bare except) whose handler does not raise again:
-    the error is caught and the code goes on. [{fid, f, l, what, then}] with then the handler's first line."""
+    the error is caught and the code goes on. [{fid, f, l, what, then}] with then the handler's first statements (up to three)."""
     import ast
     out, by_file = [], {}
     for fid, f in funcs.items():
@@ -1384,5 +1384,30 @@ def broad_excepts(root, funcs):
                 continue
             fid = _innermost(fs, n.lineno)
             if fid:
-                out.append(dict(fid=fid, f=file, l=n.lineno, what=what or "（全部）", then=ast.unparse(n.body[0]).split("\n")[0][:100] if n.body else ""))
+                out.append(dict(fid=fid, f=file, l=n.lineno, what=what or "（全部）", then="; ".join(ast.unparse(b).split("\n")[0][:80] for b in n.body[:3]) + (" …" if len(n.body) > 3 else "")))
     return out
+
+
+SPAWN = re.compile(r"(^|\.)(spawn\w*|Thread|Timer|start_new_thread|create_task|ensure_future|submit|call_later|call_soon|run_in_executor|Process|go)$")
+
+
+def py_spawns(root, funcs, edges):
+    """[{fid, f, l, call, target}]: a function handed to something that runs it in the background
+    (hub.spawn(self._monitor_loop), threading.Thread(target=...), asyncio.create_task(...)).
+    Read from the ref edges: the function passed on as a value, on a line that calls a spawner."""
+    import ast
+    trees, out = {}, []
+    for e in edges:
+        if e.get("k") != "ref" or e.get("s") not in funcs or e.get("d") not in funcs or lang_of(e.get("f", "")) != "python":
+            continue
+        if e["f"] not in trees:
+            try:
+                trees[e["f"]] = ast.parse(lines_text(Path(root) / e["f"]))
+            except (SyntaxError, ValueError, OSError):
+                trees[e["f"]] = None
+        t = trees[e["f"]]
+        for n in ast.walk(t) if t else ():
+            if isinstance(n, ast.Call) and n.lineno <= e["l"] <= (n.end_lineno or n.lineno) and SPAWN.search(ast.unparse(n.func)):
+                out.append(dict(fid=e["s"], f=e["f"], l=e["l"], call=ast.unparse(n.func), target=e["d"]))
+                break
+    return sorted({(o["f"], o["l"], o["target"]): o for o in out}.values(), key=lambda o: (o["f"], o["l"]))

@@ -202,7 +202,11 @@ export interface Graph {
   build?: BuildInfo | null
   /** Calls that create or write a file. */
   writes?: FileWrite[]
+  /** Python: functions started in the background (hub.spawn, threading.Thread, asyncio.create_task) */
+  spawns?: { fid: string; f: string; l: number; call: string; target: string }[]
   /** test functions taken out of the graph while the tests setting is off (filled in by the viewer) */
+  /** per function, how many test functions call it while the tests setting is off (filled in by the viewer) */
+  hidden_callers?: Record<string, number>
   hidden_tests?: { id: string; name: string; file: string; line: number; comp: string }[]
   /** Python: files the code opens to read (open() without a writing mode, read_text, read_bytes) */
   reads?: FileWrite[]
