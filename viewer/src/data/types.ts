@@ -15,7 +15,20 @@ export interface Func {
   atomics?: string[]
   /** Snapshot only: the function's source lines, starting at line. */
   src?: string[]
+  /** Not C: python, java, go, typescript, javascript, html, css */
+  lang?: string
+  /** Not a plain function: method, class, module (code at the top of a file), page, stylesheet */
+  kind?: string
+  /** A framework calls it by itself: a route handler, a test, an event handler */
+  entry?: { framework: string; kind: string; text: string }
+  decorators?: string[]
 }
+
+/** How an edge is known: the first three are calls written in the code, the last two are inferred. */
+export type EdgeSource = 'compiler' | 'static' | 'syntax' | 'rule' | 'framework'
+export const inferred = (e: { src: EdgeSource }) => e.src === 'rule' || e.src === 'framework'
+/** A call written in the code, whichever backend read it. */
+export const written = (e: { src: EdgeSource }) => !inferred(e)
 
 export interface Edge {
   s: string
@@ -24,8 +37,10 @@ export interface Edge {
   l: number
   /** call, fnptr_assign, fnptr_pass, fnptr_table, indirect_saved, indirect_candidate, constructor, destructor, env */
   k: string
-  src: 'compiler' | 'rule'
+  src: EdgeSource
   rule?: string
+  /** syntax: the receiver's type is unknown, matched on a method name defined once in the repo */
+  by?: 'name'
   via?: string
   slot?: string
   /** table_install: the table the function is listed in */
@@ -86,7 +101,7 @@ export interface CheckItem {
   text: string
   status: 'done' | 'fail' | 'review'
   /** What a match rests on: calls the compiler confirmed, names seen on the referenced lines, or only that the lines exist. */
-  basis?: 'calls' | 'names' | 'exists' | null
+  basis?: 'calls' | 'syntax' | 'names' | 'exists' | null
   why: string
   /** the same explanation as templates and values, to show in the reader's language */
   msgs?: { t: string; v: Record<string, string | number | string[] | null> }[]
@@ -105,7 +120,14 @@ export interface Stats {
   units: number | null
   failed: number | null
   funcs: number
+  /** compiler-confirmed calls */
   edges: number | null
+  /** calls tree-sitter matched by name */
+  syntax?: number
+  /** files read per language */
+  languages?: Record<string, number>
+  /** framework adapters that ran */
+  frameworks?: string[]
 }
 
 export interface Graph {

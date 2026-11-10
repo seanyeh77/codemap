@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import arch, check, layer1, rules, view
+from . import arch, backends, check, frameworks, layer1, rules, view
 
 INDEX = Path(".codemap") / "index.json"
 CALLISH = ("call", "indirect_candidate", "indirect_saved", "fnptr_assign", "constructor", "destructor")
@@ -50,8 +50,13 @@ def fmt_node(index, nid):
 
 
 def edge_tag(e):
-    t = e["source"] if e["source"] == "compiler" else f'rule {e["rule"]}'
+    t = e["source"] if e["source"] in ("compiler", "static", "syntax") else f'{e["source"]} {e.get("rule", "")}'.strip()
     return f"[{t}, {e['kind']}]" if e["kind"] not in ("call", e.get("rule")) else f"[{t}]"
+
+
+def backends_langs():
+    from .backends import syntax
+    return ["C/C++ with compile_commands.json"] + syntax.available()
 
 
 def cmd_index(a):
@@ -60,21 +65,37 @@ def cmd_index(a):
     cfg = rules.load_config(root)
     scope = a.scope or cfg.get("scope")
     cc = a.cc or cfg.get("cc")
-    idx = layer1.build(root, scope, a.jobs, cc)
+    if not backends.plan(root, cfg):
+        sys.exit(f"codemap: nothing to read in {root}: no compile_commands.json and no source file in a language "
+                 f"codemap reads ({', '.join(backends_langs())})")
+    idx = backends.build(root, scope, a.jobs, cc, cfg)
     layer1.progress("applying rules (env, exec, function pointers, LD_PRELOAD)")
     idx = rules.run(root, idx, cfg)
+    layer1.progress("applying framework adapters")
+    idx = frameworks.run(root, idx, cfg)
     layer1.progress("")
     idx["root"] = str(root)
     idx["scope"] = scope
     idx["cc"] = cc                             # None: the gcc or g++ each unit names
+    (root / INDEX).parent.mkdir(parents=True, exist_ok=True)
     tmp = (root / INDEX).with_suffix(".json.tmp")
     tmp.write_text(json.dumps(idx, indent=1), encoding="utf-8")
     os.replace(tmp, root / INDEX)              # a running `codemap serve` never reads half a file
     st = idx["stats"]
-    print(f'{st["units"]} units ({st["compiled"]} compiled, {st["cached"]} cached, {st["failed"]} failed) '
-          f'in {time.time() - t:.2f} s')
-    print(f'{st["nodes"]} functions, {st["edges"]} compiler edges, {st["indirect"]} indirect '
-          f'({st.get("indirect_unresolved", "?")} unresolved), {st["compiler_inserted"]} compiler-inserted calls dropped')
+    if "gcc" in idx["backends"]:
+        print(f'{st["units"]} units ({st["compiled"]} compiled, {st["cached"]} cached, {st["failed"]} failed) '
+              f'in {time.time() - t:.2f} s')
+        gb = idx["backends"]["gcc"]
+        print(f'{gb["nodes"]} functions, {gb["edges"]} compiler edges, {st["indirect"]} indirect '
+              f'({st.get("indirect_unresolved", "?")} unresolved), {st["compiler_inserted"]} compiler-inserted calls dropped')
+    if "syntax" in idx["backends"]:
+        sx = idx["backends"]["syntax"]
+        print(f'tree-sitter: {sx["files"]} files ({", ".join(f"{k} {v}" for k, v in sorted(sx["languages"].items()))}), '
+              f'{sx["nodes"]} definitions, {sx["edges"]} calls matched by name in {time.time() - t:.2f} s')
+        for err in sx.get("errors", [])[:5]:
+            print(f"  could not read {err}")
+    if st.get("framework_edges"):
+        print("framework adapters: " + ", ".join(f"{k} {v}" for k, v in st["framework_edges"].items()))
     print("rule edges: " + ", ".join(f"{k} {v}" for k, v in st.get("rule_edges", {}).items()))
     for u in idx["units"]:
         if u["status"] == "failed":

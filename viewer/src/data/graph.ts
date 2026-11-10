@@ -1,4 +1,4 @@
-import type { Edge, Func, Graph } from './types'
+import { inferred, type Edge, type Func, type Graph } from './types'
 import { list, t } from '../i18n'
 
 /** How deep the impact list goes. */
@@ -48,7 +48,8 @@ export class Index {
     if (e?.k === 'constructor') return t('程式載入時')   // run by the loader, not called by a function
     if (e?.k === 'destructor') return t('程式結束時')
     if (e?.k === 'fnptr_table' && id === e.s) return t('表格 {name}', { name: e.slot ?? '' })   // a file-scope table, not a function
-    return e?.dn || id
+    // dn names the target; an outside source (a framework event) has only its id: ext:os-ken event …
+    return (e?.dn && (!e.d || id === e.d) ? e.dn : null) || id.replace(/^ext:/, '')
   }
 
   /** Calls only (an environment variable is listed in search instead), one per other end and line. */
@@ -64,13 +65,13 @@ export class Index {
 
   /** What a function calls, in line order; external functions only when asked. */
   callees(id: string, showExt: boolean): Edge[] {
-    return this.calls(this.out.get(id), (e) => e.d, (e) => !!this.funcs[e.d] || showExt || e.src === 'rule')
+    return this.calls(this.out.get(id), (e) => e.d, (e) => !!this.funcs[e.d] || showExt || inferred(e))
       .sort((a, b) => a.l - b.l)
   }
 
   /** Who calls a function, one row per call site, by file and line. */
   callers(id: string): Edge[] {
-    return this.calls(this.inn.get(id), (e) => e.s, (e) => !!this.funcs[e.s] || e.src === 'rule')
+    return this.calls(this.inn.get(id), (e) => e.s, (e) => !!this.funcs[e.s] || inferred(e))
       .sort((a, b) => a.f.localeCompare(b.f) || a.l - b.l)
   }
 
@@ -87,7 +88,7 @@ export class Index {
     for (const e of this.callers(id)) {
       if (e.k === 'constructor' || e.k === 'destructor') load = e.k
       else if (!this.funcs[e.s]) others.add(this.nameOf(e.s, e))
-      else (e.src === 'rule' ? guessed : sure).add(e.s)
+      else (inferred(e) ? guessed : sure).add(e.s)
     }
     for (const s of guessed) if (sure.has(s)) guessed.delete(s)
     // the names, compiler-seen first; main of a program is called by the C runtime, never by the repo
@@ -102,6 +103,8 @@ export class Index {
     // nothing in the repo calls it, but a program outside does: say that rather than 「0 caller」
     if (!n && !c.others.length && !c.load && this.funcs[id]?.api) return t('外部進入點：被追蹤的程式呼叫 {v1} 的同名函式時執行', { v1: this.funcs[id].api })
     if (!n && c.main) return t('0 個 caller：程式的起點，由 C 執行環境在程式啟動時呼叫')
+    const ent = this.funcs[id]?.entry
+    if (!n && ent) return t('0 個 caller：由 {v1} 呼叫（{v2}）', { v1: ent.framework, v2: entryText(ent) })
     const parts = [t('{n} 個 caller', { n }) + (c.guessed ? (c.guessed === n ? t('（推測）') : t('，其中 {n} 個是推測', { n: c.guessed })) : '')
       + (n ? t('：{v1}', { v1: list(c.names.slice(0, 3)) + (n > 3 ? t(' 等') : '') }) : '')]
     if (c.others.length) parts.push(t('另有推測的來源：{names}', { names: list(c.others.slice(0, 2)) }))
@@ -135,6 +138,15 @@ export class Index {
       }
       return { label: t('編譯器確認'), title: t('編譯器確認'), text: t('重新編譯時記錄到的呼叫，存在於目前的 build。') }
     }
+    if (e.src === 'syntax' || e.src === 'static') {
+      if (!this.funcs[id]) return { label: t('外部'), title: t('外部函式'), text: t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? id) + '`' }) }
+      // tree-sitter read the call; a name, not a type checker, decided which definition it is
+      if (e.by === 'name') return { label: t('依名稱推測'), title: t('依名稱推測'),
+        text: t('這一行呼叫物件的 `{v1}()`，物件的型別不知道；repo 裡只有 {v2} 叫這個名字，所以連到它。可能是別的類別的同名方法。', { v1: this.funcs[id].name.split('.').pop() ?? '', v2: to }) }
+      return { label: t('語法解析'), title: t('語法解析'),
+        text: t('tree-sitter 讀到這一行的呼叫，依名稱對到 {v1} 的定義（同一個檔案、import 或 self 的類別）。沒有經過編譯器或型別檢查確認。', { v1: to }) }
+    }
+    if (e.src === 'framework') return this.frameworkEdge(e, to)
     const tail = t('由規則「{rule}」推得，編譯器無法確認。', { rule: ruleName(e.rule) })
     let text: string
     const from = this.bareName(e.s), slot = e.slot ?? t('函式指標'), via = e.via ?? t('函式指標')
@@ -150,6 +162,19 @@ export class Index {
       : t('標記為 `destructor`：程式結束或程式庫卸載時自動執行。')
     else text = t('由規則「{rule}」推得，編譯器無法確認。', { rule: e.rule ?? '' })
     return { label: ruleTag(e.rule), title: t('推測（規則）'), text }
+  }
+
+  /** An edge a framework adapter added: the framework makes this call, the code does not. */
+  frameworkEdge(e: Edge, to: string): { label: string; title: string; text: string } {
+    const fw = (e.rule ?? '').split('.')[0], from = '`' + this.bareName(e.s, e) + '`'
+    const label = e.k === 'inject' ? t('{v1} 注入', { v1: fw }) : t('{v1} 回呼', { v1: fw })
+    let text: string
+    if (e.rule === 'pytest.fixture') text = t('{v1} 的參數與 fixture {v2} 同名：pytest 先執行 {v2}，再把結果傳進 {v1}。', { v1: from, v2: to })
+    else if (e.rule?.endsWith('.depends')) text = t('{v1} 宣告 Depends({v2})：{v3} 先執行 {v2}，再把結果傳進 {v1}。', { v1: from, v2: to, v3: fw })
+    else if (e.rule?.endsWith('.set_ev_cls')) text = t('{v1} 以 set_ev_cls 註冊；{v2} 收到這個事件時呼叫它。', { v1: to, v2: fw })
+    else if (e.k === 'callback') text = t('{v1} 把 {v2} 所屬的物件交給 {v3}；事件發生時由 {v3} 呼叫 {v2}。', { v1: from, v2: to, v3: fw })
+    else text = t('由 {v1} 呼叫。', { v1: fw })
+    return { label, title: t('框架呼叫'), text: text + t('程式碼裡沒有這個呼叫，是框架規則「{v1}」推得的。', { v1: e.rule ?? '' }) }
   }
 
   /** The function a file:line falls in, for links in notes such as `ops.c:175`. */
@@ -169,17 +194,27 @@ export class Index {
     return best ? { id: best, edge: { f: this.funcs[best].file, l: ln } } : null
   }
 
-  /** A sensible first function to show: the one that calls the most functions, outside shared components. */
+  /** A sensible first function to show: a main, else what a framework or a script starts with, else the
+   *  one that calls the most functions; outside shared components either way. */
   firstFunc(): string | null {
     const shared = new Set(this.g.comps.filter((c) => c.shared).map((c) => c.id))
-    let best: string | null = null, n = -1
+    const rank = (f: Func) => (f.name === 'main' ? 3 : f.entry && f.entry.kind !== 'test' && f.entry.kind !== 'fixture' ? 2 : f.kind === 'module' ? 1 : 0)
+    let best: string | null = null, n = -1, r = -1
     for (const [id, f] of Object.entries(this.funcs)) {
       if (shared.has(f.comp)) continue
-      const k = this.callees(id, false).length
-      if (k > n) { best = id; n = k }
+      const k = this.callees(id, false).length, rk = k ? rank(f) : 0
+      if (rk > r || (rk === r && k > n)) { best = id; n = k; r = rk }
     }
     return best
   }
+}
+
+/** What a framework entry point is, in words: 「route GET /users」「test」「fixture db」. */
+export function entryText(e: { kind: string; text: string }): string {
+  const KIND: Record<string, string> = { route: '路由', hook: '掛勾', test: '測試', fixture: 'fixture', event: '事件處理', app: '應用程式',
+    topology: '拓樸', component: '元件', lifecycle: '生命週期', callback: '回呼' }
+  const k = KIND[e.kind] ? t(KIND[e.kind]) : e.kind
+  return e.text && e.text !== e.kind ? `${k} ${e.text}` : k
 }
 
 /** Add v to the list at m[k]. */

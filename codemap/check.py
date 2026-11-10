@@ -121,9 +121,12 @@ def check(root, md_path, index):
     for e in index["edges"]:
         a = nodes.get(e["src"], {}).get("name", e["src"])
         b = nodes.get(e["dst"], {}).get("name", e["dst"])
-        ok, rule = pairs.get((a, b), (False, None))
-        pairs[(a, b)] = (ok or e["source"] == "compiler", rule or (e if e["source"] == "rule" else None))
-        if e["source"] == "compiler" and e["kind"] == "call" and nodes.get(e["dst"], {}).get("defined"):
+        # the strongest way the call is known: the compiler, else a call tree-sitter read in the code
+        ok, rule = pairs.get((a, b), (None, None))
+        seen = e["source"] if e["source"] in ("compiler", "static", "syntax") else None
+        best = min(filter(None, (ok, seen)), key=("compiler", "static", "syntax").index, default=None)
+        pairs[(a, b)] = (best, rule or (e if e["source"] in ("rule", "framework") else None))
+        if e["source"] in ("compiler", "static", "syntax") and e["kind"] == "call" and nodes.get(e["dst"], {}).get("defined"):
             callees.setdefault(a, set()).add(b)
     defs = {(n["file"], n["name"]): n["line"] for n in nodes.values()
             if n.get("defined") and n.get("file") and n.get("line")}
@@ -159,10 +162,14 @@ def check(root, md_path, index):
                 if e.get("rule") == "fnptr_assign":
                     review.append(Msg("`{a}` 沒有直接呼叫 `{b}`：它在 {at} 把 `{b}` 存入 `{slot}`，之後經由該指標呼叫。可改寫成「`{a}` 註冊 `{b}`」",
                                       a=a, b=b, at=at, slot=e.get("slot") or "函式指標"))
+                elif e["source"] == "framework":
+                    review.append(Msg("`{a} -> {b}` 是框架規則「{rule}」推得的：程式碼裡沒有這個呼叫，由框架呼叫；請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
                 else:
                     review.append(Msg("`{a} -> {b}` 由規則「{rule}」推得，編譯器無法確認；請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
-            else:
+            elif pairs[(a, b)][0] == "compiler":
                 why.append(Msg("`{a} -> {b}` 經編譯器確認", a=a, b=b))
+            else:
+                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（tree-sitter 依名稱對到）", a=a, b=b))
         whole = words_in(md)
         for clause in CLAUSE.split(md):
             local = words_in(clause)
@@ -220,6 +227,7 @@ def check(root, md_path, index):
             # referenced lines (the rest of the sentence, such as "set by", is not checked)
             basis = (None if status != "done" else
                      "calls" if why and all(m.t.endswith("經編譯器確認") for m in why) else
+                     "syntax" if why and all(m.t.endswith(("經編譯器確認", "依名稱對到）")) for m in why) else
                      "names" if any("提及" in m.t for m in why) else "exists")
             items.append(dict(at=f"{rel}:{n}", line=n, text=plain(md),
                               status=status, basis=basis, why="；".join(map(str, bad or review or why)),

@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
+from .schema import CALL_SOURCES
 
 BEGIN, END = "<!-- codemap:architecture:begin -->", "<!-- codemap:architecture:end -->"
 TOP_DIRS = {"src", "lib", "include", "pkg", "internal", "cmd", "apps"}
@@ -47,7 +48,7 @@ def summarize(index, config=None):
     comps = defaultdict(lambda: dict(files=set(), funcs=set(), main=[], ctor=[], exported=[]))
     called = set()
     for e in edges:
-        if e["source"] == "compiler":
+        if e["source"] in CALL_SOURCES:
             called.add(e["dst"])
     for nid, n in nodes.items():
         if not repo_func(n):
@@ -62,7 +63,7 @@ def summarize(index, config=None):
     calls = defaultdict(list)
     ext, interposed = defaultdict(list), defaultdict(list)   # interposed: (caller, interposer, api) -> calls
     for e in edges:
-        if e["source"] != "compiler" or e["kind"] != "call":
+        if e["source"] not in CALL_SOURCES or e["kind"] != "call":
             continue
         a = comp_of(e["src"])
         if not a:

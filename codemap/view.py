@@ -14,6 +14,7 @@ from pathlib import Path
 from . import arch, check, docs, facts, rules, state
 from .arch import in_repo, repo_func
 from .source import c_body_end, code_lines, lines
+from .schema import CALL_SOURCES
 
 FORMAT = "codemap-snapshot"
 VERSION = 1
@@ -152,38 +153,48 @@ def build(root, index, config=None):
             raw.append(e)
     index = dict(index, nodes={k: v for k, v in index["nodes"].items() if k not in same}, edges=raw)
     nodes = index["nodes"]
-    lay = arch.layout(index, config)
+    # beside compiled C/C++, the other languages are tools around it: the diagram is drawn from the C
+    # code, and the tools join it as script components (facts.scripts), as they did before tree-sitter
+    if "gcc" in index.get("backends", {"gcc": 1}):
+        c_only = {k: v for k, v in nodes.items() if v.get("lang", "c") in ("c", "cpp") or not v.get("defined")}
+        lay = arch.layout(dict(index, nodes=c_only, edges=[e for e in index["edges"] if e["src"] in c_only and e["dst"] in c_only]), config)
+    else:
+        lay = arch.layout(index, config)
     funcs = {}
     for nid, n in nodes.items():
         if not repo_func(n):
             continue
-        end = max(c_body_end(root / n["file"], n["line"]), n["line"])   # 0 when the file is gone
+        # tree-sitter knows where a definition ends; for C the body is found in the text
+        end = n["end"] if n.get("end") else max(c_body_end(root / n["file"], n["line"]), n["line"])
         funcs[nid] = dict(name=n["name"], file=n["file"], line=n["line"], end=end,
                           comp=arch.component(n["file"], config))
+        for k in ("lang", "kind", "entry", "decorators"):
+            if n.get(k) and not (k == "lang" and n[k] == "c") and not (k == "kind" and n[k] == "function"):
+                funcs[nid][k] = n[k]
         # a repo function with the name of an external library's function replaces it for whoever
         # loads this code first (LD_PRELOAD): it is entered from outside the repo
         api = arch.external((n.get("declared") or "").rsplit(":", 1)[0])
         if api:
             funcs[nid]["api"] = api.removeprefix("external ")
         if end:
-            top = docs.lead_line(root, n["file"], n["line"])   # the comment and attributes above it
+            top = min(n.get("top") or n["line"], docs.lead_line(root, n["file"], n["line"]))   # the comment, attributes and decorators above it
             if top < n["line"]:
                 funcs[nid]["top"] = top
             if at := docs.atomics(root, n["file"], n["line"], end):
                 funcs[nid]["atomics"] = at
     edges = []
     for e in raw:
-        if e["source"] == "compiler" and e["src"] not in funcs:
+        if e["source"] in CALL_SOURCES and e["src"] not in funcs:
             continue
         if e["source"] == "rule" and e["src"] not in funcs and e["dst"] not in funcs:
             continue
-        if e["kind"] == "indirect" and e["source"] == "compiler" or e.get("rule") in ("exec", "build_define", "cross_lang"):
+        if e["kind"] == "indirect" and e["source"] in CALL_SOURCES or e.get("rule") in ("exec", "build_define", "cross_lang"):
             continue                                  # calls through a pointer, and edges into sites: nothing to show
         x = dict(s=e["src"], d=e["dst"], f=e["file"], l=e["line"], k=e["kind"], src=e["source"])
         src_lines = lines(root / e["file"]) if in_repo(e["file"]) else []
         if 1 <= (e["line"] or 0) <= len(src_lines):
             x["t"] = src_lines[e["line"] - 1].strip()[:160]          # the evidence line, for the viewer's explanations
-        for k in ("rule", "via", "slot", "saved_from", "name", "read_at", "table"):
+        for k in ("rule", "via", "slot", "saved_from", "name", "read_at", "table", "by"):
             if e.get(k) is not None:
                 x[k] = e[k]
         if e["dst"] not in funcs:
@@ -245,13 +256,18 @@ def build(root, index, config=None):
     # the Python tools: components of their own, with what they run and which headers they read
     built = facts.products(root, config)
     py_comps, py_links = facts.scripts(root, index, config, built, {c["id"] for c in comps if c["shared"]})
+    # a repository read by tree-sitter has its Python as components already
+    py_comps = [c for c in py_comps if c["id"] not in names]
     comps += py_comps
     links += [l for l in py_links if l["b"] in names]
     readable = sorted(set(readable) | {f for c in py_comps for f in c["scripts"]})     # the scripts open in the viewer
     st = index.get("stats", {})
     out = dict(format=FORMAT, version=VERSION, **repo_info(root), root=str(root.resolve()), generated=int(time.time()),
                stats=dict(units=st.get("units"), failed=st.get("failed"), funcs=len(funcs),
-                          edges=sum(1 for x in edges if x["src"] == "compiler")),
+                          edges=sum(1 for x in edges if x["src"] == "compiler"),
+                          syntax=sum(1 for x in edges if x["src"] == "syntax"),
+                          languages={k: v for b in index.get("backends", {}).values() for k, v in b.get("languages", {}).items()},
+                          frameworks=index.get("frameworks", [])),
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),
                files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},
                env=index.get("env", {}), env_info=facts.env_meaning(root, funcs, index.get("env", {}), config),

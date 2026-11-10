@@ -1,15 +1,29 @@
 # codemap
 
-A static map of a C codebase for people and AI agents. It never runs the
-program, so it works on code that takes too long to run, and on code that is
-half rewritten as long as most files still compile on their own.
+A static map of a codebase for people and AI agents: C and C++ through the
+compiler, Python, Java, Go, TypeScript, JavaScript and HTML/CSS through
+tree-sitter. It never runs the program, so it works on code that takes too long
+to run, and on code that is half rewritten.
 
 The map has four layers:
 
-1. **Precise calls.** Every translation unit in `compile_commands.json` is
-   recompiled with `-O0 -fcallgraph-info` (no linking). Macros are expanded,
-   only the `#ifdef` branches that are really built appear, and calls through
-   function pointers are kept as `__indirect_call`.
+1. **Calls.** Each language is read by a backend, and every backend writes the
+   same graph (`codemap/schema.py`); the rest of codemap reads only that graph.
+   - `gcc`: every translation unit in `compile_commands.json` is recompiled
+     with `-O0 -fcallgraph-info` (no linking). Macros are expanded, only the
+     `#ifdef` branches that are really built appear, and calls through
+     function pointers are kept as `__indirect_call`. Edges: `compiler`.
+   - `syntax`: tree-sitter reads definitions, calls and imports, and joins a
+     call to a definition when the name decides it (the same file, an import,
+     `self`/`this`, the package in Go, a name defined once). Edges: `syntax`;
+     a call on an object of unknown type joined by a method name defined once
+     carries `by: "name"`. C/C++ is read this way only when there is no
+     `compile_commands.json`.
+   - **Framework adapters** add what a framework calls by itself (source
+     `framework`): entry points (routes, tests, event handlers), injection
+     (pytest fixtures, FastAPI `Depends`), and callbacks (Ryu/os-ken
+     `set_ev_cls`, ONOS `addProcessor`). Adapters exist for Flask, FastAPI,
+     pytest, Ryu/os-ken, Mininet and ONOS.
 2. **Rule scan.** Text rules add what the compiler cannot see: functions stored
    in pointers, indirect calls through those pointers, constructors,
    `setenv`/`getenv` pairs, `exec`, `-D` flags in Makefiles, and C names that
@@ -28,7 +42,8 @@ The map has four layers:
 uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
 ```
 
-Python 3.10+. The core has no runtime dependencies; the `diagram` extra adds
+Python 3.10+. The tree-sitter grammars are wheels with the parser inside, so
+nothing is downloaded when codemap runs. The `diagram` extra adds
 Pillow for measuring text in the architecture diagram, and the `viewer` extra
 adds FastAPI and uvicorn for `codemap serve`. The viewer itself ships prebuilt
 inside the package, so Node.js is not needed where codemap runs.
@@ -40,9 +55,14 @@ codemap in Linux or a container. `rsvg-convert` is used to also write a PNG.
 
 ## Use
 
-Produce `compile_commands.json` first, without a full build if possible:
-CMake configure with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, or
-`compiledb -n make`, or `bear -- make`.
+For C/C++, produce `compile_commands.json` first, without a full build if
+possible: CMake configure with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, or
+`compiledb -n make`, or `bear -- make`. Other languages need nothing: `codemap
+index` reads every file git lists (or the tree, outside git) with a known
+extension. `.pyi` stubs are not read; they describe outside libraries.
+
+Languages and adapters can be turned off in `.codemap/rules.json`:
+`{"languages": {"disable": ["css"]}, "frameworks": {"disable": ["onos"]}}`.
 
 ```bash
 codemap index                        # .codemap/index.json, cached per unit
@@ -177,8 +197,13 @@ The build is one self-contained `index.html`, so it can be served by
 
 ## Limits
 
-- C and C++ only for Layer 1. Python files are read by the rules but get no
-  call graph.
+- Outside C/C++ the calls come from names, not types: a method called on an
+  object whose type codemap cannot see is joined only when one definition in
+  the repository has that name (and never for names every container has, such
+  as `get` or `append`). Dynamic calls (`getattr`, reflection, callbacks passed
+  around as values) are missed unless an adapter knows the framework.
+- The text rules of layer 2 read C only.
+- Inline `<script>` in HTML is not read; `<script src>` and `on…` handlers are.
 - Indirect calls through pointers filled at run time (for example `dlsym`
   results) stay unresolved; `codemap index` reports how many.
 - CUDA device code and code outside the repo are not mapped.

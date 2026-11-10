@@ -27,6 +27,8 @@ function when(sec: number) {
   return Date.now() - d.getTime() < 7 * 864e5 ? t('{v1}（{v2}）', { v1: UI.format.relative(d), v2: exact }) : exact
 }
 
+const LANG: Record<string, string> = { python: 'Python', java: 'Java', go: 'Go', typescript: 'TypeScript', javascript: 'JavaScript', html: 'HTML', css: 'CSS', cpp: 'C++' }
+
 export function Settings(p: Props) {
   const pr = usePrefs()
   const [toast, setToast] = useState('')
@@ -56,7 +58,8 @@ export function Settings(p: Props) {
           isLive ? { label: t('主機'), value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: t('檔案'), value: <UI.InlineCode>{p.snapName ?? t('此頁面')}</UI.InlineCode> },
           { label: t('路徑'), value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
-          { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</span> },
+          { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
+          ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term text={t('以 tree-sitter 讀出定義與呼叫，依名稱對到定義，沒有經過編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c').map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對到的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
           isLive ? { label: t('索引建立時間'), value: when(p.meta!.indexed) } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [

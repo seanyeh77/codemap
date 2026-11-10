@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { UI } from '../ui'
 import { countUnit, t } from '../i18n'
 import { MAX_DEPTH, type Index } from '../data/graph'
-import type { Sel } from '../data/types'
+import { inferred, type Sel } from '../data/types'
 
 /** direct: calls the start. state: shares a file-scope variable with the start. indirect: reaches either. */
 type Kind = 'direct' | 'indirect' | 'state'
@@ -36,7 +36,7 @@ function affected(ix: Index, start: string): Row[] {
     for (const e of all) {
       if (!ix.funcs[e.s] || seen.has(e.s)) continue
       const lines = [...new Set(all.filter((x) => x.s === e.s && x.f === e.f).map((x) => x.l))].sort((a, b) => a - b)
-      add(e.s, d + 1, d === 0 ? 'direct' : 'indirect', e.f, e.l, (e.k === 'fnptr_assign' ? t('存入') : e.k === 'fnptr_pass' ? t('傳給 ') + e.slot + '()' : e.k === 'fnptr_table' ? t('列在 ') + e.slot : t('呼叫')) + (d === 0 ? '' : ` ${ix.nameOf(cur)}`), ix.nameOf(cur), ix.explain(e).label, e.src === 'rule', lines)
+      add(e.s, d + 1, d === 0 ? 'direct' : 'indirect', e.f, e.l, (e.k === 'fnptr_assign' ? t('存入') : e.k === 'fnptr_pass' ? t('傳給 ') + e.slot + '()' : e.k === 'fnptr_table' ? t('列在 ') + e.slot : t('呼叫')) + (d === 0 ? '' : ` ${ix.nameOf(cur)}`), ix.nameOf(cur), ix.explain(e).label, inferred(e), lines)
     }
   }
   return res

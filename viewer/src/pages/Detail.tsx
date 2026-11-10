@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { UI } from '../ui'
 import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
 import { noun, t } from '../i18n'
-import type { Index } from '../data/graph'
+import { entryText, type Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
-import type { Edge, Sel } from '../data/types'
+import { inferred, type Edge, type Sel } from '../data/types'
 import { vscodeURL } from '../prefs'
 import { CodeAt, LineLink } from './CodeAt'
 
@@ -54,7 +54,7 @@ export function Detail(p: Props) {
   const focus = inside ? e!.l : f.line
   const who = p.ix.callerInfo(p.sel.id), nCallees = p.ix.calleeCount(p.sel.id)
   const nCallers = who.sure + who.guessed
-  const ext = new Set(p.ix.callees(p.sel.id, true).filter((x) => !p.ix.funcs[x.d] && x.src !== 'rule').map((x) => x.d)).size
+  const ext = new Set(p.ix.callees(p.sel.id, true).filter((x) => !p.ix.funcs[x.d] && !inferred(x)).map((x) => x.d)).size
   // the same caller calling it on several lines (one merged row in the flow tree)
   const sites = e ? p.ix.callers(p.sel.id).filter((x) => x.s === e.s && x.src === e.src && x.f === e.f).sort((a, b) => a.l - b.l) : []
   const here = p.sel.id === p.start
@@ -71,6 +71,8 @@ export function Detail(p: Props) {
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
         { label: t('元件'), value: f.comp },
+        // a framework calls it by itself: no line of the repository does
+        ...(f.entry ? [{ label: t('由框架呼叫'), value: <span>{t('{v1}：{v2}', { v1: f.entry.framework, v2: entryText(f.entry) })}</span> }] : []),
         // two rows, each number right after its own word: 「1 個 caller · 0 個 callee」 was read as caller · 0
         { label: t('被誰呼叫'),
           value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}

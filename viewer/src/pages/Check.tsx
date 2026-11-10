@@ -10,7 +10,7 @@ import type { CheckFile, CheckItem, Sel } from '../data/types'
 /** A Markdown line without its list marker (「- 」), as the suggestion shows it; the copy keeps the line whole. */
 const unlisted = (md: string) => md.replace(/^\s*[-*+]\s+/, '')
 
-const LABEL: Record<string, string> = { fail: '錯誤', review: '待確認', calls: '呼叫已確認', names: '名稱出現', exists: '行存在', done: '相符' }
+const LABEL: Record<string, string> = { fail: '錯誤', review: '待確認', calls: '呼叫已確認', syntax: '呼叫寫在程式碼裡', names: '名稱出現', exists: '行存在', done: '相符' }
 /** A row's result: an error, to review, or what its match rests on (a snapshot from before has no basis). */
 const result = (r: CheckItem) => (r.status === 'done' ? r.basis ?? 'done' : r.status)
 
@@ -67,13 +67,14 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
         <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
         {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤、{v3} 項待確認。', { v1: dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length, v3: rows.filter((r) => r.status === 'review').length })}</p> : null}
+        {rows.some((r) => r.result === 'syntax') ? <p className="small muted">{t('「呼叫寫在程式碼裡」：tree-sitter 在程式碼裡讀到這個呼叫，依名稱對到定義，沒有經過編譯器確認。')}</p> : null}
         <p className="small muted">{t('「呼叫已確認」：筆記寫的呼叫經編譯器確認。「名稱出現」：引用的行出現筆記裡的名稱，句子其餘的說法（例如由誰設定、由誰讀取）沒有檢查。「待確認」的說明欄寫了要對照的位置。')}</p>
         <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}{' '}
           <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟 {v1} 全文', { v1: cur.file })}</button></p>
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
       <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
-        summary={{ key: 'result', items: ['fail', 'review', 'calls', 'names', 'exists', 'done'].filter((v) => rows.some((r) => r.result === v)).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
+        summary={{ key: 'result', items: ['fail', 'review', 'calls', 'syntax', 'names', 'exists', 'done'].filter((v) => rows.some((r) => r.result === v)).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
         columns={[
           { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <button type="button" className="linklike code-link" aria-label={t('在檔案中開啟 {v1}', { v1: r.at })} onClick={() => openFile(r.at.slice(0, r.at.lastIndexOf(':')), r.line)}><UI.InlineCode>{r.at}</UI.InlineCode></button> },
           { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },

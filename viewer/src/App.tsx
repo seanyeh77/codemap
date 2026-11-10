@@ -7,7 +7,7 @@ import { usePrefs } from './data/hooks'
 import { rank } from './data/search'
 import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
-import type { Graph, GrepHit, Meta, Sel } from './data/types'
+import { written, type Graph, type GrepHit, type Meta, type Sel } from './data/types'
 import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, TRACED, edgeId, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
@@ -427,7 +427,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   for (const f of Object.values(ix.funcs)) sameName.set(f.name, (sameName.get(f.name) ?? 0) + 1)
   for (const [id, f] of Object.entries(ix.funcs)) {
     const twins = sameName.get(f.name)! - 1
-    items.push({ id: 'f:' + id, kind: '函式', label: f.name, code: true, keywords: [f.file],
+    items.push({ id: 'f:' + id, kind: ({ method: '方法', class: '類別', module: '模組', page: '頁面', stylesheet: '樣式表' } as Record<string, string>)[f.kind ?? ''] ?? '函式', label: f.name, code: true, keywords: [f.file],
       // functions of the same name differ only by their path: shown in full, never shortened
       detail: `${twins ? '`' + `${f.file}:${f.line}` + '`' : short(`${f.file}:${f.line}`)} · ${f.comp}` + (twins ? t('（另有 {n} 個同名函式）', { n: twins }) : ''),
       weight: ix.callers(id).length + ix.callees(id, false).length, target: { type: 'func', id } })
@@ -452,7 +452,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   }
   // functions outside the repo, to find who calls them (getenv, shm_open, dlsym ...)
   const ext = new Map<string, string[]>()
-  for (const e of ix.g.edges) if (e.src === 'compiler' && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
+  for (const e of ix.g.edges) if (written(e) && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
     items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算 compile_commands.json 裡的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }

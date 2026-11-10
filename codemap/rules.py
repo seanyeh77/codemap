@@ -56,7 +56,8 @@ class Ctx:
         self.copies = []
         names = {}
         for nid, n in self.nodes.items():
-            if n.get("defined"):
+            # the rules read C: a Python or Java function of the same name is never what C code means
+            if n.get("defined") and n.get("lang", "c") in ("c", "cpp"):
                 names.setdefault(n["name"], []).append(nid)
         self.by_name = names
         files = walk(root)                                   # one pass over the tree

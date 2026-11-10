@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from '../ui'
 import { local, t } from '../i18n'
 import type { Index } from '../data/graph'
-import type { Edge, Sel } from '../data/types'
+import { inferred, type Edge, type Sel } from '../data/types'
 import type { TreeNode } from '@seanyeh77/ui'
 
 /** open: its next level can be shown (it has calls, and it is not already on the path). */
@@ -26,11 +26,11 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
       // the call is in the parent (looking down) or in this node's function (looking up)
       const where = dir === 'down' ? parent : key
       // only inferred relations carry a tag; the note under the tree says the rest are the compiler's
-      if (e.src === 'rule') n.tags = [...(n.tags ?? []), <RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
+      if (inferred(e) || e.by) n.tags = [...(n.tags ?? []), <RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
       if (!f) n.muted = true
     }
     // read aloud as 「name，推測（規則），called 3 times，file:lines」: the tags are elements, so say them in words
-    if (n.tags?.length) n.ariaLabel = [n.name, e?.src === 'rule' ? ix.explain(e).label : '', sites.length > 1 ? t('呼叫 {n} 次', { n: sites.length }) : '', at ?? ''].filter(Boolean).join(t('，'))
+    if (n.tags?.length) n.ariaLabel = [n.name, e && (inferred(e) || e.by) ? ix.explain(e).label : '', sites.length > 1 ? t('呼叫 {n} 次', { n: sites.length }) : '', at ?? ''].filter(Boolean).join(t('，'))
     const open = kids.length > 0 && !path.includes(nid)
     index[key] = { fid: nid, edge: e, names: [...new Set(kids.map((k) => dir === 'down' ? ix.bareName(k.d, k) : ix.bareName(k.s, k)))], open, kids, path }
     if (open && (predict ? revealed[key] : key === 'root')) n.children = children(key)     // shown open from the start
@@ -173,7 +173,11 @@ export function Flow(p: FlowProps) {
           ? t('找不到 caller：它是外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
           : t('找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。')}</p>
       ) : null}
-      <p className="small muted" data-tour="tree">{t('沒有標示的關係由編譯器確認，標示「推測（規則：…）」的由括號裡那條 codemap 規則從原始碼推得。')}</p>
+      <p className="small muted" data-tour="tree">{
+        // what an untagged line rests on depends on which backends read the repository
+        p.ix.g.stats.syntax && !p.ix.g.stats.edges ? t('沒有標示的關係由 tree-sitter 讀出呼叫、依名稱對到定義，沒有經過編譯器確認；標示「依名稱推測」的只憑方法名稱，標示「推測（規則：…）」或框架名稱的，程式碼裡沒有直接的呼叫。')
+          : p.ix.g.stats.syntax ? t('C/C++ 沒有標示的關係由編譯器確認，其他語言由 tree-sitter 依名稱對到定義；標示「推測（規則：…）」或框架名稱的，程式碼裡沒有直接的呼叫。')
+            : t('沒有標示的關係由編譯器確認，標示「推測（規則：…）」的由括號裡那條 codemap 規則從原始碼推得。')}</p>
     </UI.Card>
   )
 }

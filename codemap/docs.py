@@ -29,9 +29,34 @@ def _comment_text(block):
     return out
 
 
+PY_DOC = re.compile(r"""\s*[rbuRBU]?(\"\"\"|'''|"|')(.*)""")
+
+
+def _py_doc(src):
+    """The first paragraph of a Python module's docstring, after any #! and # coding lines."""
+    i = 0
+    while i < len(src) and (not src[i].strip() or src[i].startswith("#")):
+        i += 1
+    m = PY_DOC.match(src[i]) if i < len(src) else None
+    if not m:
+        return None
+    q, body, j = m.group(1), [m.group(2)], i
+    while q not in body[-1] and j + 1 < len(src):
+        j += 1
+        body.append(src[j])
+    body[-1] = body[-1].split(q)[0]
+    paras = [" ".join(p.split()) for p in "\n".join(body).split("\n\n") if p.strip()]
+    if not paras:
+        return None
+    text = paras[0] if len(paras[0]) >= 40 or len(paras) == 1 else paras[0] + " " + paras[1]
+    return dict(text=text[:600], line=i + 1)
+
+
 def file_doc(root, file):
     """(first paragraph, line) of the comment a file starts with, or None."""
     src = lines(Path(root) / file)
+    if file.endswith(".py"):
+        return _py_doc(src)
     i = 0
     while i < len(src) and not src[i].strip():
         i += 1

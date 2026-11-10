@@ -3,8 +3,8 @@ import { OpenFile } from '../components/DocRefs'
 import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
-import { push, type Index } from '../data/graph'
-import type { BuildInfo, Doc, DocSummary, Edge, FileWrite, Graph, Link, Sel } from '../data/types'
+import { entryText, push, type Index } from '../data/graph'
+import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
 
 /** One line per link: a pair of components can have calls and an environment variable at once. */
@@ -27,7 +27,7 @@ function usesOf(ix: Index, shared: string) {
   const out = new Map<string, Edge[]>()
   for (const e of ix.g.edges) {
     const a = ix.funcs[e.s]?.comp, b = ix.funcs[e.d]?.comp
-    if (e.src === 'compiler' && b === shared && a && a !== shared) out.set(a, [...(out.get(a) ?? []), e])
+    if (written(e) && b === shared && a && a !== shared) out.set(a, [...(out.get(a) ?? []), e])
   }
   return out
 }
@@ -74,7 +74,7 @@ export function launchers(ix: Index) {
   const m = new Map<string, { id: string; comp: string; calls: Set<string>; sites: Edge[]; preload: boolean }>()
   for (const e of ix.g.edges) {
     const f = ix.funcs[e.s], name = ix.bareName(e.d, e)
-    if (!f || e.src !== 'compiler' || ix.funcs[e.d] || !SPAWN.has(name)) continue
+    if (!f || !written(e) || ix.funcs[e.d] || !SPAWN.has(name)) continue
     const id = `ext:launch->${f.comp}`
     if (!m.has(id)) m.set(id, { id, comp: f.comp, calls: new Set(), sites: [], preload: false })
     m.get(id)!.calls.add(name)
@@ -262,7 +262,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
     ))]
   } else {
     about = t('{v1} 的函式呼叫 {v2} 的函式，共 {v3} 次，由編譯器確認。', { v1: l.a, v2: l.b, v3: l.n })
-    const es = p.ix.g.edges.filter((e) => e.src === 'compiler' && p.ix.funcs[e.s]?.comp === l.a && p.ix.funcs[e.d]?.comp === l.b)
+    const es = p.ix.g.edges.filter((e) => written(e) && p.ix.funcs[e.s]?.comp === l.a && p.ix.funcs[e.d]?.comp === l.b)
     body = <UI.DetailList items={es.slice(0, SHOWN).map((e) => ({ label: `${name(e.s)} → ${name(e.d)}`, value: at(e.s, e.f, e.l) }))} />
   }
   const total = l.kind === 'interpose' || l.kind === 'runs' || l.kind === 'reads' ? l.sites?.length ?? 0 : l.kind === 'call' ? l.n : 0
@@ -359,6 +359,12 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   // functions nothing in the repo calls directly, put into a function pointer that code outside the repo calls
   // (an ops table, a UCT table, a signal handler): grouped by the function that installs them
   const installed = pointerEntries(p.ix)
+  const fwEntries = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const [id, f] of Object.entries(p.ix.funcs)) if (f.entry) m.set(`${f.entry.framework}.${f.entry.kind}`, [...(m.get(`${f.entry.framework}.${f.entry.kind}`) ?? []), id])
+    for (const ids of m.values()) ids.sort((a, b) => p.ix.funcs[a].file.localeCompare(p.ix.funcs[b].file) || p.ix.funcs[a].line - p.ix.funcs[b].line)
+    return new Map([...m].sort(([a], [b]) => a.localeCompare(b)))
+  }, [p.ix])
   // null: nobody has clicked yet; a short list is open from the start
   const ptrOpen = openApi === '*ptr' || (openApi === null && [...installed.values()].flat().length <= 5)
   const line = (id: string, key: string) => <>{fn(id)}{' '}{at(key, p.ix.funcs[id].file, p.ix.funcs[id].line)}</>
@@ -370,7 +376,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     <UI.Card className="detail fit overview" title={t('概觀')}>
       <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
       <nav className="toc" aria-label={t('概觀的段落')} data-tour="arch">
-        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size).filter(([id]) => id !== 'ov-env' || env.length)
+        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size || installed.size || fwEntries.size).filter(([id]) => id !== 'ov-env' || env.length)
           .filter(([id]) => id !== 'ov-docs' || g.docs?.length).filter(([id]) => id !== 'ov-build' || g.build).filter(([id]) => id !== 'ov-writes' || g.writes).filter(([id]) => id !== 'ov-worth' || g.worth)
           .map(([id, label]) => <button key={id} type="button" className="linklike" onClick={() => jump(id)}>{t(label)}</button>)}
       </nav>
@@ -383,7 +389,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，顯示元件主要檔案的開頭註解。元件的用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
       </section>
       {g.docs?.length ? <Docs docs={g.docs} /> : null}
-      {lifecycle.length || apis.size || installed.size ? (
+      {lifecycle.length || apis.size || installed.size || fwEntries.size ? (
         <section>
           <h3 className="small" id="ov-entry" tabIndex={-1}>{t('進入與結束')}</h3>
           <UI.DetailList items={[
@@ -402,6 +408,18 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
                 {openApi === api ? <span className="entry-list">{Object.entries(p.ix.funcs).filter(([, f]) => f.api === api).sort(([, a], [, b]) => a.name.localeCompare(b.name)).map(([id]) => <span key={id} className="entry-row">{line(id, 'api' + id)}</span>)}</span> : null}
               </span>,
             })),
+            // functions a framework calls by itself: routes, tests, event handlers, grouped by framework and kind
+            ...[...fwEntries].map(([k, ids]) => {
+              const key = '*fw' + k, open = openApi === key || (openApi === null && ids.length <= 5)
+              const e0 = p.ix.funcs[ids[0]].entry!
+              return {
+                label: t('{v1}：{v2}', { v1: e0.framework, v2: entryText({ kind: e0.kind, text: '' }) }),
+                value: <span>
+                  <button type="button" className="linklike" aria-expanded={open} onClick={() => setOpenApi(open ? '' : key)}>{t('{v1} 個函式由 {v2} 呼叫', { v1: ids.length, v2: e0.framework, v3: countUnit('', 'function', 'functions')(ids.length) })}</button>
+                  {open ? <span className="entry-list">{ids.map((id) => <span key={id} className="entry-row">{line(id, 'fw' + id)}{p.ix.funcs[id].entry!.text ? <span className="muted">{' '}{p.ix.funcs[id].entry!.text}</span> : null}</span>)}</span> : null}
+                </span>,
+              }
+            }),
             ...(installed.size ? [{
               label: t('經由函式指標進入'),
               value: <span>
@@ -533,7 +551,7 @@ export function pointerEntries(ix: Index): Map<string, string[]> {
   for (const [id, f] of Object.entries(ix.funcs)) {
     if (f.api) continue
     const by = ix.callers(id)
-    if (by.some((e) => e.src === 'compiler' && ix.funcs[e.s])) continue
+    if (by.some((e) => written(e) && ix.funcs[e.s])) continue
     const put = by.find((e) => e.k === 'fnptr_assign' && ix.funcs[e.s])
     if (put) push(installed, put.s, id)
   }

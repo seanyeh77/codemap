@@ -4,10 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codemap"
-version = "0.2.0"
-description = "Static code maps for people and AI: compiler call graph, rule scan, validated tours"
+version = "0.3.0"
+description = "Static code maps for people and AI: call graphs for C/C++ (compiler) and Python, Java, Go, TypeScript, JavaScript, HTML/CSS (tree-sitter), framework adapters, validated tours"
 requires-python = ">=3.10"
-dependencies = []
+# tree-sitter grammars come as wheels with the parser inside: nothing is downloaded at run time
+dependencies = [
+    "tree-sitter>=0.23",
+    "tree-sitter-python>=0.23",
+    "tree-sitter-java>=0.23",
+    "tree-sitter-go>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-html>=0.23",
+    "tree-sitter-css>=0.23",
+    "tree-sitter-c>=0.23",
+    "tree-sitter-cpp>=0.23",
+]
 
 [project.optional-dependencies]
 diagram = ["pillow"]
@@ -17,7 +29,11 @@ viewer = ["fastapi>=0.162", "uvicorn>=0.54"]
 codemap = "codemap.cli:main"
 
 [tool.setuptools]
-packages = ["codemap"]
+packages = ["codemap", "codemap.backends", "codemap.frameworks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["fixtures"]
 
 [tool.setuptools.package-data]
 codemap = ["viewer_dist/index.html", "viewer_dist/assets/*"]
