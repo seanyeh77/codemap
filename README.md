@@ -30,6 +30,22 @@ The map has four layers:
      of unknown type marks its targets `partial`). A call nothing
      decides gets no edge and is counted as unresolved; it is never matched
      on its name across the repository. Edges: `static`.
+   - `go`: Go's own `go/types`, through a small helper (standard library
+     only) that codemap builds with the local Go toolchain into
+     `~/.cache/codemap` the first time. Packages come from `go.mod` files
+     and directories, not `go list`, so nothing is downloaded: a module that
+     is not in the module cache, or a newer Go than the local one, only
+     leaves the calls into it named by import path. Package functions,
+     methods of concrete types, promoted methods (`embedding`), method values
+     and method expressions are `exact`. A call through an interface goes to
+     the repository's types that implement it, checked with
+     `types.Implements` and never by method name; values a variable or field
+     was given (`&Server{}`, a constructor's return) narrow it first. Calls
+     through function values, struct fields and closures follow what was
+     stored in them. `go` and `defer` calls carry `mode`; a function handed on
+     as a value (`m.HandleFunc("GET /x", s.page)`) is an edge of kind `ref`,
+     and the `net/http` adapter turns those into routes. Without a Go
+     toolchain the Go files go to tree-sitter. Edges: `static`.
    - `syntax`: for the other languages, tree-sitter reads definitions, calls and imports, and joins a
      call to a definition when the name decides it (the same file, an import,
      `self`/`this`, the package in Go, a name defined once). Edges: `syntax`;
@@ -40,7 +56,7 @@ The map has four layers:
      `framework`): entry points (routes, tests, event handlers), injection
      (pytest fixtures, FastAPI `Depends`), and callbacks (Ryu/os-ken
      `set_ev_cls`, ONOS `addProcessor`). Adapters exist for Flask, FastAPI,
-     pytest, Ryu/os-ken, Mininet and ONOS.
+     pytest, Ryu/os-ken, Mininet, ONOS and Go net/http.
 2. **Rule scan.** Text rules add what the compiler cannot see: functions stored
    in pointers, indirect calls through those pointers, constructors,
    `setenv`/`getenv` pairs, `exec`, `-D` flags in Makefiles, and C names that
@@ -218,6 +234,10 @@ The build is one self-contained `index.html`, so it can be served by
   assignments, attributes and containers, not through arguments without
   annotations, `**kwargs`, `getattr`, or rows read from files (`for row in
   csv.DictReader(...)`); those calls stay unresolved.
+- Go: an interface from outside the repository (`error`, `io.Writer`) has
+  implementations outside it too, so its repository candidates are
+  `ambiguous` and `partial`. Values read through channels, maps and slices
+  are not followed.
 - Edges are per function, not per call site: inside `Base.run`, `self.execute()`
   stays ambiguous when a subclass overrides `execute`, even if every caller
   happens to pass a `Base`.
