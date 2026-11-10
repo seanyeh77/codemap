@@ -6,6 +6,7 @@ looks inside a backend, so a new language is a new module here.
 
   gcc      C/C++ through the compiler (needs compile_commands.json): source "compiler"
   python   Python through its own ast: names, imports and simple types: source "static"
+  go       Go through go/types (a helper built with the local Go toolchain): source "static"
   syntax   every other language with a tree-sitter grammar, calls matched by name: source "syntax"
 
 The gcc backend takes the C/C++ files when it can; tree-sitter reads them only
@@ -39,7 +40,11 @@ def plan(root, config=None):
     py = [f for f in files if f.endswith(".py")] if (config or {}).get("backends", {}).get("python", True) else []
     if py:
         out.append(("python", py))
-    rest = [f for f in files if Path(f).suffix in syntax.EXT and not (has_db and f in set(c_files)) and f not in set(py)]
+    # Go has go/types; tree-sitter reads it when there is no Go toolchain (decided when it runs)
+    gof = [f for f in files if f.endswith(".go")] if (config or {}).get("backends", {}).get("go", True) else []
+    if gof:
+        out.append(("go", gof))
+    rest = [f for f in files if Path(f).suffix in syntax.EXT and not (has_db and f in set(c_files)) and f not in set(py) | set(gof)]
     disabled = set((config or {}).get("languages", {}).get("disable", []))
     rest = [f for f in rest if syntax.LANG_NAME.get(syntax.EXT[Path(f).suffix], syntax.EXT[Path(f).suffix]) not in disabled]
     if rest:
@@ -65,6 +70,13 @@ def build(root, scope=None, jobs=None, cc=None, config=None):
         elif name == "python":
             from . import python
             part = python.build(root, files)
+        elif name == "go":
+            from . import go, syntax
+            part = go.build(root, files)
+            if part is None:                      # no Go toolchain, or the helper failed
+                part = syntax.build(root, files)
+                part["stats"]["fallback"] = "tree-sitter"
+                name = "syntax-go"
         else:
             from . import syntax
             missing = sorted({syntax.EXT[Path(f).suffix] for f in files if syntax.language(syntax.EXT[Path(f).suffix]) is None})

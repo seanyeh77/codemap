@@ -194,7 +194,7 @@ def build(root, index, config=None):
         src_lines = lines(root / e["file"]) if in_repo(e["file"]) else []
         if 1 <= (e["line"] or 0) <= len(src_lines):
             x["t"] = src_lines[e["line"] - 1].strip()[:160]          # the evidence line, for the viewer's explanations
-        for k in ("rule", "via", "slot", "saved_from", "name", "read_at", "table", "by", "resolution", "infer"):
+        for k in ("rule", "via", "slot", "saved_from", "name", "read_at", "table", "by", "resolution", "infer", "mode"):
             if e.get(k) is not None:
                 x[k] = e[k]
         if e["dst"] not in funcs:
@@ -267,7 +267,8 @@ def build(root, index, config=None):
                           edges=sum(1 for x in edges if x["src"] == "compiler"),
                           syntax=sum(1 for x in edges if x["src"] == "syntax"),
                           static=sum(1 for x in edges if x["src"] == "static"),
-                          resolution={k: v for b in index.get("backends", {}).values() for k, v in b.get("resolution", {}).items()},
+                          # the analyzers' results, per backend: python, go
+                          resolution={name: b["resolution"] for name, b in index.get("backends", {}).items() if b.get("resolution")},
                           languages={k: v for b in index.get("backends", {}).values() for k, v in b.get("languages", {}).items()},
                           frameworks=index.get("frameworks", [])),
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),

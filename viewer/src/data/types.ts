@@ -47,6 +47,8 @@ export interface Edge {
   resolution?: 'exact' | 'inferred' | 'ambiguous'
   /** static: how the receiver's type was found, and the type */
   infer?: { how: string; type: string | null; partial?: boolean }
+  /** Go: a call run as a goroutine (go) or when the function returns (defer) */
+  mode?: 'go' | 'defer'
   via?: string
   slot?: string
   /** table_install: the table the function is listed in */
@@ -132,8 +134,8 @@ export interface Stats {
   syntax?: number
   /** calls the Python analyzer resolved */
   static?: number
-  /** the Python analyzer's results: exact, inferred, ambiguous, unresolved, builtin */
-  resolution?: Record<string, number>
+  /** the analyzers' results per backend (python, go): exact, inferred, ambiguous, unresolved, builtin */
+  resolution?: Record<string, Record<string, number>>
   /** files read per language */
   languages?: Record<string, number>
   /** framework adapters that ran */

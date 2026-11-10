@@ -26,11 +26,11 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
       // the call is in the parent (looking down) or in this node's function (looking up)
       const where = dir === 'down' ? parent : key
       // only inferred relations carry a tag; the note under the tree says the rest are the compiler's
-      if (uncertain(e) || e.resolution === 'inferred') n.tags = [...(n.tags ?? []), <RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
+      if (uncertain(e) || e.resolution === 'inferred' || e.mode || e.k === 'ref' || e.infer?.how === 'embedding') n.tags = [...(n.tags ?? []), <RelationTag key="r" ix={ix} e={e} open={() => openLine(e.s, e, where)} />]
       if (!f) n.muted = true
     }
     // read aloud as 「name，推測（規則），called 3 times，file:lines」: the tags are elements, so say them in words
-    if (n.tags?.length) n.ariaLabel = [n.name, e && (uncertain(e) || e.resolution === 'inferred') ? ix.explain(e).label : '', sites.length > 1 ? t('呼叫 {n} 次', { n: sites.length }) : '', at ?? ''].filter(Boolean).join(t('，'))
+    if (n.tags?.length) n.ariaLabel = [n.name, e && (uncertain(e) || e.resolution === 'inferred' || e.mode || e.k === 'ref' || e.infer?.how === 'embedding') ? ix.explain(e).label : '', sites.length > 1 ? t('呼叫 {n} 次', { n: sites.length }) : '', at ?? ''].filter(Boolean).join(t('，'))
     const open = kids.length > 0 && !path.includes(nid)
     index[key] = { fid: nid, edge: e, names: [...new Set(kids.map((k) => dir === 'down' ? ix.bareName(k.d, k) : ix.bareName(k.s, k)))], open, kids, path }
     if (open && (predict ? revealed[key] : key === 'root')) n.children = children(key)     // shown open from the start
@@ -178,7 +178,8 @@ export function Flow(p: FlowProps) {
         !p.ix.g.stats.syntax && !p.ix.g.stats.static ? t('沒有標示的關係由編譯器確認，標示「推測（規則：…）」的由括號裡那條 codemap 規則從原始碼推得。')
           : t('沒有標示的關係：{v1}。標示「推測（規則：…）」或框架名稱的，程式碼裡沒有直接的呼叫。', { v1: [
             p.ix.g.stats.edges ? t('C/C++ 由編譯器確認') : '',
-            p.ix.g.stats.static ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
+            p.ix.g.stats.resolution?.python ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
+            p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到實作它的型別；go、defer 和當作函式值傳遞的另有標示') : '',
             p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對到定義，「依名稱推測」的只憑方法名稱') : ''].filter(Boolean).join(t('；')) })}</p>
     </UI.Card>
   )

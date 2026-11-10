@@ -186,11 +186,23 @@ export class Index {
                 : how === 'assign' ? t('物件由賦值傳過來，來源是 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
                   : how === 'attribute' ? t('這是 self 的屬性，在類別裡被設成 {v1}，所以方法是 {v2}。', { v1: ty, v2: to })
                     : how === 'override' ? t('子類別覆寫了這個方法，`self` 也可能是子類別的物件。')
+                      : how === 'interface' ? t('經由 interface 呼叫；{v1} 實作了這個 interface（由 go/types 檢查，不是只比方法名稱），所以可能是 {v2}。', { v1: ty, v2: to })
+                        : how === 'embedding' ? t('{v1} 內嵌（embed）了別的型別，方法是從內嵌的型別提升上來的 {v2}。', { v1: ty, v2: to })
+                          : how === 'closure' ? t('呼叫的是存在變數或欄位裡的 func literal（closure）{v1}。', { v1: to })
+                            : how === 'field' ? t('呼叫的是 struct 欄位裡的函式；程式在別處把 {v1} 存進這個欄位。', { v1: to })
+                              : how === 'funcvalue' ? (e.k === 'ref' ? t('{v1} 在這裡被當作值傳出去（例如註冊成 handler），之後由接收的一方呼叫。', { v1: to }) : t('呼叫的是存著 {v1} 的變數。', { v1: to }))
+                                : how === 'methodvalue' ? t('{v1} 以 method value 的形式被傳出去或存起來，之後才呼叫。', { v1: to })
+                                  : how === 'methodexpr' ? t('以 method expression 呼叫 {v1}，receiver 當作第一個參數傳入。', { v1: to })
                       : t('名稱經由 import 或同一個模組，確定指向 {v1}。', { v1: to })
+    // Go: when the call runs, before which of its targets it reaches
+    const when = e.mode === 'go' ? t('以 goroutine 執行（go），呼叫的一方不等它結束。') : e.mode === 'defer' ? t('延到所在的函式結束時才執行（defer）。') : ''
+    if (e.k === 'ref' && e.resolution === 'exact') return { label: t('當作函式值'), title: t('當作函式值'), text: because }
+    if (e.resolution === 'exact' && e.mode) return { label: e.mode, title: e.mode, text: when + because }
+    if (e.resolution === 'exact' && how === 'embedding') return { label: t('內嵌提升'), title: t('內嵌提升'), text: because }
     if (e.resolution === 'ambiguous') return { label: t('可能目標之一'), title: t('可能目標之一'),
       text: (e.infer?.partial ? t('容器裡還有型別不明的值，實際目標可能不只列出的這些；{v1} 是其中之一。', { v1: to })
-        : t('這個呼叫有多個可能的目標（型別是聯集，或子類別覆寫了方法），每一個都列出，{v1} 是其中之一。', { v1: to })) + because }
-    if (e.resolution === 'inferred') return { label: t('型別推論'), title: t('型別推論'), text: because + t('型別是 codemap 從程式碼推得的，沒有執行程式確認。') }
+        : t('這個呼叫有多個可能的目標（型別是聯集，或子類別覆寫了方法），每一個都列出，{v1} 是其中之一。', { v1: to })) + because + when }
+    if (e.resolution === 'inferred') return { label: t('型別推論'), title: t('型別推論'), text: because + when + t('型別是 codemap 從程式碼推得的，沒有執行程式確認。') }
     return { label: t('符號解析'), title: t('符號解析'), text: because }
   }
 

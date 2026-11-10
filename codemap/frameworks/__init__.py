@@ -18,9 +18,10 @@ An adapter runs only when the repository imports its framework.
 
 import re
 
-from . import onos, python_web, pytest_adapter, ryu
+from . import go_http, onos, python_web, pytest_adapter, ryu
 
-ADAPTERS = [python_web.Flask(), python_web.FastAPI(), pytest_adapter.Pytest(), ryu.Ryu(), ryu.Mininet(), onos.Onos()]
+ADAPTERS = [python_web.Flask(), python_web.FastAPI(), pytest_adapter.Pytest(), ryu.Ryu(), ryu.Mininet(), onos.Onos(),
+            go_http.GoHTTP()]
 
 
 class Ctx:

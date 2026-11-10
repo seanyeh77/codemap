@@ -36,4 +36,4 @@ testpaths = ["tests"]
 norecursedirs = ["fixtures"]
 
 [tool.setuptools.package-data]
-codemap = ["viewer_dist/index.html", "viewer_dist/assets/*"]
+codemap = ["viewer_dist/index.html", "viewer_dist/assets/*", "backends/gohelper/main.go", "backends/gohelper/go.mod"]

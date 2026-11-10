@@ -1,5 +1,6 @@
 """The tree-sitter backend and the framework adapters on tests/fixtures/polyglot."""
 
+import shutil
 import unittest
 from pathlib import Path
 
@@ -23,8 +24,10 @@ class Polyglot(unittest.TestCase):
         self.assertIn((src, dst, source, by), self.pairs)
 
     def test_languages(self):
+        go = "go" if shutil.which("go") else "syntax-go"      # go/types, or tree-sitter without a Go toolchain
         self.assertEqual(self.idx["backends"]["syntax"]["languages"],
-                         {"java": 1, "go": 2, "typescript": 2, "html": 1, "css": 1})
+                         {"java": 1, "typescript": 2, "html": 1, "css": 1})
+        self.assertEqual(self.idx["backends"][go]["languages"], {"go": 2})
         self.assertEqual(self.idx["backends"]["python"]["languages"], {"python": 7})     # its own backend
 
     def test_python_calls(self):
@@ -40,6 +43,12 @@ class Polyglot(unittest.TestCase):
         self.has("AppComponent.ReactivePacketProcessor.forward", "AppComponent.log")   # the enclosing class
 
     def test_go_calls(self):
+        if shutil.which("go"):                                   # go/types knows s's type: no name matching
+            self.has("main", "New", "static")
+            self.has("main", "helper", "static")
+            self.has("main", "Store.Put", "static")
+            self.has("Store.Put", "normalize", "static")
+            return
         self.has("main", "New")                                  # store.New() through the import path
         self.has("main", "helper")                               # same package
         self.has("main", "Store.Put", by="name")                 # s.Put(): the receiver's type is unknown
