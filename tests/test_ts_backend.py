@@ -18,7 +18,10 @@ def available():
 class TsResolve(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.idx = backends.build(ROOT)
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"CODEMAP_TS_CACHE": "0"}):     # the fixture stays clean
+            cls.idx = backends.build(ROOT)
         cls.calls = {}
         for e in cls.idx["edges"]:
             key = (e["src"].split(":", 1)[1], e["dst"].removeprefix("ext:").split(":", 1)[-1], e["kind"])
@@ -155,6 +158,49 @@ class TsResolve(unittest.TestCase):
     def test_outside_methods(self):
         self.assertEqual(self.how(self.get("libs", "Array.map")), ("exact", "type"))
         self.assertEqual(self.get("libs", "libs.fn1", "ref")["resolution"], "exact")
+
+
+@unittest.skipUnless(available(), "no Node or no TypeScript to load")
+class TsProgramCache(unittest.TestCase):
+    """A program's results are reused only while everything it read is unchanged; the graph is the same
+    as a run without the cache in every case."""
+
+    def run_ts(self, root, cache):
+        import os
+        from unittest import mock
+        from codemap import scope
+        files = dict(backends.plan(root))["typescript"]
+        with mock.patch.dict(os.environ, {"CODEMAP_TS_CACHE": "1" if cache else "0"}):
+            return ts.build(root, files, scope.test_files(files))
+
+    def same(self, a, b):
+        self.assertEqual(a["edges"], b["edges"])
+        self.assertEqual(a["nodes"], b["nodes"])
+
+    def test_cache(self):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "tsfix"
+            shutil.copytree(ROOT, root, ignore=shutil.ignore_patterns(".codemap"))
+            cold = self.run_ts(root, True)
+            self.assertEqual(cold["stats"]["cache"]["misses"], 1)
+            warm = self.run_ts(root, True)
+            self.assertEqual((warm["stats"]["cache"]["hits"], warm["stats"]["cache"]["misses"]), (1, 0))
+            self.same(warm, self.run_ts(root, False))
+            # a package that was missing is installed: only a lookup changed
+            (root / "node_modules" / "not-installed").mkdir()
+            (root / "node_modules" / "not-installed" / "index.d.ts").write_text("export declare function missing(): void;\n")
+            after = self.run_ts(root, True)
+            self.assertEqual(after["stats"]["cache"]["invalid"], {"lookup": 1})
+            self.same(after, self.run_ts(root, False))
+            self.assertNotIn("not-installed", after["stats"]["placeholders"])
+            # a source file changes
+            p = root / "src" / "util" / "math.ts"
+            p.write_text(p.read_text().replace("return a * b;", "return add(a, b) * b;"))
+            edited = self.run_ts(root, True)
+            self.assertEqual(edited["stats"]["cache"]["invalid"], {"content": 1})
+            self.same(edited, self.run_ts(root, False))
+            self.assertTrue(any(e["src"] == "src/util/math.ts:mul" and e["dst"] == "src/util/math.ts:add" for e in edited["edges"]))
 
 
 class TsFallback(unittest.TestCase):

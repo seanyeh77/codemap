@@ -23,8 +23,17 @@ const path = require('path');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const ts = require(input.ts);
 const root = path.resolve(input.root);
-const repo = new Set(input.files);
-const tests = new Set(input.tests || []);
+// what a program read, for the program cache: set while one program is created and analyzed
+let rec = null;
+// sets whose answers a program depends on: each question is recorded with its answer
+const watched = (set, kind) => ({
+  has: (k) => { const v = set.has(k); if (rec) rec.member[kind + '\0' + k] = v; return v; },
+  [Symbol.iterator]: () => set[Symbol.iterator](),
+});
+const repoSet = new Set(input.files);
+const testSet = new Set(input.tests || []);
+const repo = watched(repoSet, 'repo');
+const tests = watched(testSet, 'test');
 const rel = (abs) => path.relative(root, abs).split(path.sep).join('/');
 const isDts = (f) => /\.d\.[cm]?ts$/.test(f) || /\.d\.[^/.]+\.ts$/.test(f);
 const isJs = (f) => /\.[cm]?jsx?$/.test(f);
@@ -400,6 +409,7 @@ function ext(name, ph) {
   const id = 'ext:' + name;
   if (!nodes[id]) nodes[id] = { name, file: '', line: null, defined: false };
   if (ph) nodes[id].placeholder = true;
+  if (rec) rec.touched.add(id);
   return id;
 }
 
@@ -415,7 +425,8 @@ for (const p of input.packages || []) {
   } catch (e) { /* not JSON */ }
 }
 const SOURCE = /\.(tsx?|mts|cts|jsx?|mjs|cjs)$/;
-const exists = (f) => { try { return fs.statSync(f).isFile(); } catch (e) { return false; } };
+const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch (e) { return false; } };
+const exists = (f) => { const v = isFile(f); if (rec) rec.probe['isFile\0' + f] = v; return v; };
 
 // the first condition of an exports entry that names a source file (not a .d.ts, not a build)
 function sourceIn(entry, dir) {
@@ -462,6 +473,23 @@ function category(fileName) {
 
 function hostFor(options, prof) {
   const host = ts.createCompilerHost(options, true);
+  if (CACHE) {
+    // every question the compiler asks the file system, with its answer: the program is the same as
+    // long as every answer is
+    const ask = (name, fn) => {
+      const orig = host[name] && host[name].bind(host);
+      if (!orig) return;
+      host[name] = (...a) => { const v = orig(...a); if (rec) rec.probe[name + '\0' + a[0]] = fn ? fn(v) : v; return v; };
+    };
+    ask('fileExists'); ask('directoryExists'); ask('realpath'); ask('getDirectories', (v) => JSON.stringify(v));
+    ask('readFile', (v) => (v === undefined ? null : digest(v)));
+    const get = host.getSourceFile.bind(host);
+    host.getSourceFile = (fileName, ...rest) => {
+      const sf = get(fileName, ...rest);
+      if (rec) rec.probe['readFile\0' + fileName] = sf ? digest(sf.text) : null;
+      return sf;
+    };
+  }
   if (prof) {
     const get = host.getSourceFile.bind(host);
     host.getSourceFile = (fileName, ...rest) => {
@@ -488,6 +516,119 @@ function hostFor(options, prof) {
     return f ? { resolvedFileName: f, extension: EXT_OF[path.extname(f)], isExternalLibraryImport: false } : r;
   });
   return host;
+}
+
+// ---------------------------------------------------------------------------
+// the program cache: a program's nodes, edges and counts, kept with every question its creation and
+// analysis asked (files read and their content, files and directories looked for, which files are the
+// repository's and which are tests). A later run replays it when every answer is still the same, and
+// creates and checks the program otherwise. The graph is the same either way.
+
+const CACHE = input.cache ? path.resolve(input.cache) : null;
+const crypto = require('crypto');
+const digest = (text) => crypto.createHash('sha1').update(text).digest('hex');
+const cacheStats = { hits: 0, misses: 0, invalid: {} };
+const fresh = new Set();
+// what this helper and this TypeScript are: a change to either makes every entry stale
+const HELPER = CACHE ? digest(fs.readFileSync(__filename, 'utf8') + '\0' + ts.version + '\0' + process.version
+  + '\0' + !!process.env.CODEMAP_TS_DEBUG) : null;
+
+function programKey(group) {
+  const c = group.config;
+  return digest(JSON.stringify([HELPER, c ? group.configs.map((k) => [k.rel, k.options, k.names]) : DEFAULTS,
+    [...group.owned].sort(), [...workspace].map(([n, w]) => [n, w.dir, w.json.exports, w.json.source, w.json.types, w.json.main]),
+    group.owned.some(isJs), c ? null : input.files.filter(isDts)]));
+}
+
+// the answers now, asked again; one file's content is read once per run
+const answers = new Map();
+function answer(q) {
+  if (answers.has(q)) return answers.get(q);
+  const [kind, arg] = q.split('\0');
+  let v;
+  try {
+    if (kind === 'readFile') v = fs.existsSync(arg) && fs.statSync(arg).isFile() ? digest(ts.sys.readFile(arg)) : null;
+    else if (kind === 'fileExists') v = ts.sys.fileExists(arg);
+    else if (kind === 'directoryExists') v = ts.sys.directoryExists(arg);
+    else if (kind === 'realpath') v = ts.sys.realpath ? ts.sys.realpath(arg) : arg;
+    else if (kind === 'getDirectories') v = JSON.stringify(ts.sys.getDirectories(arg));
+    else if (kind === 'isFile') v = isFile(arg);
+    else v = undefined;
+  } catch (e) { v = undefined; }
+  answers.set(q, v);
+  return v;
+}
+
+function cached(key) {
+  const f = path.join(CACHE, key + '.json');
+  let entry;
+  try { entry = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { cacheStats.invalid.none = (cacheStats.invalid.none || 0) + 1; return null; }
+  for (const [q, v] of Object.entries(entry.member)) {
+    const [kind, k] = q.split('\0');
+    if ((kind === 'repo' ? repoSet : testSet).has(k) !== v) { cacheStats.invalid.files = (cacheStats.invalid.files || 0) + 1; return null; }
+  }
+  for (const [q, v] of Object.entries(entry.probe)) {
+    if (answer(q) !== v) {
+      const why = q.startsWith('readFile') ? 'content' : 'lookup';
+      cacheStats.invalid[why] = (cacheStats.invalid[why] || 0) + 1;
+      return null;
+    }
+  }
+  return entry;
+}
+
+function save(key, r, d) {
+  fs.mkdirSync(CACHE, { recursive: true });
+  const ignore = path.join(CACHE, '.gitignore');          // local to this checkout, never committed
+  if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n');
+  const tmp = path.join(CACHE, key + '.json.' + process.pid);
+  fs.writeFileSync(tmp, JSON.stringify({ probe: r.probe, member: r.member, delta: d }));
+  fs.renameSync(tmp, path.join(CACHE, key + '.json'));
+}
+
+// entries no program of this run used: a config or file set that is gone
+function prune() {
+  try {
+    for (const f of fs.readdirSync(CACHE)) if (f.endsWith('.json') && !fresh.has(f.slice(0, -5))) fs.unlinkSync(path.join(CACHE, f));
+  } catch (e) { /* no cache yet */ }
+}
+
+// what one program adds to the run's results
+let before = null;
+function snapshot() {
+  before = { edges: edges.length, counts: Object.assign({}, counts), unresolved: Object.assign({}, unresolved),
+    samples: Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, v.length])), errors: errors.length,
+    placeholders: new Set(placeholders), broken: new Set(broken), files };
+}
+function delta() {
+  const sub = (a, b) => Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v - (b[k] || 0)]).filter(([, v]) => v));
+  return {
+    owned: files - before.files,
+    nodes: Object.fromEntries([...rec.touched].map((id) => [id, nodes[id]])),
+    edges: edges.slice(before.edges),
+    counts: sub(counts, before.counts),
+    unresolved: sub(unresolved, before.unresolved),
+    samples: Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, v.slice(before.samples[k] || 0)]).filter(([, v]) => v.length)),
+    errors: errors.slice(before.errors),
+    placeholders: [...placeholders].filter((p) => !before.placeholders.has(p)),
+    broken: [...broken].filter((b) => !before.broken.has(b)),
+  };
+}
+function replay(d) {
+  for (const [id, n] of Object.entries(d.nodes)) {
+    if (!nodes[id]) nodes[id] = Object.assign({}, n);
+    else if (n.placeholder) nodes[id].placeholder = true;
+  }
+  for (const e of d.edges) {
+    edges.push(e);
+    seenEdge.add(e.kind === 'implements' ? ['impl', e.src, e.dst].join('\0') : [e.src, e.dst, e.line - 1, e.col - 1, e.kind].join('\0'));
+  }
+  for (const [k, v] of Object.entries(d.counts)) counts[k] = (counts[k] || 0) + v;
+  for (const [k, v] of Object.entries(d.unresolved)) unresolved[k] = (unresolved[k] || 0) + v;
+  for (const [k, v] of Object.entries(d.samples)) (samples[k] = samples[k] || []).push(...v);
+  errors.push(...d.errors);
+  for (const p of d.placeholders) placeholders.add(p);
+  for (const b of d.broken) broken.add(b);
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,6 +1174,7 @@ function analyze(group) {
     const d = define(sf);
     if (!d.rel) continue;
     Object.assign(nodes, d.nodes);
+    if (rec) for (const id of Object.keys(d.nodes)) rec.touched.add(id);
     const module = `${d.rel}:<module>`;
     const prod = !tests.has(d.rel);
     const callees = new Set();
@@ -1173,13 +1315,27 @@ const started = Date.now();
 const slow = [];
 for (const [, g] of groups) {
   const t0 = Date.now();
+  const name = g.configs.map((c) => c.rel).join(' + ') || '(default options)';
   try {
-    files += analyze(g).owned;
-    slow.push([g.configs.map((c) => c.rel).join(' + ') || '(default options)', Date.now() - t0]);
+    const key = CACHE ? programKey(g) : null;
+    const hit = key && cached(key);
+    if (hit) {
+      replay(hit.delta);
+      files += hit.delta.owned;
+      cacheStats.hits++;
+      fresh.add(key);
+    } else {
+      if (key) { rec = { probe: {}, member: {}, touched: new Set() }; snapshot(); }
+      files += analyze(g).owned;
+      if (key) { save(key, rec, delta()); rec = null; cacheStats.misses++; fresh.add(key); }
+    }
+    slow.push([name + (hit ? ' (cached)' : ''), Date.now() - t0]);
   } catch (e) {
+    rec = null;
     errors.push(`${g.config ? g.config.rel : '(default options)'}: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' ') : e}`);
   }
 }
+if (CACHE) prune();
 
 for (const n of Object.values(nodes)) if (n.defined && broken.has(n.file)) n.types_incomplete = true;
 for (const e of edges) {
@@ -1196,7 +1352,7 @@ const top = Object.entries(unresolved).sort((a, b) => b[1] - a[1]).slice(0, 20);
 process.stdout.write(JSON.stringify({
   nodes, edges,
   stats: {
-    files, languages: langs, nodes: Object.values(nodes).filter((n) => n.defined).length, edges: edges.length,
+    files, languages: langs, ...(CACHE ? { cache: cacheStats } : {}), nodes: Object.values(nodes).filter((n) => n.defined).length, edges: edges.length,
     programs: groups.size, typescript: ts.version, ms: Date.now() - started,
     max_rss_mb: Math.round(process.resourceUsage().maxRSS / 1024), slowest_programs: slow.sort((a, b) => b[1] - a[1]).slice(0, 5), resolution: counts, unresolved_top: top, errors,
     placeholders: [...placeholders].sort(), incomplete_files: broken.size,

@@ -311,6 +311,17 @@ The build is one self-contained `index.html`, so it can be served by
   dependencies installed, TanStack Query (2,153 files, 54 programs) 209 s
   and 1.9 to 4.8 GB. `CODEMAP_TS_PROFILE=1 CODEMAP_TS_DEBUG=1` reports, per
   program, what it loaded and where the time went.
+- TypeScript program cache: each program's nodes, edges and counts are kept
+  in `.codemap/cache/typescript/` (ignored by git) with every question the
+  program asked while it was built and analyzed: the files it read and their
+  content, the files and directories module resolution looked for, and which
+  files are the repository's and which are tests. The next index replays a
+  program whose answers are all unchanged and builds the others, so the
+  graph is the same as without the cache. On TanStack Query a run with
+  nothing changed takes 1.7 s instead of 213 s, and an edit in one example
+  app 9.8 s; an edit in a package most programs import rebuilds those
+  programs. `CODEMAP_TS_CACHE=0` turns it off. `benchmarks/typescript.md`
+  has the scenarios.
 - A function a library hands back (`const [x, setX] = useState()`, a
   solid-js setter) is a call to that library, `inferred`, named by its
   declared type (`react.Dispatch`) or by the function that returned it

@@ -147,6 +147,38 @@ what they emit share a program.
 - Keep each program's result keyed by the hashes of the files it loaded, and skip a program whose
   files did not change on the next index.
 
+## Program cache
+
+Each program's results are kept with every question the program asked while it was built and
+analyzed (files read and a hash of their content, files and directories looked for, `realpath`,
+`@types` directories, which files are the repository's and which are tests), under a key of the
+helper's own code, the TypeScript and Node versions, the configs' options and file lists, the files
+the program owns and the workspace packages. A run asks the questions again and replays a program
+when every answer is the same; otherwise it builds and analyzes the program as before.
+
+Six cases on TanStack Query with its dependencies, applied one after another to the isolated copy and
+then reverted. Each was compared with a run without the cache on the same tree: every edge (in
+order), every node and every count was the same in all of them.
+
+| Case | Change | Programs replayed (個) | Programs built (個) | Why rebuilt | With the cache (ms) | Without the cache (ms) | Graph |
+|---|---|---:|---:|---|---:|---:|---|
+| 1 | none, empty cache (first run) | 0 | 54 | no entry | 176771 | 213267 | same; cache written: 54 entries, 78 MB |
+| 2 | none, warm (two runs) | 54 | 0 | | 1696 and 1802 | 213267 | same |
+| 3 | two calls added in `examples/react/basic/src/index.tsx` | 53 | 1 | content | 9834 | 168650 | same; 2 edges more than case 2 |
+| 4 | one call added in `packages/query-core/src/queryClient.ts` | 4 | 50 | content: 50 programs read query-core's source | 168051 | 173132 | same; 2 edges more |
+| 5a | a new file in `examples/react/simple/src` | 53 | 1 | its program owns another file | 9393 | 172789 | same |
+| 5b | `packages/query-core/src/__tests__/subscribable.test.tsx` deleted | 53 | 1 | its program owns one file fewer | 29136 | 169127 | same; 94 edges fewer |
+| 6 | an option in `examples/vue/basic/tsconfig.json` and a line in goober's `.d.ts` in `node_modules` | 23 | 31 | 1 config, 30 programs that read goober | 112522 | 172606 | same |
+
+Times are the helper's own; the run without the cache varied between 168 s and 213 s on this
+machine. A warm run spends its time reading the configs (0.5 s) and asking the questions again
+(reading and hashing every file the programs read). The unit test (`TsProgramCache`) covers the same
+kinds of change on the fixture, including a missing package that gets installed (a lookup, not a
+content change).
+
+A program is the unit: case 4 shows its limit. A body changed in a package that 50 programs import
+rebuilds those 50, though only one function's calls changed.
+
 ## Cost to watch
 
 TanStack Query with its dependencies: 54 programs (36 of them a single example or integration app

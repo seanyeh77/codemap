@@ -114,6 +114,15 @@ def packages_of(root):
     return [p.relative_to(root).as_posix() for p in walk(root) if p.name == "package.json"]
 
 
+def _program_cache(root):
+    """Where the helper keeps each program's results between runs (.codemap/cache/typescript), or None
+    with CODEMAP_TS_CACHE=0. An entry is used only when every file and lookup its program depended on
+    is unchanged, so the graph is the same with or without it."""
+    if os.environ.get("CODEMAP_TS_CACHE") == "0":
+        return None
+    return str(Path(root).resolve() / ".codemap" / "cache" / "typescript")
+
+
 def build(root, files, tests=None):
     """The partial index for the TS/JS files, or None (with the reason on stderr) to fall back."""
     node = os.environ.get("CODEMAP_NODE") or shutil.which("node")
@@ -129,7 +138,8 @@ def build(root, files, tests=None):
         flags = ["--max-old-space-size=8192"] + (["--expose-gc"] if os.environ.get("CODEMAP_TS_PROFILE") else [])
         p = subprocess.run([node, *flags, str(HELPER)],
                            input=json.dumps(dict(root=str(Path(root).resolve()), files=files, tests=tests or [],
-                                                 configs=configs, packages=packages_of(root), ts=str(pkg))),
+                                                 configs=configs, packages=packages_of(root), ts=str(pkg),
+                                                 cache=_program_cache(root))),
                            capture_output=True, text=True, timeout=3600)
         if p.returncode != 0:
             raise RuntimeError((p.stderr.strip().splitlines() or ["?"])[-1])
