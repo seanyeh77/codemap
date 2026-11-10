@@ -379,7 +379,7 @@ def _params(root, f):
 
 # ---- files the code writes ----------------------------------------------
 
-WRITE_CALL = re.compile(r"(?<![\w.>])(fopen|fopen64|freopen|open|open64|openat|creat|creat64)\s*\(")
+WRITE_CALL = re.compile(r"(?<![\w.>])(fopen|fopen64|freopen|open|open64|openat|creat|creat64|shm_open)\s*\(")
 
 
 def _name_of(arg, text, before, params):
@@ -405,7 +405,8 @@ def _name_of(arg, text, before, params):
 
 
 def writes(root, funcs):
-    """[{fid, f, l, call, name? | runtime, format?, param?}]: calls that create or write a file."""
+    """[{fid, f, l, call, name? | runtime, format?, param?}]: calls that create or write a file, and
+    POSIX shared memory objects created with shm_open(O_CREAT) (/dev/shm/ibtrace.<pid>)."""
     out = []
     for fid, f, text, at in _bodies(root, funcs):
         params = None
@@ -420,7 +421,8 @@ def writes(root, funcs):
                 path = args[0] if args else ""
             else:
                 flags = args[2] if call == "openat" and len(args) > 2 else args[1] if len(args) > 1 else ""
-                if not re.search(r"\bO_(CREAT|WRONLY|RDWR|APPEND|TRUNC)\b", flags):
+                # a shared memory object is made only with O_CREAT; opening one that exists writes nothing new
+                if not re.search(r"\bO_CREAT\b" if call == "shm_open" else r"\bO_(CREAT|WRONLY|RDWR|APPEND|TRUNC)\b", flags):
                     continue
                 path = args[1] if call == "openat" else args[0]
             if params is None:
@@ -642,11 +644,46 @@ def at_load(edges):
     return sorted({e["d"] for e in edges if e.get("k") in ("constructor", "destructor")})
 
 
+# what creates something that outlives the process, and what removes it
+REMOVE = {"shm_open": "shm_unlink", "sem_open": "sem_unlink", "mq_open": "mq_unlink", "mkfifo": "unlink"}
+CREATE_CALL = re.compile(r"(?<![\w.>])(shm_open|sem_open|mq_open|mkfifo)\s*\(")
+
+
+def leftovers(root, funcs, edges):
+    """Objects that stay after the process ends unless someone removes them: a shared memory
+    segment, a named semaphore or queue made with O_CREAT, a FIFO. For each: who removes it
+    (shm_unlink in ibt_ring_unlink, reached from ibmon_reader_close), and the calls that end the
+    program in the components that create it, which skip the removal if they come before it.
+    -> [{fid, f, l, call, remove, removed: [{fid, f, l, via: [fid]}], stops: [{fid, f, l, name}]}]"""
+    out = []
+    callers = {}
+    for e in edges:
+        if e.get("src", "compiler") == "compiler" and e.get("s") in funcs and e.get("d") in funcs:
+            callers.setdefault(e["d"], set()).add(e["s"])
+    for fid, f, text, at in _bodies(Path(root), funcs):
+        for m in CREATE_CALL.finditer(text):
+            call = m.group(1)
+            args, _ = _args(text, m.end() - 1)
+            if call != "mkfifo" and not (len(args) > 1 and re.search(r"\bO_CREAT\b", args[1])):
+                continue
+            rm = REMOVE[call]
+            removed = [dict(fid=e["s"], f=e["f"], l=e["l"], via=sorted(callers.get(e["s"], ())))
+                       for e in edges if e.get("src", "compiler") == "compiler" and e.get("dn") == rm and e.get("s") in funcs]
+            # the components that make it: this function's, and those of its callers up to two levels
+            up = {fid} | callers.get(fid, set())
+            up |= {c for x in list(up) for c in callers.get(x, ())}
+            comps = {funcs[x]["comp"] for x in up if x in funcs}
+            ends = [s for s in stops(edges) if funcs.get(s["fid"], {}).get("comp") in comps]
+            out.append(dict(fid=fid, f=f["file"], l=at(m.start()), call=call, remove=rm,
+                            removed=sorted(removed, key=lambda r: (r["f"], r["l"])), stops=ends))
+    return out
+
+
 def worth_checking(root, funcs, edges, files, symbols):
     return dict(stops=stops(edges), arrays=arrays(root, files, symbols), env=unchecked_env(root, funcs),
                 env_if_unset=env_if_unset(root, funcs), errors=error_codes(root, funcs),
                 plain_writes=plain_writes(root, funcs, files), limits=silent_limits(root, funcs),
-                loss=data_loss(root, funcs, edges))
+                loss=data_loss(root, funcs, edges), leftovers=leftovers(root, funcs, edges))
 
 
 def macro_value(root, funcs, name):
@@ -858,13 +895,13 @@ def uncompiled_calls(root, funcs, edges):
 # ---- what the project's comments say about an environment variable ---------------------------------
 
 def comment_blocks(text):
-    """(first line, joined text) of every comment block: /* ... */ and runs of // lines."""
-    out, i, n = [], 0, len(text)
+    """(first line, joined text, raw text) of every comment block: /* ... */ and runs of // lines."""
+    out = []
     for m in re.finditer(r"/\*.*?\*/|(?://[^\n]*\n?)+", text, re.S):
         body = m.group(0)
         body = re.sub(r"^/\*+|\*+/$", "", body.strip())
         body = re.sub(r"(?m)^\s*(\*|//+)\s?", "", body)
-        out.append((text.count("\n", 0, m.start()) + 1, " ".join(body.split())))
+        out.append((text.count("\n", 0, m.start()) + 1, " ".join(body.split()), m.group(0)))
     return out
 
 
@@ -880,7 +917,8 @@ def env_comments(root, files, names):
     for rel in sorted(files):
         if not rel.endswith((".c", ".h")):
             continue
-        for line, body in comment_blocks(lines_text(root / rel)):
+        for line, body, raw in comment_blocks(lines_text(root / rel)):
+            seen = {}
             # sentences end at . ! ? before a capital or a parenthesis: not inside ./ibmon or /ibtrace.<pid>
             ends = [x.end() for x in re.finditer(r"[.!?](?=\s+[A-Z(])", body)]
             for m in pat.finditer(body):
@@ -892,7 +930,11 @@ def env_comments(root, files, names):
                     sentence = sentence[:257].rstrip() + "..."
                 # IBTRACE_ALL_POLLS=1: record the empty calls... (an example such as LD_PRELOAD=./other.so is not)
                 defines = bool(re.match(re.escape(name) + r"(=\S+)?(:\s+|\s+[a-z])", sentence)) and len(sentence) >= 25
-                out[name].append(dict(text=sentence, at=f"{rel}:{line}", defines=defines))
+                # the line the name is on, not the first line of the block: trace.h:73, not :66
+                k = seen[name] = seen.get(name, -1) + 1
+                hits = [x.start() for x in re.finditer(r"\b" + re.escape(name) + r"\b", raw)]
+                own = line + raw.count("\n", 0, hits[k]) if k < len(hits) else line
+                out[name].append(dict(text=sentence, at=f"{rel}:{own}", defines=defines))
     for name in out:
         out[name].sort(key=lambda c: (not c["defines"], not c["at"].split(":")[0].endswith(".h"), c["at"]))
     return out

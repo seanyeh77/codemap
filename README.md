@@ -69,6 +69,16 @@ codemap viewer -o site/              # static viewer for a web server; open a .c
 `codemap serve --notes notes.md docs/*.md` lists every file:line in them that no
 longer matches the code.
 
+A matching line says what it rests on: 「呼叫已確認」 (the compiler saw the call)
+or 「名稱出現」 (the cited line holds the note's names; the rest of the sentence,
+such as who sets or reads a value, is not checked).
+
+The overview lists the project's documents (the README, `docs/*.md` and any
+document the code names), each with its first heading and sentence. Under
+「值得檢查的地方」 it also lists what outlives the process: shared memory,
+named semaphores and FIFOs made with `O_CREAT`, who removes them, and the calls
+that end the program in the components that make them.
+
 `codemap serve` listens on localhost. From a laptop, forward the port
 (`ssh -L 7300:localhost:7300 HOST`); VS Code Remote-SSH does this by itself.
 The viewer shows the architecture, call trees (with a predict-then-reveal

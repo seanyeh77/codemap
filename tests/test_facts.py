@@ -155,6 +155,25 @@ class Facts(unittest.TestCase):
         got = facts.env_comments(self.root, ["t.h", "t.c"], {"X_ALL"})["X_ALL"]
         self.assertEqual((got[0]["at"], got[0]["defines"], got[0]["text"]), ("t.h:1", True, "X_ALL=1: record every call one by one."))
 
+    def test_env_comment_line_is_the_sentence_line(self):
+        (self.root / "l.h").write_text("/*\n * A long block about polling.\n * Y_RUNS=0 goes back to dropping them.\n */\n")
+        got = facts.env_comments(self.root, ["l.h"], {"Y_RUNS"})["Y_RUNS"]
+        self.assertEqual(got[0]["at"], "l.h:3")
+
+    def test_leftovers_and_shm_writes(self):
+        (self.root / "s.c").write_text(
+            "int mk(const char *n)\n{\n    return shm_open(n, O_RDWR | O_CREAT, 0600);\n}\n"
+            "int attach(const char *n)\n{\n    return shm_open(n, O_RDWR, 0600);\n}\n"
+            "void rm(const char *n)\n{\n    shm_unlink(n);\n}\n")
+        funcs = {"mk": dict(name="mk", file="s.c", line=1, end=4, comp="c"), "attach": dict(name="attach", file="s.c", line=5, end=8, comp="c"),
+                 "rm": dict(name="rm", file="s.c", line=9, end=12, comp="c"), "close": dict(name="close", file="s.c", line=13, end=13, comp="c")}
+        edges = [dict(s="rm", d="shm_unlink", dn="shm_unlink", f="s.c", l=11, src="compiler"),
+                 dict(s="close", d="rm", f="s.c", l=13, src="compiler")]
+        got = facts.leftovers(self.root, funcs, edges)
+        self.assertEqual([(x["fid"], x["l"], x["remove"]) for x in got], [("mk", 3, "shm_unlink")])     # attach opens, makes nothing
+        self.assertEqual([(r["fid"], r["via"]) for r in got[0]["removed"]], [("rm", ["close"])])
+        self.assertEqual([(w["fid"], w["call"]) for w in facts.writes(self.root, funcs)], [("mk", "shm_open")])
+
     def test_data_loss(self):
         (self.root / "d.c").write_text(
             "static void skip_to(struct r *rd, int n)\n{\n    if (rd->lost == 0)\n        fprintf(stderr, \"overrun\");\n    rd->lost += n;\n}\n"

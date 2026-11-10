@@ -67,6 +67,44 @@ def doc_files(root, limit=2000):
     return set(sorted(str(p.relative_to(root)) for p in walk(root, {".md", ".rst"}))[:limit])
 
 
+def doc_summaries(root, files, sources):
+    """[{file, title, text, cited}] for the project's documents: the first heading, the first
+    sentence of the paragraph under it, and how many source files name the document (a comment
+    such as `see docs/design/ring-overrun.md`). The overview lists them so the most complete
+    explanation is found without a search."""
+    root = Path(root)
+    mds = sorted(f for f in files if f.endswith((".md", ".rst")))
+    texts = {s: "\n".join(lines(root / s)) for s in sources if s.endswith((".c", ".h", ".py", ".sh", "Makefile"))}
+    out = []
+    for f in mds:
+        src = lines(root / f)
+        title, text, i = None, "", 0
+        while i < len(src):
+            ln = src[i].strip()
+            i += 1
+            if title is None:
+                m = re.match(r"#{1,3}\s+(.+)", ln)
+                if m:
+                    title = m.group(1).strip()
+                elif ln and i < len(src) and re.fullmatch(r"[=\-~]{3,}", src[i].strip()):  # reStructuredText
+                    title, i = ln, i + 1
+                continue
+            if not ln or ln.startswith(("#", "---", "```", "|", "<!--", "!", ">")):
+                if text:
+                    break
+                continue
+            # Chinese lines join without a space: 「指令、」 + 「什麼時候」
+            cjk = re.compile(r"[\u3000-\u9fff\uff00-\uffef]")
+            text += ("" if not text or cjk.match(text[-1]) or cjk.match(ln[0]) else " ") + ln
+        # a sentence ends at 。！？ (no space follows in Chinese) or at . ! ? before a space
+        sentence = re.split(r"(?<=[。！？])|(?<=[.!?])\s", text, maxsplit=1)[0] if text else ""
+        sentence = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", sentence)          # links read as their text
+        sentence = re.sub(r"\*\*|__", "", sentence)
+        cited = sum(1 for s, t in texts.items() if f in t or ("/" in f and f.split("/", 1)[1] in t))
+        out.append(dict(file=f, title=title or Path(f).stem, text=sentence[:200], cited=cited))
+    return out
+
+
 DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)(\([^)]*\))?\s*(.*)")
 
 
@@ -219,6 +257,7 @@ def build(root, index, config=None):
                env=index.get("env", {}), env_info=facts.env_meaning(root, funcs, index.get("env", {}), config),
                uncompiled=facts.uncompiled_calls(root, funcs, edges), uncompiled_funcs=facts.uncompiled_funcs(root, funcs),
                readable=readable, symbols=syms,
+               docs=doc_summaries(root, readable, readable),
                phases={k: [ph for ph in v if isinstance(ph, dict) and ph.get("name") and ph.get("from")]
                        for k, v in config.get("phases", {}).items() if isinstance(v, list)},
                build=built, writes=facts.writes(root, funcs),

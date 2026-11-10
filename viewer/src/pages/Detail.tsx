@@ -73,7 +73,10 @@ export function Detail(p: Props) {
         { label: t('元件'), value: f.comp },
         // two rows, each number right after its own word: 「1 個 caller · 0 個 callee」 was read as caller · 0
         { label: t('被誰呼叫'),
-          value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
+          value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}
+            {/* the callers by name, compiler-seen first: a count alone sends people to the flow page to learn who */}
+            {nCallers ? <>{t('：')}{who.names.slice(0, 3).map((n, i) => <span key={n + i}>{i ? t('、') : ''}<UI.InlineCode>{n}</UI.InlineCode></span>)}{nCallers > 3 ? t(' 等') : ''}</> : null}
+            {who.main ? t('。程式的起點，由 C 執行環境在程式啟動時呼叫') : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
         { label: t('呼叫誰'),
           value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次。流程樹的 ×N 是呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}</span> },
         // calls the compiler never saw: inside #if/#ifdef blocks this build leaves out

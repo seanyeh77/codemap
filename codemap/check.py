@@ -216,8 +216,13 @@ def check(root, md_path, index):
             for old, new in fixes:
                 if new:
                     fixed = fixed.replace(f"`{old}`", f"`{new}`", 1)
+            # what a match rests on: every call confirmed by the compiler, or only names seen on the
+            # referenced lines (the rest of the sentence, such as "set by", is not checked)
+            basis = (None if status != "done" else
+                     "calls" if why and all(m.t.endswith("經編譯器確認") for m in why) else
+                     "names" if any("提及" in m.t for m in why) else "exists")
             items.append(dict(at=f"{rel}:{n}", line=n, text=plain(md),
-                              status=status, why="；".join(map(str, bad or review or why)),
+                              status=status, basis=basis, why="；".join(map(str, bad or review or why)),
                               msgs=[m.json() for m in bad or review or why],
                               fix=dict(before=md, after=fixed) if fixed != md else None))
     return dict(file=rel, refs=refs, claims=claims, problems=problems, items=items)

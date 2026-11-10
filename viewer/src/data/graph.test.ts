@@ -30,7 +30,7 @@ describe('Index', () => {
     const callers = ix.callers('src/a/main.c:helper')
     expect(callers.map((e) => e.s)).toEqual(['main', 'run'])
     const x = ix.explain(callers[1])
-    expect(x.label).toBe('推測（規則）')
+    expect(x.label).toMatch(/^推測（規則：.+）$/)
     expect(x.text).toContain('`cb`')
     expect(ix.explain(callers[0]).label).toBe('編譯器確認')
     expect(ix.explain(ix.callees('main', true)[2]).label).toBe('外部')

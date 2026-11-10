@@ -13,6 +13,11 @@ const RULE_NAME: Record<string, string> = {
   fnptr_assign: '函式指標賦值', table_install: '從表格取出函式指標再寫入', param_call: '經由參數呼叫傳入的函式', fnptr_pass: '函式當作參數或表格內容', indirect: '經由函式指標呼叫', ctor: 'constructor / destructor', env: '環境變數',
 }
 const ruleName = (r?: string) => (RULE_NAME[r ?? ''] ? t(RULE_NAME[r ?? '']) : r ?? '')
+/** The same rules in a word or two, for the tag on a line of the flow tree: 「推測（規則：指標賦值）」. */
+const RULE_TAG: Record<string, string> = {
+  fnptr_assign: '指標賦值', table_install: '表格安裝', param_call: '參數呼叫', fnptr_pass: '當作參數', indirect: '指標呼叫', ctor: 'constructor', env: '環境變數',
+}
+const ruleTag = (r?: string) => (r ? t('推測（規則：{v1}）', { v1: RULE_TAG[r] ? t(RULE_TAG[r]) : r }) : t('推測（規則）'))
 
 export class Index {
   readonly funcs: Record<string, Func>
@@ -76,7 +81,7 @@ export class Index {
 
   /** Who calls a function, split the same way on every page: functions the compiler saw, functions a
    *  rule inferred, inferred sources that are not functions (a table, the loader), and the loader. */
-  callerInfo(id: string): { sure: number; guessed: number; others: string[]; load: 'constructor' | 'destructor' | null } {
+  callerInfo(id: string): { sure: number; guessed: number; others: string[]; load: 'constructor' | 'destructor' | null; names: string[]; main: boolean } {
     const sure = new Set<string>(), guessed = new Set<string>(), others = new Set<string>()
     let load: 'constructor' | 'destructor' | null = null
     for (const e of this.callers(id)) {
@@ -85,7 +90,9 @@ export class Index {
       else (e.src === 'rule' ? guessed : sure).add(e.s)
     }
     for (const s of guessed) if (sure.has(s)) guessed.delete(s)
-    return { sure: sure.size, guessed: guessed.size, others: [...others], load }
+    // the names, compiler-seen first; main of a program is called by the C runtime, never by the repo
+    const names = [...sure, ...guessed].map((s) => this.funcs[s].name)
+    return { sure: sure.size, guessed: guessed.size, others: [...others], load, names, main: this.funcs[id]?.name === 'main' && !names.length }
   }
 
   /** The caller count as one short phrase: 「2 個 caller，其中 1 個是推測」. */
@@ -94,7 +101,9 @@ export class Index {
     const n = c.sure + c.guessed
     // nothing in the repo calls it, but a program outside does: say that rather than 「0 caller」
     if (!n && !c.others.length && !c.load && this.funcs[id]?.api) return t('外部進入點：被追蹤的程式呼叫 {v1} 的同名函式時執行', { v1: this.funcs[id].api })
-    const parts = [t('{n} 個 caller', { n }) + (c.guessed ? (c.guessed === n ? t('（推測）') : t('，其中 {n} 個是推測', { n: c.guessed })) : '')]
+    if (!n && c.main) return t('0 個 caller：程式的起點，由 C 執行環境在程式啟動時呼叫')
+    const parts = [t('{n} 個 caller', { n }) + (c.guessed ? (c.guessed === n ? t('（推測）') : t('，其中 {n} 個是推測', { n: c.guessed })) : '')
+      + (n ? t('：{v1}', { v1: list(c.names.slice(0, 3)) + (n > 3 ? t(' 等') : '') }) : '')]
     if (c.others.length) parts.push(t('另有推測的來源：{names}', { names: list(c.others.slice(0, 2)) }))
     if (c.load) parts.push(c.load === 'constructor' ? t('程式載入時自動執行') : t('程式結束時自動執行'))
     const left = this.g.uncompiled?.[id]?.length
@@ -140,7 +149,7 @@ export class Index {
       ? t('標記為 `constructor`：dynamic loader 載入程式或程式庫時，在 main 之前自動執行。以 LD_PRELOAD 載入的程式庫常用它做初始化。')
       : t('標記為 `destructor`：程式結束或程式庫卸載時自動執行。')
     else text = t('由規則「{rule}」推得，編譯器無法確認。', { rule: e.rule ?? '' })
-    return { label: t('推測（規則）'), title: t('推測（規則）'), text }
+    return { label: ruleTag(e.rule), title: t('推測（規則）'), text }
   }
 
   /** The function a file:line falls in, for links in notes such as `ops.c:175`. */

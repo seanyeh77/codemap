@@ -85,6 +85,8 @@ export interface CheckItem {
   line: number
   text: string
   status: 'done' | 'fail' | 'review'
+  /** What a match rests on: calls the compiler confirmed, names seen on the referenced lines, or only that the lines exist. */
+  basis?: 'calls' | 'names' | 'exists' | null
   why: string
   /** the same explanation as templates and values, to show in the reader's language */
   msgs?: { t: string; v: Record<string, string | number | string[] | null> }[]
@@ -139,6 +141,7 @@ export interface Graph {
   build?: BuildInfo | null
   /** Calls that create or write a file. */
   writes?: FileWrite[]
+  docs?: DocSummary[]
   /** Facts worth a look: calls that end the process, fixed-size global arrays, getenv results used unchecked. */
   worth?: {
     stops: { fid: string; f: string; l: number; name: string }[]
@@ -154,6 +157,8 @@ export interface Graph {
     limits?: { silent: Limit[]; said: Limit[] }
     /** counters of what is given up (rd->lost += n): the calls that lead there and the prints that report it */
     loss?: { fid: string; f: string; l: number; var: string; text: string; via: { fid: string; f: string; l: number }[]; said: { fid: string; f: string; l: number }[] }[]
+    /** what stays after the process ends unless removed (shm_open with O_CREAT), who removes it, and calls that end the program in the components that make it */
+    leftovers?: { fid: string; f: string; l: number; call: string; remove: string; removed: { fid: string; f: string; l: number; via: string[] }[]; stops: { fid: string; f: string; l: number; name: string }[] }[]
   }
   /** Calls inside #if/#ifdef blocks the compiler did not record, by the function called. */
   uncompiled?: Record<string, { f: string; l: number; cond: string; by: string }[]>
@@ -215,6 +220,14 @@ export interface BuildInfo {
   goal: string
   built: BuildProduct[]
   install: { what: string[]; to: string; link?: boolean }[]
+}
+
+/** A project document: its first heading and first sentence, and how many source files name it. */
+export interface DocSummary {
+  file: string
+  title: string
+  text: string
+  cited: number
 }
 
 export interface FileWrite {

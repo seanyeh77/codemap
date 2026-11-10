@@ -193,6 +193,20 @@ class Fixture(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["text"], "`use` · `src/lib/lib.c:24`")
         self.assertEqual(items[0]["at"], "ok.md:3")
+        n = next(i for i, ln in enumerate((self.root / "src/lib/lib.c").read_text().splitlines(), 1) if "use" in ln)
+        md.write_text(f"- `use` 在 `src/lib/lib.c:{n}`\n")
+        it = check.check(self.root, md, self.idx)["items"][0]
+        self.assertEqual((it["status"], it["basis"]), ("done", "names"))     # only the names were seen
+
+    def test_doc_summaries(self):
+        d = self.root / "docs"
+        d.mkdir(exist_ok=True)
+        (d / "DESIGN.md").write_text("# 設計：攔截機制\n\n本文說明 tracer 如何取得資料、\n記錄格式為何。其餘見下。\n")
+        (self.root / "cite.c").write_text("/* see docs/DESIGN.md */\n")
+        got = {x["file"]: x for x in view.doc_summaries(self.root, ["docs/DESIGN.md", "cite.c"], ["cite.c"])}
+        (self.root / "cite.c").unlink()
+        self.assertEqual((got["docs/DESIGN.md"]["title"], got["docs/DESIGN.md"]["text"], got["docs/DESIGN.md"]["cited"]),
+                         ("設計：攔截機制", "本文說明 tracer 如何取得資料、記錄格式為何。", 1))
 
     def test_viewer_graph(self):
         g = view.build(self.root, self.idx, {})

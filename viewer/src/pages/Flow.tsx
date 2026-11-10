@@ -173,7 +173,7 @@ export function Flow(p: FlowProps) {
           ? t('找不到 caller：它是外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
           : t('找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。')}</p>
       ) : null}
-      <p className="small muted" data-tour="tree">{t('沒有標示的關係由編譯器確認，標示「推測（規則）」的由 codemap 的規則從原始碼推得。')}</p>
+      <p className="small muted" data-tour="tree">{t('沒有標示的關係由編譯器確認，標示「推測（規則：…）」的由括號裡那條 codemap 規則從原始碼推得。')}</p>
     </UI.Card>
   )
 }

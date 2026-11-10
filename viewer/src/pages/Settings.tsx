@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { UI } from '../ui'
-import { dateTime, setLang, t } from '../i18n'
+import { dateTime, noun, setLang, t } from '../i18n'
 import { usePrefs } from '../data/hooks'
 import { live } from '../data/load'
 import type { Graph, Meta } from '../data/types'
@@ -56,7 +56,7 @@ export function Settings(p: Props) {
           isLive ? { label: t('主機'), value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: t('檔案'), value: <UI.InlineCode>{p.snapName ?? t('此頁面')}</UI.InlineCode> },
           { label: t('路徑'), value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
-          { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。')}>translation unit</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</span> },
+          { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔加上它 include 的標頭檔，編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</span> },
           isLive ? { label: t('索引建立時間'), value: when(p.meta!.indexed) } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [
