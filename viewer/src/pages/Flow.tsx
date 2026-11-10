@@ -11,8 +11,7 @@ interface Entry { fid: string; edge: Edge | null; names: string[]; open: boolean
 /** The call tree handed to TreeList. Only the start's level is built; TreeList loads a node's
  *  children when it is opened (loadChildren). Guess mode: a node, the start included, opens only once revealed. */
 function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolean, predict: boolean, revealed: Record<string, boolean>,
-  openLine: (fid: string, e: Edge, key: string) => void) {
-  const index: Record<string, Entry> = {}
+  openLine: (fid: string, e: Edge, key: string) => void, index: Record<string, Entry> = {}) {
   const stageIds: string[] = []
   const kidsOf = (fid: string) => (dir === 'down' ? ix.callees(fid, showExt) : ix.callers(fid))
   function node(nid: string, e: Edge | null, key: string, path: string[], parent: string, sites: Edge[] = []): TreeNode {
@@ -125,7 +124,16 @@ interface FlowProps {
 export function Flow(p: FlowProps) {
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [guesses, setGuesses] = useState<Record<string, string>>({})
-  const tree = useMemo(() => buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.onSel), [p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.onSel])
+  // the rows TreeList already opened keep their entries when the tree is built again (a reveal, a new
+  // selection handler): a new, empty index would leave an open row's children unknown ("reading 'kids'")
+  const selRef = useRef(p.onSel)
+  useEffect(() => { selRef.current = p.onSel })
+  const kept = useRef<{ for: string; index: Record<string, Entry> }>({ for: '', index: {} })
+  const tree = useMemo(() => {
+    const id = [p.start, p.dir, p.showExt, p.predict].join('|')
+    if (kept.current.for !== id) kept.current = { for: id, index: {} }
+    return buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, (fid, e, key) => selRef.current(fid, e, key), kept.current.index)
+  }, [p.ix, p.start, p.dir, p.showExt, p.predict, revealed])
   const selKey = p.selKey && tree.index[p.selKey] ? p.selKey : 'root'
   const { onSel, start } = p
   // a selection made on another page is not in this tree: select the start, so the tree and Detail agree

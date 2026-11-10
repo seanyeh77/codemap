@@ -102,3 +102,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .to-flow svg { margin-left: 2px; vertical-align: -2px; }
 .entry-row.indent { padding-left: var(--space-4); }
 .to-flow { white-space: nowrap; } .to-flow svg { display: inline-block; }
+
+/* a statement that asks for action, in the warning text color */
+.warn-text { color: var(--warning-text); }

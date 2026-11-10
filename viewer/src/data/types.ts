@@ -249,6 +249,8 @@ export interface Meta {
   root: string
   capabilities: Capabilities
   indexed: number
+  /** source files changed on disk after the index was built */
+  changed?: string[]
   repo: string
   commit: string | null
   dirty: string[]

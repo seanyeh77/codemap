@@ -73,7 +73,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
                 {t('：{v1}）。', { v1: Object.entries(Object.values(p.ix.funcs).reduce<Record<string, number>>((m, f) => (f.api ? { ...m, [f.api]: (m[f.api] ?? 0) + 1 } : m), {})).sort().map(([a, n]) => `${a} ${n}`).join(t('、')) })}
               </p>
             ) : null}
-            <p className="small muted">{t('只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>
+            <p className="small muted">{t('直接：呼叫它的函式；間接：再往上呼叫它們的函式，一路到程式的入口。只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>
           </div>
         ) : (
           <div>

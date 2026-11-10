@@ -394,19 +394,22 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const applies = (k: string) => covers(k).some((l) => langs.has(l))
   const inLangs = (k: string, by: Record<string, string>) => covers(k).filter((l) => langs.has(l) && by[l]).map((l) => t(by[l])).join(t('；'))
   const skipped = WORTH.filter(([k]) => !applies(k))
+  // outside C, a function named main that is not a test: the command line's entry
+  const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module').map(([id]) => id)
   // in a C repository the program is its C code: Python there is tools and tests, as with the variables above
   const cFile = (f: string) => /\.(c|h|cc|cpp|cxx|hpp|hh)$/.test(f)
   const stops = (g.worth?.stops ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
   const writes = (g.writes ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
   const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
-  const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram))
+  // a variable the program only sets (PYTHONPATH for a child process) belongs here too, outside a C repository
+  const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram) || (!cRepo && v.set.some(inProgram)))
   const others = Object.keys(g.env ?? {}).length - env.length
   const where = (refs: string[]) => refs.filter(inProgram).map((r) => (fname(r) ? t('{v1}（{v2}）', { v1: fname(r), v2: r.split('/').pop() }) : r))
   return (
     <UI.Card className="detail fit overview" title={t('概觀')}>
       <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
       <nav className="toc" aria-label={t('概觀的段落')} data-tour="arch">
-        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size || installed.size || fwEntries.size).filter(([id]) => id !== 'ov-env' || env.length)
+        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length).filter(([id]) => id !== 'ov-env' || env.length)
           .filter(([id]) => id !== 'ov-docs' || g.docs?.length).filter(([id]) => id !== 'ov-build' || g.build).filter(([id]) => id !== 'ov-writes' || g.writes).filter(([id]) => id !== 'ov-worth' || g.worth)
           .map(([id, label]) => <button key={id} type="button" className="linklike" onClick={() => jump(id)}>{t(label)}</button>)}
       </nav>
@@ -422,10 +425,12 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，顯示元件主要檔案（main.c、__init__.py 或只有一個檔案時那個檔案）的開頭註解；沒有主要檔案時列出各檔案的。元件的用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
       </section>
       {g.docs?.length ? <Docs docs={g.docs} /> : null}
-      {lifecycle.length || apis.size || installed.size || fwEntries.size ? (
+      {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length ? (
         <section>
           <h3 className="small" id="ov-entry" tabIndex={-1}>{t('進入與結束')}</h3>
           <UI.DetailList items={[
+            // a program's own entry outside C (main, or code run as a script): where a command line starts
+            ...mains.map((id) => ({ label: t('程式入口'), value: <span>{line(id, 'main' + id)}{p.ix.callerInfo(id).sure ? <span className="muted">{t('（由 {v1} 呼叫）', { v1: list(p.ix.callerInfo(id).names.slice(0, 2)) })}</span> : null}</span> })),
             ...lifecycle.map((e, i) => ({
               label: e.k === 'constructor' ? t('載入時自動執行') : t('結束時自動執行'),
               value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.d)}>{p.ix.funcs[e.d].name}</button>{t('（{v1}）', { v1: p.ix.funcs[e.d].comp })}{' '}{at(`life${i}`, p.ix.funcs[e.d].file, p.ix.funcs[e.d].line)}
@@ -576,7 +581,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             value: <span>{fn(e.fid)}{e.use !== e.l ? t(' 在第 {v1} 行使用：', { v1: e.use }) : t(' 直接使用：')}{at(`env${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。每個 getenv 的結果在使用前都檢查過 NULL，或直接回傳給呼叫者。')}</p>}
           </> : null}
-                  {skipped.length ? <p className="small muted">{t('只適用於 {v1} 的檢查沒有列出，這個專案沒有這種程式碼：{v2}。', { v1: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')), v2: skipped.map(([, title]) => t(title)).join(t('、')) })}</p> : null}
+                  {skipped.length ? <p className="small muted">{t('另有 {v1} 項檢查只適用於 {v2}，這個專案沒有這種程式碼，所以不列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })}</p> : null}
         </section>
       ) : null}
     </UI.Card>

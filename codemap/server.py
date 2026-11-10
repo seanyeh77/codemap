@@ -76,7 +76,15 @@ def create_app(root, notes=None, allowed_hosts=None):
     def meta():
         """Repository, commit, uncommitted files and what this server can do."""
         c = index()
-        return dict(root=str(root), capabilities=CAPABILITIES, indexed=int(c["mtime"]), **view.repo_info(root))
+        # source files changed on disk after the index was built: their calls on the pages may be out of date
+        changed = []
+        for f in sorted({n["file"] for n in c["graph"].get("funcs", {}).values() if n.get("file")}):
+            try:
+                if (root / f).stat().st_mtime > c["mtime"]:
+                    changed.append(f)
+            except OSError:
+                changed.append(f)
+        return dict(root=str(root), capabilities=CAPABILITIES, indexed=int(c["mtime"]), changed=changed, **view.repo_info(root))
 
     @app.get("/api/graph")
     def graph():

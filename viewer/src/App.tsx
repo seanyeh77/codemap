@@ -174,7 +174,9 @@ function Shell(p: ShellProps) {
     // what a line outside every function is: a macro, a file-scope variable, or just text there
     const symAt = new Map((ix.g.symbols ?? []).map((s) => [`${s.file}:${s.line}`, s]))
     return hits.slice(0, 30).map((h): PaletteItem => {
-      const fid = Object.keys(ix.funcs).find((id) => { const f = ix.funcs[id]; return f.file === h.file && f.line <= h.line && h.line <= f.end })
+      // the innermost definition around the line: a method, not the class that holds it
+      const fid = Object.keys(ix.funcs).filter((id) => { const f = ix.funcs[id]; return f.file === h.file && f.line <= h.line && h.line <= f.end })
+        .sort((a, b) => ix.funcs[b].line - ix.funcs[a].line)[0]
       const kind = /^\s*(\/\/|\/\*|\*|#(?!\s*(include|define|if|ifdef|ifndef|else|elif|endif|pragma|undef)\b))/.test(h.text) && textKind(h.file) !== '文件' ? '註解' : textKind(h.file)
       // a C line outside every indexed function: either between functions, or in a file the build does not compile
       const where = fid ? ` · ${ix.funcs[fid].name}` : kind !== '程式碼' && kind !== '測試' ? ''
@@ -183,7 +185,7 @@ function Shell(p: ShellProps) {
           ?? (indexed.has(h.file) || symAt.has(`${h.file}:${h.line}`)
             ? ((s) => s ? ` · ${t(s.kind === 'macro' ? '{v1} 巨集定義' : '{v1} 全域變數宣告', { v1: s.name })}`
               : /^#\s*define\b/.test(h.text) ? ` · ${t('巨集定義')}` : ` · ${t('在函式之外')}`)(symAt.get(`${h.file}:${h.line}`))
-            : ` · ${t('這個檔案不在 build 裡，只找得到文字，沒有呼叫關係')}`)
+            : ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? ` · ${t('在函式之外')}` : ` · ${t('這個檔案不在 build 裡，只找得到文字，沒有呼叫關係')}`)
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
         detail: `${h.file}:${h.line}` + where, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
@@ -199,7 +201,12 @@ function Shell(p: ShellProps) {
     const files = ranked.filter((r) => r.kind === '檔案')
     return [...ranked.filter((r) => r.kind !== '檔案'), ...code, ...files, ...textHits.filter((h) => h.kind !== '程式碼')]
   }, [ranked, textHits, query])
-  const tour = UI.useTour('codemap')
+  // the tour starts only when asked: opened by itself on a first visit it covered the page, and readers who
+  // came for one answer had to find 「略過」 first. A first visit shows an offer instead (welcome, below)
+  const seenTour = UI.useTour('codemap')
+  const [tourOpen, setTourOpen] = useState(false)
+  const [welcome, setWelcome] = useState(() => !seenTour.seen)
+  const tour = { open: tourOpen, start: () => { setWelcome(false); setTourOpen(true) }, close: () => { seenTour.close(); setTourOpen(false) } }
   const [tourStep, setTourStep] = useState(0)
   const beforeTour = useRef<{ view: View; comp: string; edge: string } | null>(null)
 
@@ -306,7 +313,10 @@ function Shell(p: ShellProps) {
       const sec = t.sec
       if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)     // after the overview is drawn, and again once its lists have settled
     }
+    else if (t.type === 'file' && ((hit) => !!hit && ix.funcs[hit.id].line === t.l)(ix.at(`${t.f}:${t.l}`))) goFlow(ix.at(`${t.f}:${t.l}`)!.id)   // the line that defines a function: the function, with its callers
     else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
+    // a function chosen in the search: focus its name in the detail panel, where a screen reader hears what was opened
+    if (t.type === 'func' || t.type === 'line' || t.type === 'file') for (const ms of [120, 400]) setTimeout(() => document.getElementById('detail-title')?.focus(), ms)
   }
   function tourGo(i: number) {
     setTourStep(i)
@@ -390,6 +400,14 @@ function Shell(p: ShellProps) {
             footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setView('settings') }}>{t('所有資料來源設定')}</a>} />
         </UI.TopBar>
         {snapAlert}
+        {welcome && view !== 'settings' ? (
+          <div className="alert-wrap">
+            <UI.Alert tone="info" title={t('第一次使用 codemap')} actionLabel={t('開始導覽')} onAction={tourStart}
+              onDismiss={() => { setWelcome(false); seenTour.close() }}>
+              {t('五個步驟介紹架構、搜尋（Ctrl K）、流程、影響範圍與檢查筆記。')}
+            </UI.Alert>
+          </div>
+        ) : null}
         {view === 'settings'
           ? <Settings graph={p.graph} meta={p.meta} cat={cat} setCat={setCat} snapName={p.snapName} hasLive={p.hasLive}
               backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
@@ -464,7 +482,7 @@ function paletteItems(ix: Index): PaletteItem[] {
   const ext = new Map<string, string[]>()
   for (const e of ix.g.edges) if (written(e) && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
-    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算 compile_commands.json 裡的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
+    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處', { v1: new Set(callers).size, v2: callers.length }) : t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算 compile_commands.json 裡的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }
   // ideas a reader searches for by name, answered on the overview
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],
