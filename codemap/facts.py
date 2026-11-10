@@ -1245,13 +1245,11 @@ SUBPROCESS = ("subprocess.run", "subprocess.Popen", "subprocess.call", "subproce
               "os.system", "os.execvp", "os.execv", "os.spawnvp", "asyncio.create_subprocess_exec")
 
 
-def py_commands(root, funcs, edges):
-    """[{fid, f, l, call, cmd, timeout?, shell?, via?: [{fid, f, l, cmd}]}]: the commands a Python program
-    runs. A function that runs a command built from its own parameters (_run(namespace, argv)) is a
-    wrapper: each place that calls it with literal arguments is listed under it, as the command it makes,
-    through up to three wrappers (_ns(ns, *argv) -> _run(argv))."""
+def _expander(root, funcs, edges):
+    """The helpers py_commands and py_write_targets share: parse trees, find calls and parameters,
+    and expand a text with {param} placeholders through the places that call the function."""
     import ast
-    trees, out = {}, []
+    trees = {}
 
     def tree(f):
         if f not in trees:
@@ -1334,6 +1332,19 @@ def py_commands(root, funcs, edges):
             via += deeper if deeper else [dict(fid=c["s"], f=c["f"], l=cn.lineno, cmd=cmd)]
         return via
 
+    return dict(expand=expand, tree=tree, call_at=call_at, defn=defn, params_of=params_of, local_value=local_value)
+
+
+def py_commands(root, funcs, edges):
+    """[{fid, f, l, call, cmd, timeout?, shell?, via?: [{fid, f, l, cmd}]}]: the commands a Python program
+    runs. A function that runs a command built from its own parameters (_run(namespace, argv)) is a
+    wrapper: each place that calls it with literal arguments is listed under it, as the command it makes,
+    through up to three wrappers (_ns(ns, *argv) -> _run(argv))."""
+    import ast
+    out = []
+    h = _expander(root, funcs, edges)
+    expand, call_at, params_of, local_value = h["expand"], h["call_at"], h["params_of"], h["local_value"]
+
     done = set()
     for e in edges:
         # an exec edge, or a plain call to subprocess.Popen and the like (the backend does not mark every one)
@@ -1411,3 +1422,17 @@ def py_spawns(root, funcs, edges):
                 out.append(dict(fid=e["s"], f=e["f"], l=e["l"], call=ast.unparse(n.func), target=e["d"]))
                 break
     return sorted({(o["f"], o["l"], o["target"]): o for o in out}.values(), key=lambda o: (o["f"], o["l"]))
+
+
+def py_write_targets(root, funcs, edges, writes):
+    """A file written through a parameter (_atomic_json(path, data) writes {path}): what each caller passes,
+    as [{fid, f, l, name}] under the write's "via". Changes writes in place and returns them."""
+    h = _expander(root, funcs, edges)
+    for w in writes:
+        if w.get("param") and w.get("fid") in funcs and lang_of(w.get("f", "")) == "python":
+            via = h["expand"](w["fid"], "{" + w["param"] + "}", 0)
+            if via:
+                # {STATE_DIR / 'topology.json'}: the whole name is one expression; the braces add nothing
+                bare = lambda t: t[1:-1] if t.startswith("{") and t.endswith("}") and t.count("{") == 1 else t
+                w["via"] = [dict(fid=v["fid"], f=v["f"], l=v["l"], name=bare(v["cmd"])) for v in via[:20]]
+    return writes

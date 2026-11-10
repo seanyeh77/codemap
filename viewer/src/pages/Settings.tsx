@@ -52,7 +52,7 @@ export function Settings(p: Props) {
     if (k === 'theme') UI.setTheme(v as Prefs['theme'])
     if (k === 'lang') setLang(v as Prefs['lang'])
     if (k === 'showExtDefault') p.onShowExtDefault(v as boolean)
-    setToast('已儲存')
+    setToast(t('已儲存'))
     clearTimeout(timer.current)
     timer.current = setTimeout(() => setToast(''), 3000)
   }

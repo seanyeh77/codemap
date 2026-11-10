@@ -322,4 +322,6 @@ export interface FileWrite {
   param?: string
   /** the expression that holds the name */
   expr?: string
+  /** a name that comes in as a parameter: what each caller passes */
+  via?: { fid: string; f: string; l: number; name: string }[]
 }

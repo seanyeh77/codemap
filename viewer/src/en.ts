@@ -733,7 +733,12 @@ export const EN: Record<string, string> = {
   "流程、影響範圍與搜尋預設不列出測試程式碼；在設定頁開啟「包含測試程式碼」後會列出。": "The flow, impact and search pages leave test code out by default; turn on Include test code in Settings to list it.",
   "背景工作": "Background task",
   "（由 {v1} 以 {v2} 啟動，": " (started by {v1} with {v2}, ",
-  "；呼叫的是 {v1}": "; calls {v1}",
   "只列 except Exception、except BaseException 與不寫型別的 except，而且處理區塊裡沒有再 raise 的；指定型別的 except 不列。": "Only except Exception, except BaseException and bare except whose block does not raise again; an except naming a specific type is not listed.",
   "另有 {v1} 個測試函式呼叫它，沒有列出；在設定頁開啟「包含測試程式碼」後會列出。": "{v1} test functions also call it and are not listed; turn on Include test code in Settings to list them.",
+  "檔名由呼叫者傳入，各呼叫處傳入的檔名列在下面；": "the caller passes the name in; each call and the name it passes are listed below; ",
+  "；這行呼叫的是 {v1} 的定義": "; this line calls the definition at {v1}",
+  "匯入或列出名稱": "import or name list",
+  "提到這個名稱，不是呼叫": "mentions the name, not a call",
+  "測試程式碼沒有列入：另有 {v1} 個測試函式呼叫上面這些函式；在設定頁開啟「包含測試程式碼」後會列出。": "Test code is left out: {v1} test functions also call the functions above; turn on Include test code in Settings to list them.",
+  "已儲存": "Saved",
 }

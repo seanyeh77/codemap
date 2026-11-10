@@ -107,3 +107,16 @@ class Spawns(unittest.TestCase):
                      dict(s="app.py:App.other", d="app.py:App._loop", f="app.py", l=12, k="ref")]   # print() is not a spawner
             self.assertEqual([(x["fid"], x["call"], x["target"]) for x in facts.py_spawns(d, funcs, edges)],
                              [("app.py:App.__init__", "hub.spawn", "app.py:App._loop")])
+
+
+class WriteTargets(unittest.TestCase):
+    def test_names_from_callers(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "app.py").write_text(SRC)
+            funcs = {"app.py:save": dict(name="save", file="app.py", line=5, end=9),
+                     "app.py:log": dict(name="log", file="app.py", line=17, end=21)}
+            Path(d, "use.py").write_text("from app import save\n\n\ndef run():\n    save(STATE / 'out.json', '{}')\n")
+            funcs["use.py:run"] = dict(name="run", file="use.py", line=4, end=5)
+            edges = [dict(s="use.py:run", d="app.py:save", f="use.py", l=5, k="call")]
+            w = [x for x in facts.py_write_targets(d, funcs, edges, facts.writes(d, funcs)) if x.get("via")]
+            self.assertEqual([(x["l"], [v["name"] for v in x["via"]]) for x in w], [(9, ["STATE / 'out.json'"])])

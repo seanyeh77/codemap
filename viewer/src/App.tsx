@@ -193,9 +193,17 @@ function Shell(p: ShellProps) {
       // a call on this line to a name defined more than once: which definition it reaches
       const twinCalls = fid ? [...new Set(ix.callees(fid, true).filter((e) => e.l === h.line && e.f === h.file && ix.funcs[e.d]
         && Object.values(ix.funcs).some((g) => g !== ix.funcs[e.d] && g.name.split('.').pop() === ix.funcs[e.d].name.split('.').pop())).map((e) => e.d))] : []
-      const reaches = twinCalls.length ? t('；呼叫的是 {v1}', { v1: twinCalls.map((d) => `${ix.funcs[d].file}:${ix.funcs[d].line}`).join(t('、')) }) : ''
+      const reaches = twinCalls.length ? t('；這行呼叫的是 {v1} 的定義', { v1: twinCalls.map((d) => `${ix.funcs[d].file}:${ix.funcs[d].line}`).join(t('、')) }) : ''
+      // a name searched for: whether this line calls it, imports it, defines it, or only mentions it
+      const ident = /^[A-Za-z_]\w*$/.test(typed) ? typed : ''
+      const role = !ident || !new RegExp(`\\b${ident}\\b`).test(h.text) ? ''
+        : new RegExp(`^\\s*(async\\s+)?(def|class|func|function)\\s+${ident}\\b`).test(h.text) ? t('定義')
+        : /^\s*(from\s+\S+\s+)?import\b/.test(h.text) || (/^\s*[\w.]+,?\s*$/.test(h.text) && /\.py$/.test(h.file)) ? t('匯入或列出名稱')
+        : fid && ix.callees(fid, true).some((e) => e.l === h.line && e.f === h.file && (ix.funcs[e.d]?.name ?? ix.bareName(e.d, e)).split('.').pop() === ident) ? t('呼叫')
+        : t('提到這個名稱，不是呼叫')
+      const roleText = role ? ` · ${role}` : ''
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
-        detail: `${h.file}:${h.line}` + where + reaches, target: { type: 'file', f: h.file, l: h.line } }
+        detail: `${h.file}:${h.line}` + where + roleText + reaches, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
   }, [typed, isLive, grepLive.data, ix])
   const ranked = useMemo(() => rank(palette, query, 40), [palette, query])
@@ -316,14 +324,15 @@ function Shell(p: ShellProps) {
     if (t.type === 'func') (view === 'impact' ? goImpact : goFlow)(t.id)
     else if (t.type === 'comp') { setSelComp(t.id); setSelEdge(''); setView('arch') }
     else if (t.type === 'page') setView(t.id)
-    else if (t.type === 'line') goFlow(t.fid, { f: t.f, l: t.l })
+    // on the impact page a hit stays there: the function it is in becomes the one whose impact is shown
+    else if (t.type === 'line') (view === 'impact' ? goImpact(t.fid) : goFlow(t.fid, { f: t.f, l: t.l }))
     else if (t.type === 'ext') goImpact(t.id)
     else if (t.type === 'overview') {
       setFileAt(null); setSelComp(''); setSelEdge(''); setView('arch')
       const sec = t.sec
       if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)     // after the overview is drawn, and again once its lists have settled
     }
-    else if (t.type === 'file' && ((hit) => !!hit && ix.funcs[hit.id].line === t.l)(ix.at(`${t.f}:${t.l}`))) goFlow(ix.at(`${t.f}:${t.l}`)!.id)   // the line that defines a function: the function, with its callers
+    else if (t.type === 'file' && ((hit) => !!hit && ix.funcs[hit.id].line === t.l)(ix.at(`${t.f}:${t.l}`))) (view === 'impact' ? goImpact : goFlow)(ix.at(`${t.f}:${t.l}`)!.id)   // the line that defines a function: the function, with its callers
     else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
     // a function chosen in the search: focus its name in the detail panel, where a screen reader hears what was opened
     if (t.type === 'func' || t.type === 'line' || t.type === 'file') for (const ms of [120, 400]) setTimeout(() => document.getElementById('detail-title')?.focus(), ms)

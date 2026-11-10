@@ -744,13 +744,16 @@ function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode;
         value: <span>
           {/* a shared memory object is a file too: it stays in /dev/shm until someone calls shm_unlink */}
           {w.call === 'shm_open' ? t('POSIX shared memory 物件，在 /dev/shm 下，要等 shm_unlink 才會刪除；') : null}
-          {w.name ? null : w.format ? t('檔名在執行時依這個格式組成；') : w.param ? t('檔名在執行時由這個參數傳入；') : w.expr ? t('檔名在執行時取自這個運算式；') : t('檔名在執行時決定；')}
+          {w.name ? null : w.format ? t('檔名在執行時依這個格式組成；') : w.param && w.via?.length ? t('檔名由呼叫者傳入，各呼叫處傳入的檔名列在下面；') : w.param ? t('檔名在執行時由這個參數傳入；') : w.expr ? t('檔名在執行時取自這個運算式；') : t('檔名在執行時決定；')}
           {p.fn(w.fid)}{w.call === 'shm_open' ? t(' 以 shm_open（O_CREAT）建立：')
             : /^(write_text|write_bytes)$/.test(w.call) ? t(' 以 {v1} 寫入：', { v1: w.call })
             : /(replace|rename)$/i.test(w.call) ? t(' 以 {v1} 換成這個檔案：', { v1: w.call })
             : /(copy\w*|move|copyFile\w*)$/.test(w.call) ? t(' 以 {v1} 寫到這裡：', { v1: w.call })
             : /^(os\.Create|os\.WriteFile|ioutil\.WriteFile)$|^fs/.test(w.call) ? t(' 以 {v1} 寫入：', { v1: w.call })
             : t(' 以 {v1} 開啟：', { v1: w.call })}{p.at(`w${i}`, w.f, w.l)}
+          {/* the names the callers pass in: _atomic_json(STATE_DIR / 'controller.json', …) */}
+          {w.via?.length ? <span className="entry-list">{w.via.map((v, j) => (
+            <span key={j} className="entry-row indent"><UI.InlineCode>{v.name}</UI.InlineCode>{' '}{p.fn(v.fid)}{' '}{p.at(`w${i}-${j}`, v.f, v.l)}</span>))}</span> : null}
         </span>,
       }))} /> : <p className="small muted">{p.none ? t('沒有寫入檔案的地方（{v1}）。', { v1: p.none }) : t('這個專案的語言沒有寫入檔案的檢查。')}</p>}
     </section>
