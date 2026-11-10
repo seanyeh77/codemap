@@ -127,6 +127,10 @@ class TsResolve(unittest.TestCase):
         self.assertEqual(self.idx["nodes"]["tests/fakes.test.ts:FakeStore.get"]["scope"], "test")
         self.assertNotIn("scope", self.idx["nodes"]["src/stores.ts:MemStore.get"])
 
+    def test_library_setter(self):
+        # const [n, setN] = useValue(0): the library's function, named by its declared type
+        self.assertEqual(self.how(self.get("counterHook", "fakelib.Setter")), ("inferred", "returned"))
+
     def test_decorators(self):
         # run when the class is defined: from the class, not from the method they mark
         self.assertEqual(self.how(self.get("Api", "Route")), ("exact", "decorator"))

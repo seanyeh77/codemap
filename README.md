@@ -292,9 +292,8 @@ The build is one self-contained `index.html`, so it can be served by
   maps and slices are not followed.
 - TypeScript/JavaScript: values are followed through variables, fields,
   parameters, props, `bind`, `useCallback` and functions that return
-  functions, not through arrays, maps, promises or React state
-  (`const [x, setX] = useState()`: `setX()` stays unresolved, as do calls on
-  `any`). A call through a parameter is `ambiguous` with `partial`: the
+  functions, not through arrays, maps or promises (calls on `any` stay
+  unresolved too); React state setters are the library's functions (below). A call through a parameter is `ambiguous` with `partial`: the
   repository's call sites are known, other callers are not. An interface of a
   library is dispatched only when a class of the repository says it
   implements it; otherwise its methods are named by their type
@@ -305,10 +304,18 @@ The build is one self-contained `index.html`, so it can be served by
   by `implements` and by shape. A file that does not type-check fully (often:
   no `node_modules`) is marked like a Go file.
 - TypeScript cost: the compiler type-checks every file, so indexing takes
-  about twice as long as `tsc --noEmit` (excalidraw, 710 files: 38 s and
-  0.9 GB; TanStack Query, 2,153 files in 54 programs: 66 s and 1.4 GB). Each
-  program that differs in its options (an example app with its own
-  tsconfig) is checked on its own, with the packages it imports.
+  about twice as long as `tsc --noEmit`. Each program that differs in its
+  options (an example app with its own tsconfig) is checked on its own,
+  with the packages and library types it imports. `benchmarks/typescript.md`
+  has the baseline: excalidraw (710 files) 56 s and 1.4 GB with its
+  dependencies installed, TanStack Query (2,153 files, 54 programs) 209 s
+  and 1.9 to 4.8 GB.
+- A function a library hands back (`const [x, setX] = useState()`, a
+  solid-js setter) is a call to that library, `inferred`, named by its
+  declared type (`react.Dispatch`) or by the function that returned it
+  (`@testing-library/react.render()`). This needs the library's types;
+  without `node_modules` those calls stay unresolved. `new C()` of a class
+  whose constructor comes from a library (`extends LitElement`) goes to `C`.
 - TypeScript version: a repository on TypeScript 5 or 6 is read by its own
   compiler (TypeScript 6 is never downgraded). Otherwise codemap uses one
   exact version (5.9.3, `codemap/backends/ts.py`) installed once into its

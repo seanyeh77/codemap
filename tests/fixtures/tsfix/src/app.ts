@@ -72,3 +72,9 @@ export class Api {
   @Route('/users')
   list() { return names(); }
 }
+
+import { useValue } from 'fakelib';
+export function counterHook() {
+  const [n, setN] = useValue(0);
+  setN(n + 1);
+}

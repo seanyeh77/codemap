@@ -478,7 +478,14 @@ function analyze(group) {
   // the values given to each variable, field and parameter, from every file of the program
   phase.program += Date.now() - tp; tp = Date.now();
   const assigns = new Map();
-  const put = (sym, e) => { if (sym) { if (!assigns.has(sym)) assigns.set(sym, []); assigns.get(sym).push(e); } };
+  // one key per declared variable or property: the same prop seen through a union, an intersection or
+  // a mapped type (React's JSX props) is a different symbol object, with the same root declaration
+  const keyOf = (sym) => {
+    const r = checker.getRootSymbols(sym)[0] || sym;
+    return (r.declarations && r.declarations[0]) || r;
+  };
+  const put = (sym, e) => { if (sym) { const k = keyOf(sym); if (!assigns.has(k)) assigns.set(k, []); assigns.get(k).push(e); } };
+  const valuesOf = (sym) => assigns.get(keyOf(sym)) || [];
   const symOf = (n) => { const s = n && checker.getSymbolAtLocation(n); return s && s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s; };
   // subclasses: class declaration -> classes that extend it
   const subs = new Map();
@@ -631,7 +638,7 @@ function analyze(group) {
     const s = symOf(target);
     if (!s) return { ts: [], partial: true };
     const decls = s.declarations || [];
-    if (decls.length && decls.every(outside) && decls.some((d) => fnLike(d) || ts.isFunctionDeclaration(d))) {
+    if (decls.length && decls.every(outside)) {      // a library's function or value (const Check: LucideIcon)
       return { ts: [{ id: ext(placeholder(raw, false) || extName(decls[0])), how: 'funcvalue' }], partial: false };
     }
     const named = decls.map((d) => (fnLike(d) || ts.isVariableDeclaration(d) || ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d) || ts.isBinaryExpression(d.parent)) && idOf(d)).filter(Boolean);
@@ -641,13 +648,13 @@ function analyze(group) {
     }
     if (seen.has(s)) return { ts: [], partial: false };
     seen.add(s);
-    let vals = (assigns.get(s) || []).filter((v) => !(prod && isTestFile(v)));
+    let vals = valuesOf(s).filter((v) => !(prod && isTestFile(v)));
     // {check: Check}: an object's property is what it was written as
     for (const d of decls) if (ts.isPropertyAssignment(d) && !outside(d)) vals = vals.concat([d.initializer]);
     // function Editor({onSave}): what callers give the onSave property
     for (const be of decls.filter((x) => ts.isBindingElement(x) && ts.isObjectBindingPattern(x.parent))) {
       const p = checker.getPropertyOfType(checker.getTypeAtLocation(be.parent), (be.propertyName || be.name).getText());
-      if (p) vals = vals.concat((assigns.get(p) || []).filter((v) => !(prod && isTestFile(v))));
+      if (p) vals = vals.concat(valuesOf(p).filter((v) => !(prod && isTestFile(v))));
     }
     const isParam = decls.some((d) => ts.isParameter(d) || ts.isBindingElement(d));
     if (!vals.length) return { ts: [], partial: true };
@@ -672,7 +679,7 @@ function analyze(group) {
     if (!ts.isIdentifier(target) && !ts.isPrivateIdentifier(target)) return null;
     const s = symOf(target);
     if (!s || (s.declarations || []).some((d) => ts.isParameter(d) || ts.isBindingElement(d))) return null;
-    const vals = (assigns.get(s) || []).filter((v) => !(prod && isTestFile(v)));
+    const vals = valuesOf(s).filter((v) => !(prod && isTestFile(v)));
     if (!vals.length) return null;
     const out = [];
     for (let v of vals) {
@@ -692,7 +699,8 @@ function analyze(group) {
   // new C(): C's constructor, an inherited one, or the class itself when none is written
   function ctorTarget(cls) {
     for (let k = cls; k; ) {
-      if (outside(k)) return { id: ext(extName(k)) };
+      // a repository class whose constructor is inherited from a library: the class itself
+      if (outside(k)) return { id: k === cls ? ext(extName(k)) : idOf(cls) };
       const ctor = k.members.find((m) => ts.isConstructorDeclaration(m) && m.body);
       if (ctor) return { id: idOf(ctor) };
       const e = (k.heritageClauses || []).find((h) => h.token === ts.SyntaxKind.ExtendsKeyword);
@@ -730,6 +738,30 @@ function analyze(group) {
       s = checker.getImmediateAliasedSymbol(s);           // a file of the repository: what it re-exports
     }
     return null;
+  }
+
+  // a function a library handed back: const [x, setX] = useState(), const { mutate } = useMutation(...).
+  // The function is the library's; named by its declared type (react.Dispatch) when it has one, by the
+  // library function that returned it otherwise. Only with types: without them nothing is known.
+  function fromLibrary(decl, nameNode) {
+    let v = decl;
+    while (v && ts.isBindingElement(v)) v = v.parent.parent;           // pattern -> its declaration
+    if (!v || !ts.isVariableDeclaration(v) || !v.initializer) return null;
+    let init = skipOuter(v.initializer);
+    if (ts.isAwaitExpression(init)) init = skipOuter(init.expression);
+    if (!ts.isCallExpression(init)) return null;
+    const callee = skipOuter(init.expression);
+    const cs = checker.getSymbolAtLocation(ts.isPropertyAccessExpression(callee) ? callee.name : callee);
+    const real = cs && cs.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(cs) : cs;
+    const cd = real && (real.declarations || [])[0];
+    if (!cd || !outside(cd)) return null;
+    const t = checker.getTypeAtLocation(nameNode);
+    if (!t.getCallSignatures().length) return null;
+    const alias = t.aliasSymbol && (t.aliasSymbol.declarations || [])[0];
+    if (alias && outside(alias)) return ext(extName(alias));
+    const sig = t.getCallSignatures()[0].declaration;
+    if (sig && outside(sig) && !ts.isFunctionTypeNode(sig)) return ext(extName(sig));
+    return ext((placeholder(cs, false) || extName(cd)) + '()');
   }
 
   // a call of one of React's functions, by its types or, when React is not installed, by its import
@@ -786,7 +818,8 @@ function analyze(group) {
     if (vars.length) {
       const v = fnValues(whole || nameNode, prod);
       if (v.ts.length) return { ts: v.ts.map((t) => Object.assign({ partial: v.partial }, t)), res: 'inferred' };
-      return null;
+      const lib = fromLibrary(vars[0], nameNode);
+      return lib ? { ts: [{ id: lib, how: 'returned' }], res: 'inferred' } : null;
     }
     // an outside class or enum member called as a function: named
     if (decls.length && outside(decls[0])) return { ts: [{ id: ext(extName(decls[0])) }], res: 'exact' };

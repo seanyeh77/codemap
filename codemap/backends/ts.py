@@ -69,10 +69,11 @@ def typescript(root, configs):
         while d != root and root in d.parents:
             dirs.add(d)
             d = d.parent
-    for d in sorted(dirs, key=lambda x: -len(x.parts)):
+    # the outermost one: a monorepo's own compiler is at its root, a package may pin another
+    for d in sorted(dirs, key=lambda x: (len(x.parts), str(x))):
         p = _usable(d / "node_modules" / "typescript")
         if p:
-            return p, "the repository's node_modules"
+            return p, "the repository's node_modules" + ("" if d == root else f" ({d.relative_to(root).as_posix()})")
     cache = _cache()
     p = _usable(cache / "node_modules" / "typescript", VERSION)
     if p:
