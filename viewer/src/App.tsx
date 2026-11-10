@@ -5,6 +5,7 @@ import { early, stopEarly } from './early'
 import { t } from './i18n'
 import { Index, isEnv, production, push } from './data/graph'
 import { usePrefs } from './data/hooks'
+import { prefs } from './prefs'
 import { rank } from './data/search'
 import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
@@ -193,7 +194,8 @@ function Shell(p: ShellProps) {
       // a call on this line to a name defined more than once: which definition it reaches
       const twinCalls = fid ? [...new Set(ix.callees(fid, true).filter((e) => e.l === h.line && e.f === h.file && ix.funcs[e.d]
         && Object.values(ix.funcs).some((g) => g !== ix.funcs[e.d] && g.name.split('.').pop() === ix.funcs[e.d].name.split('.').pop())).map((e) => e.d))] : []
-      const reaches = twinCalls.length ? t('；這行呼叫的是 {v1} 的定義', { v1: twinCalls.map((d) => `${ix.funcs[d].file}:${ix.funcs[d].line}`).join(t('、')) }) : ''
+      // named, so parse_fib(_run(…)) does not read as if parse_fib were the one defined at _run's line
+      const reaches = twinCalls.length ? t('；這行的 {v1}', { v1: twinCalls.map((d) => t('{v1} 呼叫的是 {v2} 的定義', { v1: ix.funcs[d].name.split('.').pop(), v2: `${ix.funcs[d].file}:${ix.funcs[d].line}` })).join(t('、')) }) : ''
       // a name searched for: whether this line calls it, imports it, defines it, or only mentions it
       const ident = /^[A-Za-z_]\w*$/.test(typed) ? typed : ''
       const role = !ident || !new RegExp(`\\b${ident}\\b`).test(h.text) ? ''
@@ -419,11 +421,19 @@ function Shell(p: ShellProps) {
             footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setView('settings') }}>{t('所有資料來源設定')}</a>} />
         </UI.TopBar>
         {snapAlert}
+        {/* an address or a choice that points at test code while test code is hidden: say so, rather than showing main */}
+        {((id) => id && !ix.funcs[id] && p.graph.funcs[id]?.scope === 'test' ? (
+          <div className="alert-wrap">
+            <UI.Alert tone="info" title={t('{v1} 是測試程式碼', { v1: p.graph.funcs[id].name })} actionLabel={t('包含測試程式碼')} onAction={() => prefs.set('tests', true)}>
+              {t('流程、影響範圍與搜尋預設不列出測試程式碼，所以這裡顯示的是別的函式。開啟後會列出它。')}
+            </UI.Alert>
+          </div>
+        ) : null)(chosenStart ?? '')}
         {welcome && view !== 'settings' ? (
           <div className="alert-wrap">
             <UI.Alert tone="info" title={t('第一次使用 codemap')} actionLabel={t('開始導覽')} onAction={tourStart}
               onDismiss={() => { setWelcome(false); seenTour.close() }}>
-              {t('五個步驟介紹架構、搜尋（Ctrl K）、流程、影響範圍與檢查筆記。')}
+              {COARSE ? t('五個步驟介紹架構、搜尋（上方的放大鏡）、流程、影響範圍與檢查筆記。') : t('五個步驟介紹架構、搜尋（Ctrl K）、流程、影響範圍與檢查筆記。')}
             </UI.Alert>
           </div>
         ) : null}

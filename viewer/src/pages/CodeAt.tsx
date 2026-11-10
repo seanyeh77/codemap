@@ -43,6 +43,8 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
   const refs = useCodeRefs(p.ix)
   useEffect(() => { if (src.data) view.current?.focusTarget() }, [src.data, p.at.l])
   return (
+    // Escape inside the file closes it, back to where it was opened from (the panel had no keyboard way out)
+    <div onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); p.onClose() } }}>
     <UI.Card className="detail" title={p.at.f.split('/').pop()} actions={<UI.Button onClick={p.onClose}>{t('關閉檔案')}</UI.Button>}>
       {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
         : src.isPending ? <UI.Skeleton width="80%" height={16} />
@@ -50,5 +52,6 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
         : <><UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh" />
           {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
     </UI.Card>
+    </div>
   )
 }

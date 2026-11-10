@@ -193,7 +193,7 @@ export function Flow(p: FlowProps) {
           )}
         </div>
       ) : null}
-      <div>
+      <div id="flow-tree">
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
           items={tree.items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
           selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />

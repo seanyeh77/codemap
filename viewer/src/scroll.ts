@@ -7,5 +7,7 @@ export function revealTop(el: Element | null, gap = 8) {
   while (s && !(/(auto|scroll)/.test(getComputedStyle(s).overflowY) && s.scrollHeight > s.clientHeight)) s = s.parentElement
   const box = s ?? document.scrollingElement ?? document.documentElement
   const top = el.getBoundingClientRect().top - (s ? s.getBoundingClientRect().top : 0) - gap
-  box.scrollBy({ top, behavior: 'smooth' })
+  // a long way (the overview is several screens tall) goes there at once: a smooth scroll over 8000 px
+  // took over two seconds, and a reader who looks after one second sees some other section
+  box.scrollBy({ top, behavior: Math.abs(top) > 1200 ? 'instant' : 'smooth' })
 }

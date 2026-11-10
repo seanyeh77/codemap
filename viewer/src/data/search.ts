@@ -16,7 +16,8 @@ function matchClass(item: Rankable, q: string, words: string[]): number {
   const label = item.label.toLowerCase()
   const rest = [item.detail ?? '', ...(item.keywords ?? [])].join(' ').toLowerCase()
   if (!words.every((w) => label.includes(w) || rest.includes(w))) return -1
-  if (label === q) return 0
+  // the name itself, with its class in front (VirtualRouter._install_control_flows), before what is nested in it
+  if (label === q || label.endsWith('.' + q)) return 0
   if (label.startsWith(q)) return 1
   if (new RegExp(`(^|[_./\\-\\s])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(label)) return 2
   if (label.includes(q)) return 3

@@ -337,7 +337,7 @@ function Docs(p: { docs: DocSummary[] }) {
       {d.cited ? <><br /><span className="small muted">{t('{v1} 個程式碼或腳本檔提到它', { v1: d.cited, v2: countUnit('', 'source file', 'source files')(d.cited) })}</span></> : null}</span>,
   })
   return (
-    <section>
+    <section aria-labelledby="ov-docs">
       <h3 className="small" id="ov-docs" tabIndex={-1}>{t('專案文件')}</h3>
       <UI.DetailList items={main.map(row)} />
       {rest.length ? <p className="small"><button type="button" className="linklike" aria-expanded={all} onClick={() => setAll(!all)}>{all ? t('收起其餘文件') : t('其餘 {v1} 份文件', { v1: rest.length })}</button></p> : null}
@@ -425,7 +425,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           .filter(([id]) => id !== 'ov-docs' || g.docs?.length).filter(([id]) => id !== 'ov-build' || g.build).filter(([id]) => id !== 'ov-writes' || g.writes).filter(([id]) => id !== 'ov-reads' || reads.length).filter(([id]) => id !== 'ov-worth' || g.worth)
           .map(([id, label]) => <button key={id} type="button" className="linklike" onClick={() => jump(id)}>{t(label)}</button>)}
       </nav>
-      <section>
+      <section aria-labelledby="ov-comps">
         <h3 className="small" id="ov-comps" tabIndex={-1}>{t('元件')}</h3>
         <UI.DetailList items={g.comps.map((c) => ({
           label: c.id,
@@ -453,7 +453,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
       </section>
       {g.docs?.length ? <Docs docs={g.docs} /> : null}
       {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length ? (
-        <section>
+        <section aria-labelledby="ov-entry">
           <h3 className="small" id="ov-entry" tabIndex={-1}>{t('進入與結束')}</h3>
           <UI.DetailList items={[
             // a program's own entry outside C (main, or code run as a script): where a command line starts
@@ -504,11 +504,12 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         </section>
       ) : null}
       {cmds.length ? (
-        <section>
+        <section aria-labelledby="ov-cmds">
           <h3 className="small" id="ov-cmds" tabIndex={-1}>{t('執行的外部指令')}</h3>
           <p className="small muted">{t('{v1} 是執行時才知道的值。經由包裝函式執行的指令，列出每個呼叫它的地方組成的指令。', { v1: '{…}' })}</p>
           <UI.DetailList items={cmds.map((c, i) => ({
-            label: p.ix.funcs[c.fid]?.name ?? c.fid,
+            // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
+            label: ((n) => cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)(p.ix.funcs[c.fid]?.name ?? c.fid),
             value: <span><UI.InlineCode>{c.cmd || c.call}</UI.InlineCode>{' '}{at(`cmd${i}`, c.f, c.l)}
               <span className="muted">{t('（{v1}', { v1: c.call })}{c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')}{c.shell ? t('，shell={v1}', { v1: c.shell }) : ''}{t('）')}</span>
               {c.via?.length ? <span className="entry-list">{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
@@ -518,7 +519,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         </section>
       ) : null}
       {env.length ? (
-        <section>
+        <section aria-labelledby="ov-env">
           <h3 className="small" id="ov-env" tabIndex={-1}>{t('執行期設定（環境變數）')}</h3>
           <UI.DetailList items={env.map(([name, v]) => ({
             label: name,
@@ -534,7 +535,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
       {g.build ? <Products build={g.build} at={at} /> : null}
       {g.writes ? <Writes writes={writes} at={at} fn={fn} none={inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS)} /> : null}
       {reads.length ? (
-        <section>
+        <section aria-labelledby="ov-reads">
           <h3 className="small" id="ov-reads" tabIndex={-1}>{t('讀取的檔案')}</h3>
           <UI.DetailList items={reads.map((r, i) => ({
             label: r.name ?? (r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ?? t('（執行時決定）')),
@@ -543,7 +544,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         </section>
       ) : null}
       {g.worth ? (
-        <section>
+        <section aria-labelledby="ov-worth">
           <h3 className="small" id="ov-worth" tabIndex={-1}>{t('值得檢查的地方')}</h3>
           <p className="small muted">{t('只列出程式碼裡的事實，是否有問題要看實際用法。')}</p>
                     {applies('broad') ? <>
@@ -702,7 +703,7 @@ function Products(p: { build: BuildInfo; at: At }) {
     links.set(k, [...(links.get(k) ?? []), base(i.to)])
   }
   return (
-    <section>
+    <section aria-labelledby="ov-build">
       <h3 className="small" id="ov-build" tabIndex={-1}>{t('建置產物')}</h3>
       <p className="small muted">{t('取自 Makefile（make -n 的結果）。make {v1} 建置 {v2} 個產物：', { v1: p.build.goal, v2: main.length })}</p>
       <UI.DetailList items={main.map((b, i) => ({
@@ -737,7 +738,7 @@ function Products(p: { build: BuildInfo; at: At }) {
 /** Where the code creates or writes files, and the file names when the code spells them out. */
 function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode; none: string }) {
   return (
-    <section>
+    <section aria-labelledby="ov-writes">
       <h3 className="small" id="ov-writes" tabIndex={-1}>{t('寫出的檔案')}</h3>
       {p.writes.length ? <UI.DetailList items={p.writes.map((w, i) => ({
         label: w.name ?? w.format ?? (w.param ? t('參數 {v1}', { v1: w.param }) : w.expr ?? t('（執行時決定）')),
@@ -771,7 +772,8 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
       // the file's own comment, or its header's when the file says it is described there
       meta: docs[f] ? (docs[f].file && docs[f].file !== f ? t('（取自 {v1}）', { v1: docs[f].file!.split('/').pop() }) : '') + short(docs[f].text, 110) : t('{v1} · 沒有說明註解', { v1: f }),
       children: ids.map((id) => ({
-        id, name: p.ix.funcs[id].name, meta: p.ix.callerText(id),
+        // the line it is defined on, so a name in the list is a place to cite without opening it
+        id, name: p.ix.funcs[id].name, meta: `${p.ix.funcs[id].file.split('/').pop()}:${p.ix.funcs[id].line} · ${p.ix.callerText(id)}`,
       })),
     }))
   }, [p.ix, p.comp, docs])

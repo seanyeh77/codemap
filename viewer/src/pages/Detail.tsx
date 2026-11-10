@@ -92,6 +92,11 @@ export function Detail(p: Props) {
   }
   return (
     <UI.Card className="detail" title={<span id="detail-title" tabIndex={-1} title={f.name}>{f.name}</span>}>
+      {/* the panel is read first after a search; from here the tree is many Tab stops away */}
+      {p.view === 'flow' ? <p className="small"><button type="button" className="linklike" onClick={() => {
+        const el = document.querySelector<HTMLElement>('#flow-tree [role=treeitem][aria-selected=true], #flow-tree [role=treeitem]')
+        el?.focus()
+      }}>{t('跳到呼叫流程樹')}</button></p> : null}
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
         { label: t('元件'), value: f.comp },
