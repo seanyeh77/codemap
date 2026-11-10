@@ -4,11 +4,13 @@ import * as M from './util/math';
 import { Shape, Circle, Square, Dog } from './shapes';
 import { register, Client, Plugin } from 'fakelib';
 import { missing } from 'not-installed';
+import { coreRun } from '@fix/core';
 
 export function names() {
   sum(1, 2); plus(1, 2); M.sub(3, 1); mul(2, 2); Geo.dist(1);
   track('names');
   missing();
+  coreRun();
 }
 
 export function shapes(s: Shape) {
@@ -61,3 +63,12 @@ export class Button {
 }
 
 export function buttons() { new Button(names).click(); }
+
+function Route(path: string) { return (...args: any[]) => {}; }
+function Entity() { return (...args: any[]) => {}; }
+
+@Entity()
+export class Api {
+  @Route('/users')
+  list() { return names(); }
+}

@@ -148,6 +148,8 @@ export interface Stats {
   frameworks?: string[]
   /** functions defined in test files */
   tests?: number
+  /** the compiler that read each backend's files: version and where it came from */
+  compilers?: Record<string, { version: string; source?: string }>
   /** per backend: type-checker messages, packages read as placeholders, packages with incomplete types */
   limits?: Record<string, { messages: number; placeholders: string[]; incomplete: number }>
 }

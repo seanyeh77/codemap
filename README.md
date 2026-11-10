@@ -66,7 +66,16 @@ The map has four layers:
      components; a function passed as a value is a `ref`. A function with no
      name of its own is a node named after the nearest named one
      (`Page.fn1`); the methods of an object literal keep their names
-     (`tipFor.show`). `.d.ts` files and `node_modules` are read for types
+     (`tipFor.show`), and so does a function React wraps
+     (`const Card = forwardRef(...)`, `memo`, `useCallback`: `Card`). A
+     decorator is a call from its class (`infer.how: "decorator"`): it runs
+     when the class is defined, not when the method it marks is called.
+     Configs that differ only in what they emit (`outDir`, `rootDir`,
+     `declaration`, `composite`, ...) share one program, so a monorepo's
+     packages are checked once and values flow between them; an import of
+     one of the repository's own packages (`@scope/core`, found by the
+     `package.json` files) goes to its source even when `node_modules` does
+     not link it or its `exports` name a build that does not exist. `.d.ts` files and `node_modules` are read for types
      only: what they declare is an `ext:` node, named by its import
      (`react.useState`) or its type (`Array.map`). Without `node_modules`, a
      package's names are known by their imports only (placeholders, listed on
@@ -289,10 +298,30 @@ The build is one self-contained `index.html`, so it can be served by
   repository's call sites are known, other callers are not. An interface of a
   library is dispatched only when a class of the repository says it
   implements it; otherwise its methods are named by their type
-  (`Array.map`, `Document.getElementById`). A file that does not type-check
-  fully (often: no `node_modules`) is marked like a Go file.
-- `exact` means the edge's target is certain, not that one piece of code
-  runs. When the target is an interface or abstract method (`error.Error`,
+  (`Array.map`, `Document.getElementById`). TypeScript is structurally typed,
+  so a class can fit a library's interface without saying so: such implicit
+  implementations are not found (looking for them would make every class with
+  a `length` or a `get` a candidate). Interfaces of the repository are matched
+  by `implements` and by shape. A file that does not type-check fully (often:
+  no `node_modules`) is marked like a Go file.
+- TypeScript cost: the compiler type-checks every file, so indexing takes
+  about twice as long as `tsc --noEmit` (excalidraw, 710 files: 38 s and
+  0.9 GB; TanStack Query, 2,153 files in 54 programs: 66 s and 1.4 GB). Each
+  program that differs in its options (an example app with its own
+  tsconfig) is checked on its own, with the packages it imports.
+- TypeScript version: a repository on TypeScript 5 or 6 is read by its own
+  compiler (TypeScript 6 is never downgraded). Otherwise codemap uses one
+  exact version (5.9.3, `codemap/backends/ts.py`) installed once into its
+  cache, not whatever `typescript@5` means on the day of the install. The
+  index and the settings page record the version and where it came from.
+- `exact` means the edge's target is certain from the types and overrides
+  codemap can see in what it analyzed, not that one piece of code runs.
+  `obj.run()` with `obj: Base` is `exact` to `Base.run` when no class in the
+  repository overrides `run`; code outside the repository (a library user,
+  a plugin) may still subclass `Base`, and a runtime trick (`as any`,
+  monkey-patching, reflection) can call something else. If a subclass in the
+  repository does override it, the call is `ambiguous` to both. When the
+  target is an interface or abstract method (`error.Error`,
   `Handler.Handle` in a repository with no implementation of `Handler`, a
   TypeScript interface member), the call certainly goes through that method,
   but which implementation runs is decided at run time. codemap shows the

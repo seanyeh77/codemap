@@ -20,9 +20,11 @@ JSX elements are calls to their components. A function used as a value without b
 read for types only; what they declare is an "ext:" node. A module that cannot be found (no
 node_modules) leaves its names known by the import only: placeholders.
 
-TypeScript itself comes from the repository's node_modules (5.x or 6.x), then from codemap's cache,
-installed there once with npm (typescript@5). Without Node, or without a TypeScript to load, the
-tree-sitter backend reads these files instead.
+TypeScript itself comes from the repository's node_modules when it is 5.x or 6.x (a project on
+TypeScript 6 keeps its own compiler); otherwise from codemap's cache, which holds one exact version
+(VERSION), installed there once with npm, so the same codemap reads the same code the same way
+whenever and wherever it runs. The index records which version read the code and from where.
+Without Node, or without a TypeScript to load, the tree-sitter backend reads these files instead.
 """
 
 import json
@@ -36,20 +38,22 @@ from pathlib import Path
 HELPER = Path(__file__).parent / "tshelper" / "main.js"
 EXTS = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 CONFIGS = ("tsconfig.json", "jsconfig.json")
-VERSION = "5"            # what codemap installs into its cache: the JavaScript-based compiler API
+VERSION = "5.9.3"        # the exact compiler codemap installs into its cache (the JavaScript-based API)
 
 
 def _cache():
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "codemap" / "typescript"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "codemap" / "typescript" / VERSION
 
 
-def _usable(pkg):
-    """The typescript package directory, if it is one codemap can load (major 5 or 6)."""
+def _usable(pkg, exact=None):
+    """The typescript package directory, if it is one codemap can load: major 5 or 6 (TypeScript 7 is
+    the native compiler, without this API), or exactly the given version."""
     try:
         v = json.loads((pkg / "package.json").read_text())["version"]
     except (OSError, ValueError, KeyError):
         return None
-    return pkg if v.split(".")[0] in ("5", "6") and (pkg / "lib" / "typescript.js").exists() else None
+    ok = v == exact if exact else v.split(".")[0] in ("5", "6")
+    return pkg if ok and (pkg / "lib" / "typescript.js").exists() else None
 
 
 def typescript(root, configs):
@@ -70,7 +74,7 @@ def typescript(root, configs):
         if p:
             return p, "the repository's node_modules"
     cache = _cache()
-    p = _usable(cache / "node_modules" / "typescript")
+    p = _usable(cache / "node_modules" / "typescript", VERSION)
     if p:
         return p, "codemap's cache"
     npm = shutil.which("npm")
@@ -82,12 +86,12 @@ def typescript(root, configs):
     cache.mkdir(parents=True, exist_ok=True)
     sys.stderr.write(f"codemap: installing typescript@{VERSION} into {cache} (once)\n")
     try:
-        r = subprocess.run([npm, "install", "--prefix", str(cache), f"typescript@{VERSION}", "--no-audit", "--no-fund",
-                            "--no-save", "--loglevel=error"], capture_output=True, text=True, timeout=300)
+        r = subprocess.run([npm, "install", "--prefix", str(cache), f"typescript@{VERSION}", "--save-exact", "--no-audit",
+                            "--no-fund", "--loglevel=error"], capture_output=True, text=True, timeout=300)
         why = (r.stderr.strip().splitlines() or ["?"])[-1] if r.returncode else None
     except (OSError, subprocess.TimeoutExpired) as e:
         why = str(e)
-    p = _usable(cache / "node_modules" / "typescript")
+    p = _usable(cache / "node_modules" / "typescript", VERSION)
     if p:
         failed.unlink(missing_ok=True)
         return p, "codemap's cache"
@@ -100,6 +104,13 @@ def configs_of(root):
     root = Path(root)
     return [p.relative_to(root).as_posix() for p in walk(root)
             if p.name in CONFIGS or (p.name.startswith("tsconfig.") and p.suffix == ".json")]
+
+
+def packages_of(root):
+    """The repository's own package.json files: a monorepo's workspace packages."""
+    from ..source import walk
+    root = Path(root)
+    return [p.relative_to(root).as_posix() for p in walk(root) if p.name == "package.json"]
 
 
 def build(root, files, tests=None):
@@ -116,7 +127,7 @@ def build(root, files, tests=None):
     try:
         p = subprocess.run([node, "--max-old-space-size=8192", str(HELPER)],
                            input=json.dumps(dict(root=str(Path(root).resolve()), files=files, tests=tests or [],
-                                                 configs=configs, ts=str(pkg))),
+                                                 configs=configs, packages=packages_of(root), ts=str(pkg))),
                            capture_output=True, text=True, timeout=3600)
         if p.returncode != 0:
             raise RuntimeError((p.stderr.strip().splitlines() or ["?"])[-1])

@@ -106,10 +106,11 @@ def cmd_index(a):
         print(f'go: {idx["backends"]["syntax-go"]["files"]} files read by tree-sitter (no Go toolchain)')
     if "syntax-typescript" in idx["backends"]:
         print(f'typescript: {idx["backends"]["syntax-typescript"]["files"]} files read by tree-sitter (no Node or no TypeScript)')
-    if "typescript" in idx["backends"] and idx["backends"]["typescript"].get("placeholders"):
+    if "typescript" in idx["backends"]:
         tb = idx["backends"]["typescript"]
-        print(f'  TypeScript {tb.get("typescript")} from {tb.get("typescript_from")}; modules not found: '
-              + ", ".join(tb["placeholders"][:8]) + (" ..." if len(tb["placeholders"]) > 8 else ""))
+        print(f'  TypeScript {tb.get("typescript")} from {tb.get("typescript_from")}, {tb.get("programs")} programs'
+              + ('; modules not found: ' + ", ".join(tb["placeholders"][:8]) + (" ..." if len(tb["placeholders"]) > 8 else "")
+                 if tb.get("placeholders") else ""))
     if "syntax" in idx["backends"]:
         sx = idx["backends"]["syntax"]
         print(f'tree-sitter: {sx["files"]} files ({", ".join(f"{k} {v}" for k, v in sorted(sx["languages"].items()))}), '

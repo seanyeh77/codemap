@@ -37,9 +37,10 @@ class TsResolve(unittest.TestCase):
 
     def test_backend(self):
         b = self.idx["backends"]["typescript"]
-        self.assertEqual(b["languages"], {"typescript": 7, "javascript": 1})
-        self.assertEqual(b["placeholders"], ["not-installed"])                  # a module that is not installed
-        self.assertEqual(b["incomplete_files"], 1)
+        self.assertEqual(b["languages"], {"typescript": 8, "javascript": 1})
+        self.assertEqual(b["placeholders"], ["not-installed", "react"])         # modules that are not installed
+        self.assertEqual(b["programs"], 1)                                      # packages/core: same options, one program
+        self.assertEqual(b["incomplete_files"], 2)                                # app.ts and view.tsx: missing modules
         self.assertTrue(self.idx["nodes"]["src/app.ts:names"].get("types_incomplete"))
         self.assertNotIn("types_incomplete", self.idx["nodes"]["src/shapes.ts:Shape.area"])
 
@@ -73,7 +74,7 @@ class TsResolve(unittest.TestCase):
         self.assertEqual(self.how(self.get("Shape.describe", "Circle.area")), ("ambiguous", "override"))
         self.assertEqual(self.get("Shape.describe", "Shape.area")["resolution"], "ambiguous")
         es = {e["line"]: self.how(e) for e in self.calls[("shapes", "Circle.area", "call")]}
-        self.assertEqual(es, {16: ("exact", "type"), 19: ("ambiguous", "override")})       # c = new Circle(); s: Shape
+        self.assertEqual(es, {18: ("exact", "type"), 21: ("ambiguous", "override")})       # c = new Circle(); s: Shape
         self.no("shapes", "TestShape.area")
         self.no("Shape.describe", "TestShape.area")
         self.assertEqual(self.how(self.get("Animal.greet", "Dog.speak")), ("inferred", "override"))   # abstract, one subclass
@@ -82,11 +83,11 @@ class TsResolve(unittest.TestCase):
 
     def test_types(self):
         es = {e["line"]: self.how(e) for e in self.calls[("types", "Circle.area", "call")]}
-        self.assertEqual(es[26], ("exact", "type"))          # make().area(): the return type
-        self.assertEqual(es[28], ("exact", "type"))          # let s = make(): assignment
-        self.assertEqual(es[29], ("ambiguous", "type"))      # Circle | Square
-        self.assertEqual(es[30], ("ambiguous", "override"))  # T extends Shape
-        self.assertEqual(es[31], ("exact", "type"))          # Circle & {name()}
+        self.assertEqual(es[28], ("exact", "type"))          # make().area(): the return type
+        self.assertEqual(es[30], ("exact", "type"))          # let s = make(): assignment
+        self.assertEqual(es[31], ("ambiguous", "type"))      # Circle | Square
+        self.assertEqual(es[32], ("ambiguous", "override"))  # T extends Shape
+        self.assertEqual(es[33], ("exact", "type"))          # Circle & {name()}
 
     def test_function_values(self):
         self.assertEqual(self.how(self.get("values", "add")), ("inferred", "funcvalue"))        # let cb = sum; cb()
@@ -98,7 +99,14 @@ class TsResolve(unittest.TestCase):
         self.assertEqual(self.how(self.get("Button.click", "names")), ("ambiguous", "funcvalue"))   # a field, via new Button(names)
         self.assertEqual(self.how(self.get("values", "names", "ref")), ("exact", "funcvalue"))
 
+    def test_workspace_package(self):
+        # @fix/core points at a build that does not exist: its source is the target, not a placeholder
+        self.assertEqual(self.get("names", "coreRun")["dst"],
+                         "packages/core/src/index.ts:coreRun")
+
     def test_jsx(self):
+        self.assertEqual(self.how(self.get("Page", "Fancy")), ("exact", "jsx"))                  # forwardRef keeps the name
+        self.assertEqual(self.get("Fancy", "add")["resolution"], "exact")
         self.assertEqual(self.how(self.get("Page", "Badge")), ("exact", "jsx"))
         self.assertEqual(self.get("Page", "Page.save", "ref")["resolution"], "exact")             # onPress={save}
         self.assertEqual(self.get("Badge", "Page.save")["resolution"], "ambiguous")               # the prop, called
@@ -118,6 +126,13 @@ class TsResolve(unittest.TestCase):
     def test_scope(self):
         self.assertEqual(self.idx["nodes"]["tests/fakes.test.ts:FakeStore.get"]["scope"], "test")
         self.assertNotIn("scope", self.idx["nodes"]["src/stores.ts:MemStore.get"])
+
+    def test_decorators(self):
+        # run when the class is defined: from the class, not from the method they mark
+        self.assertEqual(self.how(self.get("Api", "Route")), ("exact", "decorator"))
+        self.assertEqual(self.how(self.get("Api", "Entity")), ("exact", "decorator"))
+        self.no("Api.list", "Route")
+        self.assertEqual(self.get("Api.list", "names")["resolution"], "exact")
 
     def test_outside_methods(self):
         self.assertEqual(self.how(self.get("libs", "Array.map")), ("exact", "type"))

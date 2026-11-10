@@ -53,7 +53,10 @@ Edge (a relation from src to dst, both node ids)
   resolution        a static edge: "exact" (names decide the target), "inferred" (a type does),
                     "ambiguous" (one of several targets, each with an edge); a call with no
                     target found gets no edge and is counted as unresolved.
-                    "exact" is about the edge's target, which may be an interface or abstract
+                    "exact" is judged on the types and overrides visible in what was analyzed
+                    (no subclass in the repository overrides the method), not as a runtime
+                    guarantee: code outside the repository may still subclass or implement.
+                    It is about the edge's target, which may be an interface or abstract
                     method (Go "error.Error", a TS interface member): then the method that is
                     called is certain, not the code that runs. Which implementation runs is
                     in "implements" relations, or in "ambiguous" edges when the repository's
@@ -61,7 +64,7 @@ Edge (a relation from src to dst, both node ids)
   infer     {how, type}?  how the target was found: self, cls, super, constructor,
                     annotation, return, assign, attribute, override (Python); interface,
                     embedding, closure, field, funcvalue, methodvalue, methodexpr (Go, TS);
-                    this, type, new, jsx, returned (TS); and the class or type
+                    this, type, new, jsx, returned, decorator (TS); and the class or type
 """
 
 VERSION = 2

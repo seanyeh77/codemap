@@ -281,6 +281,9 @@ def build(root, index, config=None):
                                              incomplete=b.get("incomplete_files", 0))
                                   for name, b in index.get("backends", {}).items() if b.get("errors") or b.get("placeholders")},
                           tests=sum(1 for n in nodes.values() if n.get("scope") == "test" and repo_func(n)),
+                          # the compiler that read the code, so a result can be reproduced
+                          compilers={name: dict(version=b["typescript"], source=b.get("typescript_from"))
+                                     for name, b in index.get("backends", {}).items() if b.get("typescript")},
                           languages={k: v for b in index.get("backends", {}).values() for k, v in b.get("languages", {}).items()},
                           frameworks=index.get("frameworks", [])),
                comps=comps, links=links, funcs=funcs, edges=edges, state=state.shared_state(root, funcs),

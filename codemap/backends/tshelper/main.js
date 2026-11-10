@@ -1,11 +1,13 @@
 'use strict';
 // codemap TypeScript/JavaScript helper: the TypeScript compiler API resolves the calls.
 //
-// Input (stdin, JSON): {root, files, tests, configs, ts}
+// Input (stdin, JSON): {root, files, tests, configs, packages, ts}
 //   files    the repository's TS/JS files, paths from the root, .d.ts included (types only, never nodes)
 //   tests    the files that are test code: their values, subclasses and implementations are left out
 //            of what production call sites resolve to
 //   configs  tsconfig*.json / jsconfig.json files, paths from the root
+//   packages the repository's package.json files: an import of a workspace package
+//            (@scope/core in a monorepo) goes to its source, not to a build or to nothing
 //   ts       the path of the typescript package to load (5.x or 6.x)
 // Output (stdout, JSON): {"nodes": {...}, "edges": [...], "stats": {...}}, the shapes of codemap.schema.
 //
@@ -43,10 +45,22 @@ const errors = [];
 const placeholders = new Set();
 const broken = new Set();
 const seenEdge = new Set();
+let decorating = 0;
+let lastMissing = false;         // the last placeholder() named a package that could not be found
+const phase = { program: 0, collect: 0, diagnostics: 0, calls: 0 };     // ms, for CODEMAP_TS_DEBUG               // inside a decorator: its calls run when the class is defined
 const ifaceUsed = new Map();    // interface member id -> {decl, name, ext}: the targets of exact interface calls
 
 function count(k, n = 1) { counts[k] = (counts[k] || 0) + n; }
-function miss(why) { unresolved[why] = (unresolved[why] || 0) + 1; count('unresolved'); }
+const samples = {};
+function miss(why, at) {
+  unresolved[why] = (unresolved[why] || 0) + 1;
+  count('unresolved');
+  // CODEMAP_TS_DEBUG=1: where calls stay unresolved, for checking the analyzer on a real project
+  if (process.env.CODEMAP_TS_DEBUG && at) {
+    const sf = at.getSourceFile();
+    (samples[why] = samples[why] || []).push(`${rel(sf.fileName)}:${sf.getLineAndCharacterOfPosition(at.getStart(sf)).line + 1} ${at.getText(sf).slice(0, 80).replace(/\s+/g, ' ')}`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // programs
@@ -73,13 +87,30 @@ function groupOf(f) {
   return best;
 }
 
+// configs that differ only in what they emit (outDir, rootDir, declaration, composite, ...) resolve
+// the same way: one program reads all of them, so a monorepo's packages are type-checked once and
+// values flow between them
+const EMIT_ONLY = new Set(['configFilePath', 'outDir', 'rootDir', 'declaration', 'declarationDir', 'declarationMap',
+  'emitDeclarationOnly', 'composite', 'incremental', 'tsBuildInfoFile', 'noEmit', 'sourceMap', 'inlineSourceMap',
+  'inlineSources', 'outFile', 'removeComments', 'noEmitOnError', 'importHelpers', 'build', 'pathsBasePath']);
+function optionsKey(c) {
+  if (!c) return '';
+  const o = {};
+  for (const k of Object.keys(c.options).sort()) if (!EMIT_ONLY.has(k)) o[k] = c.options[k];
+  // paths are resolved against the config that wrote them
+  if (c.options.paths) o.__paths = path.resolve(c.options.pathsBasePath || c.options.baseUrl || path.join(root, c.dir));
+  return JSON.stringify(o);
+}
+
 const groups = new Map();
 for (const f of input.files) {
   if (isDts(f)) continue;
   const c = groupOf(f);
-  const key = c ? c.rel : '';
-  if (!groups.has(key)) groups.set(key, { config: c, owned: [] });
-  groups.get(key).owned.push(f);
+  const key = optionsKey(c);
+  if (!groups.has(key)) groups.set(key, { config: c, configs: [], owned: [] });
+  const g = groups.get(key);
+  if (c && !g.configs.includes(c)) g.configs.push(c);
+  g.owned.push(f);
 }
 
 const DEFAULTS = {
@@ -202,9 +233,15 @@ function define(sf) {
     }
   }
 
-  // a value given a name: const f = () => ..., const C = class {...}, const api = {...}
+  // a value given a name: const f = () => ..., const C = class {...}, const api = {...}; React's
+  // wrappers keep the name of what they wrap: const Card = forwardRef((p, ref) => ...), memo(...),
+  // const save = useCallback(() => ..., [])
   function bound(decl, init, qual, owner, kind) {
-    const v = skipOuter(init);
+    let v = skipOuter(init);
+    if (v && ts.isCallExpression(v) && v.arguments.length && valueFn(skipOuter(v.arguments[0]))
+        && /^(React\.)?(forwardRef|memo|useCallback)$/.test(v.expression.getText(sf))) {
+      v = skipOuter(v.arguments[0]);
+    }
     if (valueFn(v)) {
       const id = add(decl, qual, kind, v);
       body(v, qual, id);
@@ -358,22 +395,88 @@ function ext(name, ph) {
 }
 
 // ---------------------------------------------------------------------------
+// workspace packages: in a monorepo an import of a sibling package is the repository's own source,
+// whether or not node_modules links it, and whatever its package.json says the build is
+
+const workspace = new Map();      // package name -> {dir, exports}
+for (const p of input.packages || []) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(root, p), 'utf8'));
+    if (j.name && !workspace.has(j.name)) workspace.set(j.name, { dir: path.join(root, path.posix.dirname(p)), json: j });
+  } catch (e) { /* not JSON */ }
+}
+const SOURCE = /\.(tsx?|mts|cts|jsx?|mjs|cjs)$/;
+const exists = (f) => { try { return fs.statSync(f).isFile(); } catch (e) { return false; } };
+
+// the first condition of an exports entry that names a source file (not a .d.ts, not a build)
+function sourceIn(entry, dir) {
+  if (typeof entry === 'string') {
+    const f = path.join(dir, entry);
+    return SOURCE.test(entry) && !isDts(entry) && repo.has(rel(f)) ? f : null;
+  }
+  if (entry && typeof entry === 'object') for (const v of Object.values(entry)) { const f = sourceIn(v, dir); if (f) return f; }
+  return null;
+}
+
+function workspaceSource(name) {
+  let pkg = null;
+  let sub = '';
+  for (const [n, w] of workspace) if ((name === n || name.startsWith(n + '/')) && (!pkg || n.length > pkg[0].length)) { pkg = [n, w]; sub = name.slice(n.length); }
+  if (!pkg) return null;
+  const { dir, json } = pkg[1];
+  const key = '.' + sub;
+  const ex = json.exports && typeof json.exports === 'object' && !Array.isArray(json.exports) && Object.keys(json.exports).some((k) => k.startsWith('.'))
+    ? json.exports[key] : sub ? null : json.exports;
+  const found = sourceIn(ex, dir) || (!sub && (sourceIn(json.source, dir) || sourceIn(json.types, dir) || sourceIn(json.main, dir)));
+  if (found) return found;
+  const tail = sub ? sub.slice(1) : 'index';
+  for (const base of ['src/' + tail, tail]) {
+    for (const ext of ['.ts', '.tsx', '.mts', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js']) {
+      const f = path.join(dir, base + ext);
+      if (repo.has(rel(f)) && exists(f)) return f;
+    }
+  }
+  return null;
+}
+
+const EXT_OF = { '.ts': ts.Extension.Ts, '.tsx': ts.Extension.Tsx, '.mts': ts.Extension.Mts, '.cts': ts.Extension.Cts,
+  '.js': ts.Extension.Js, '.jsx': ts.Extension.Jsx, '.mjs': ts.Extension.Mjs, '.cjs': ts.Extension.Cjs };
+
+function hostFor(options) {
+  const host = ts.createCompilerHost(options, true);
+  if (!workspace.size) return host;
+  host.resolveModuleNames = (names, containing, reused, redirected, opts) => names.map((n) => {
+    const r = ts.resolveModuleName(n, containing, opts || options, host).resolvedModule;
+    // resolved to the repository's own source: keep it; otherwise a workspace package's source wins
+    if (r && !r.isExternalLibraryImport && !isDts(r.resolvedFileName)) return r;
+    if (n.startsWith('.') || path.isAbsolute(n)) return r;
+    const f = workspaceSource(n);
+    return f ? { resolvedFileName: f, extension: EXT_OF[path.extname(f)], isExternalLibraryImport: false } : r;
+  });
+  return host;
+}
+
+// ---------------------------------------------------------------------------
 // one program
 
 function analyze(group) {
   const c = group.config;
   const options = Object.assign({}, c ? c.options : DEFAULTS, { noEmit: true });
   if (group.owned.some(isJs)) { options.allowJs = true; options.checkJs = false; }
-  delete options.outDir; delete options.composite; delete options.incremental; delete options.tsBuildInfoFile;
+  // what a config emits does not change what the code means; rootDir of one merged config would
+  // flag every other config's files
+  for (const k of EMIT_ONLY) if (k !== 'configFilePath' && k !== 'noEmit' && k !== 'pathsBasePath') delete options[k];
   const rootNames = new Set(group.owned.map((f) => path.join(root, f)));
-  if (c) for (const f of c.names) rootNames.add(path.join(root, f));
+  if (c) for (const k of group.configs) for (const f of k.names) rootNames.add(path.join(root, f));
   else for (const f of input.files) if (isDts(f)) rootNames.add(path.join(root, f));
-  const program = ts.createProgram({ rootNames: [...rootNames], options });
+  let tp = Date.now();
+  const program = ts.createProgram({ rootNames: [...rootNames], options, host: hostFor(options) });
   const checker = program.getTypeChecker();
   const owned = group.owned.map((f) => program.getSourceFile(path.join(root, f))).filter(Boolean);
   const isTestFile = (n) => tests.has(rel(n.getSourceFile().fileName));
 
   // the values given to each variable, field and parameter, from every file of the program
+  phase.program += Date.now() - tp; tp = Date.now();
   const assigns = new Map();
   const put = (sym, e) => { if (sym) { if (!assigns.has(sym)) assigns.set(sym, []); assigns.get(sym).push(e); } };
   const symOf = (n) => { const s = n && checker.getSymbolAtLocation(n); return s && s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s; };
@@ -419,6 +522,7 @@ function analyze(group) {
     })(sf);
   }
 
+  phase.collect += Date.now() - tp;
   function classDeclOf(t) {
     const s = t && (t.getSymbol() || (t.aliasSymbol));
     return s && (s.declarations || []).find(ts.isClassLike);
@@ -499,10 +603,8 @@ function analyze(group) {
       const callee = skipOuter(e.expression);
       // f.bind(x): f
       if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'bind') return fnValues(callee.expression, prod, depth + 1, seen);
-      // useCallback(fn, deps): fn
-      const s = symOf(ts.isPropertyAccessExpression(callee) ? callee.name : callee);
-      const d = s && (s.declarations || [])[0];
-      if (d && !inRepo(d.getSourceFile()) && s.name === 'useCallback' && e.arguments.length) return fnValues(e.arguments[0], prod, depth + 1, seen);
+      // React's wrappers give back the function they wrap: useCallback(fn, deps), forwardRef(fn), memo(fn)
+      if (e.arguments.length && fromReact(callee, ['useCallback', 'forwardRef', 'memo'])) return fnValues(e.arguments[0], prod, depth + 1, seen);
       // a function that returns a function: what it returns
       const sig = checker.getResolvedSignature(e);
       const decl = sig && sig.declaration;
@@ -517,9 +619,21 @@ function analyze(group) {
     }
     const target = ts.isPropertyAccessExpression(e) ? e.name : e;
     if (!ts.isIdentifier(target) && !ts.isPrivateIdentifier(target)) return { ts: [], partial: true };
+    const raw = checker.getSymbolAtLocation(target);
+    if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && unknownAlias(checker.getSymbolAtLocation(e.expression))) {
+      const p = placeholder(checker.getSymbolAtLocation(e.expression));     // Primitive.Root of a missing package
+      return p ? { ts: [{ id: ext(p + '.' + e.name.text, lastMissing), how: 'funcvalue' }], partial: false } : { ts: [], partial: true };
+    }
+    if (unknownAlias(raw)) {                     // a package that is not installed: known by its import
+      const p = placeholder(raw);
+      return p ? { ts: [{ id: ext(p, lastMissing), how: 'funcvalue' }], partial: false } : { ts: [], partial: true };
+    }
     const s = symOf(target);
     if (!s) return { ts: [], partial: true };
     const decls = s.declarations || [];
+    if (decls.length && decls.every(outside) && decls.some((d) => fnLike(d) || ts.isFunctionDeclaration(d))) {
+      return { ts: [{ id: ext(placeholder(raw, false) || extName(decls[0])), how: 'funcvalue' }], partial: false };
+    }
     const named = decls.map((d) => (fnLike(d) || ts.isVariableDeclaration(d) || ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d) || ts.isBinaryExpression(d.parent)) && idOf(d)).filter(Boolean);
     if (named.length) {
       const how = ts.isPropertyAccessExpression(e) && decls.some((d) => ts.isMethodDeclaration(d) || ts.isPropertyDeclaration(d)) ? 'methodvalue' : 'funcvalue';
@@ -528,6 +642,8 @@ function analyze(group) {
     if (seen.has(s)) return { ts: [], partial: false };
     seen.add(s);
     let vals = (assigns.get(s) || []).filter((v) => !(prod && isTestFile(v)));
+    // {check: Check}: an object's property is what it was written as
+    for (const d of decls) if (ts.isPropertyAssignment(d) && !outside(d)) vals = vals.concat([d.initializer]);
     // function Editor({onSave}): what callers give the onSave property
     for (const be of decls.filter((x) => ts.isBindingElement(x) && ts.isObjectBindingPattern(x.parent))) {
       const p = checker.getPropertyOfType(checker.getTypeAtLocation(be.parent), (be.propertyName || be.name).getText());
@@ -592,6 +708,7 @@ function analyze(group) {
   // the package a name is imported from, following re-exports of the repository
   // (export { expect } from '@playwright/test'): "spec.name", or null for none
   function placeholder(s, record = true) {
+    lastMissing = false;
     for (let i = 0; s && i < 8; i++) {
       const d = (s.declarations || [])[0];
       if (!d) return null;
@@ -603,13 +720,29 @@ function analyze(group) {
         : imp.moduleSpecifier && imp.moduleSpecifier.text;
       if (spec && !spec.startsWith('.')) {
         const orig = ts.isImportSpecifier(d) || ts.isExportSpecifier(d) ? (d.propertyName || d.name).text : null;
-        if (record) placeholders.add(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
+        // a package that could not be found; a name a found package does not export is not one
+        const missing = !ts.isExportDeclaration(imp) && !checker.getSymbolAtLocation(ts.isImportEqualsDeclaration(imp) ? imp.moduleReference.expression : imp.moduleSpecifier);
+        lastMissing = missing;
+        if (record && missing) placeholders.add(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
         return spec + (orig && orig !== 'default' ? '.' + orig : '');
       }
       if (!checker.getImmediateAliasedSymbol) return null;
       s = checker.getImmediateAliasedSymbol(s);           // a file of the repository: what it re-exports
     }
     return null;
+  }
+
+  // a call of one of React's functions, by its types or, when React is not installed, by its import
+  function fromReact(callee, names) {
+    const nameNode = ts.isPropertyAccessExpression(callee) ? callee.name : callee;
+    if (!ts.isIdentifier(nameNode) || !names.includes(nameNode.text)) return false;
+    const raw = checker.getSymbolAtLocation(nameNode);
+    const s = raw && raw.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(raw) : raw;
+    const d = s && (s.declarations || [])[0];
+    if (d && outside(d)) return pkgOf(d.getSourceFile().fileName) === 'react';
+    const imp = ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)
+      ? placeholder(checker.getSymbolAtLocation(callee.expression), false) : placeholder(raw, false);
+    return imp === 'react' || imp === 'react.' + nameNode.text;
   }
 
   function unknownAlias(s) {
@@ -633,7 +766,7 @@ function analyze(group) {
     if (!s) return null;
     if (unknownAlias(s)) {
       const p = placeholder(s);
-      return p ? { ts: [{ id: ext(p, true) }], res: 'exact' } : null;
+      return p ? { ts: [{ id: ext(p, lastMissing) }], res: 'exact' } : null;
     }
     // a name imported from a package: named by the import, as when the package is not installed
     const imported = s.flags & ts.SymbolFlags.Alias ? placeholder(s, false) : null;
@@ -674,7 +807,7 @@ function analyze(group) {
     const os = ts.isIdentifier(objName) ? checker.getSymbolAtLocation(objName) : null;
     if (unknownAlias(os)) {
       const p = placeholder(os);
-      return p ? { ts: [{ id: ext(p + '.' + name, true) }], res: 'exact' } : null;
+      return p ? { ts: [{ id: ext(p + '.' + name, lastMissing) }], res: 'exact' } : null;
     }
     const real = os && os.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(os) : os;
     if (real) {
@@ -797,6 +930,7 @@ function analyze(group) {
       seenEdge.add(key);
       const e = { src: owner, dst: t.id, file, line: lc.line + 1, col: lc.character + 1, kind, source: 'static', resolution: res };
       if (t.how) e.infer = { how: t.how, type: t.type || null };
+      else if (decorating && kind === 'call') e.infer = { how: 'decorator', type: null };
       if (t.how && t.partial) e.infer.partial = true;
       edges.push(e);
       count(res);
@@ -804,6 +938,7 @@ function analyze(group) {
     return true;
   }
 
+  tp = Date.now();
   for (const sf of owned) {
     const d = define(sf);
     if (!d.rel) continue;
@@ -811,6 +946,7 @@ function analyze(group) {
     const module = `${d.rel}:<module>`;
     const prod = !tests.has(d.rel);
     const callees = new Set();
+    const td = Date.now();
     try {
       const diags = program.getSemanticDiagnostics(sf).concat(program.getSyntacticDiagnostics(sf)).filter((x) => x.category === ts.DiagnosticCategory.Error);
       if (diags.length) {
@@ -821,13 +957,23 @@ function analyze(group) {
         }
       }
     } catch (e) { broken.add(d.rel); }
+    phase.diagnostics += Date.now() - td;
 
     const call = (owner, site, callee, kind) => {
       const r = resolve(callee, prod);
-      if (!r || !emit(owner, site, kind, r)) miss(kind === 'jsx' ? 'jsx' : ts.isPropertyAccessExpression(skipOuter(callee)) ? 'member' : 'value');
+      if (!r || !emit(owner, site, kind, r)) miss(kind === 'jsx' ? 'jsx' : ts.isPropertyAccessExpression(skipOuter(callee)) ? 'member' : 'value', callee);
     };
 
     (function walk(n, owner) {
+      // a decorator runs once, when its class is defined, not when the method it marks is called
+      if (ts.isDecorator(n)) {
+        let k = n.parent;
+        while (k && !ts.isClassLike(k)) k = k.parent;
+        decorating++;
+        walk(n.expression, k && d.map.get(k) || owner);
+        decorating--;
+        return;
+      }
       if (d.map.has(n) && (fnLike(n) || ts.isClassLike(n))) {
         const id = d.map.get(n);
         if (d.anon.has(n) && !callees.has(n)) emit(owner, n, 'ref', { ts: [{ id, how: 'closure' }], res: 'exact' });
@@ -854,8 +1000,8 @@ function analyze(group) {
         if (t && t.id) emit(owner, n, 'call', { ts: [{ id: t.id, how: 'new' }], res: 'exact' });
         else if (s && unknownAlias(checker.getSymbolAtLocation(n.expression) || s)) {
           const p = placeholder(checker.getSymbolAtLocation(n.expression));
-          if (p) emit(owner, n, 'call', { ts: [{ id: ext(p, true), how: 'new' }], res: 'exact' });
-        } else miss('new');
+          if (p) emit(owner, n, 'call', { ts: [{ id: ext(p, lastMissing), how: 'new' }], res: 'exact' });
+        } else miss('new', n.expression);
         callees.add(skipOuter(n.expression));
       } else if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
         const tag = n.tagName;
@@ -872,7 +1018,7 @@ function analyze(group) {
             r = resolve(tag, prod);
             if (r) r.ts = r.ts.map((t) => Object.assign({}, t, { how: t.how || 'jsx' }));
           }
-          if (!r || !emit(owner, n, 'call', r)) miss('jsx');
+          if (!r || !emit(owner, n, 'call', r)) miss('jsx', tag);
         }
       } else if (ts.isTaggedTemplateExpression(n)) {
         callees.add(skipOuter(n.tag));
@@ -896,6 +1042,8 @@ function analyze(group) {
       ts.forEachChild(n, (c) => walk(c, owner));
     })(sf, module);
   }
+
+  phase.calls += Date.now() - tp;
 
   function isFunctionNode(decl) {
     const id = idOf(decl);
@@ -935,9 +1083,13 @@ function valuePosition(n) {
 }
 
 let files = 0;
+const started = Date.now();
+const slow = [];
 for (const [, g] of groups) {
+  const t0 = Date.now();
   try {
     files += analyze(g).owned;
+    slow.push([g.configs.map((c) => c.rel).join(' + ') || '(default options)', Date.now() - t0]);
   } catch (e) {
     errors.push(`${g.config ? g.config.rel : '(default options)'}: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' ') : e}`);
   }
@@ -959,7 +1111,10 @@ process.stdout.write(JSON.stringify({
   nodes, edges,
   stats: {
     files, languages: langs, nodes: Object.values(nodes).filter((n) => n.defined).length, edges: edges.length,
-    programs: groups.size, typescript: ts.version, resolution: counts, unresolved_top: top, errors,
+    programs: groups.size, typescript: ts.version, ms: Date.now() - started,
+    max_rss_mb: Math.round(process.resourceUsage().maxRSS / 1024), slowest_programs: slow.sort((a, b) => b[1] - a[1]).slice(0, 5), resolution: counts, unresolved_top: top, errors,
     placeholders: [...placeholders].sort(), incomplete_files: broken.size,
+    ...(process.env.CODEMAP_TS_DEBUG ? { unresolved_samples: samples, phase,
+      groups: [...groups.values()].map((g) => [g.configs.map((c) => c.rel), g.owned.length, g.owned.slice(0, 3)]) } : {}),
   },
 }));
