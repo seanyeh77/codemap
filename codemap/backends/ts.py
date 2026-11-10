@@ -126,7 +126,8 @@ def build(root, files, tests=None):
         sys.stderr.write(f"codemap: TypeScript/JavaScript files read by tree-sitter ({where})\n")
         return None
     try:
-        p = subprocess.run([node, "--max-old-space-size=8192", str(HELPER)],
+        flags = ["--max-old-space-size=8192"] + (["--expose-gc"] if os.environ.get("CODEMAP_TS_PROFILE") else [])
+        p = subprocess.run([node, *flags, str(HELPER)],
                            input=json.dumps(dict(root=str(Path(root).resolve()), files=files, tests=tests or [],
                                                  configs=configs, packages=packages_of(root), ts=str(pkg))),
                            capture_output=True, text=True, timeout=3600)

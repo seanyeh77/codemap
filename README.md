@@ -309,7 +309,8 @@ The build is one self-contained `index.html`, so it can be served by
   with the packages and library types it imports. `benchmarks/typescript.md`
   has the baseline: excalidraw (710 files) 56 s and 1.4 GB with its
   dependencies installed, TanStack Query (2,153 files, 54 programs) 209 s
-  and 1.9 to 4.8 GB.
+  and 1.9 to 4.8 GB. `CODEMAP_TS_PROFILE=1 CODEMAP_TS_DEBUG=1` reports, per
+  program, what it loaded and where the time went.
 - A function a library hands back (`const [x, setX] = useState()`, a
   solid-js setter) is a call to that library, `inferred`, named by its
   declared type (`react.Dispatch`) or by the function that returned it

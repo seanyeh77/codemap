@@ -86,6 +86,67 @@ Each was read against the source:
 - Values: `mutation.mutateAsync` reaches `MutationObserver.mutate` (a bound method),
   `retryDelay ?? defaultRetryDelay` stays ambiguous and partial.
 
+## Profiling the programs
+
+`CODEMAP_TS_PROFILE=1` (with `CODEMAP_TS_DEBUG=1`) adds, per program, the files it loaded by where
+they come from and what parsing them cost, the time of each phase, and the heap after a forced
+collection; and, per file, how many programs loaded it. Type checking now runs before extraction,
+so the extraction time is reading the checker's results, not checking. The graph is the same as
+before the reordering (every edge and node compared on TanStack Query).
+
+Both projects with their dependencies installed, same machine as above:
+
+| Project | Programs (個) | Total (ms) | Config (ms) | Program creation (ms) | Type checking (ms) | Extraction (ms) | Peak RSS (MB) | Largest heap after a program (MB) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| excalidraw | 5 | 58678 | 103 | 16445 | 29546 | 8691 | 1943 | 858 |
+| TanStack Query | 54 | 224891 | 610 | 104591 | 85901 | 14333 | 1843 | 1601 |
+
+| Project | Files from | Different files (個) | Loads over all programs (個) | Loads per file | Parsed text (MB) | Parse time (ms) |
+|---|---|---:|---:|---:|---:|---:|
+| excalidraw | TypeScript lib.*.d.ts | 87 | 381 | 4.4 | 12 | 1200 |
+| excalidraw | node_modules | 1198 | 2149 | 1.8 | 28 | 4599 |
+| excalidraw | repository source | 713 | 2254 | 3.2 | 28 | 5049 |
+| excalidraw | repository .d.ts | 13 | 24 | 1.8 | 0 | 5 |
+| TanStack Query | TypeScript lib.*.d.ts | 99 | 3996 | 40.4 | 172 | 18757 |
+| TanStack Query | node_modules | 4650 | 27057 | 5.8 | 312 | 43366 |
+| TanStack Query | repository source | 2181 | 5882 | 2.7 | 40 | 8338 |
+| TanStack Query | repository .d.ts | 107 | 108 | 1.0 | 0 | 5 |
+
+Program creation is reading and parsing files plus module resolution: in TanStack Query 70 s of the
+105 s is parsing, 43 s of it `node_modules` declaration files. Each of the 4,650 different
+`node_modules` files is parsed by 5.8 programs on average and each of the 99 `lib.*.d.ts` files by
+40. 36 of the 54 programs own 20 files or fewer (example and integration apps), and they take 59 s of
+the 105 s: each loads 300 to 1,000 library files for a handful of its own. Type checking is the
+compiler's own work and is dominated by the largest program (`tsconfig.json` and 14 configs with the
+same options: 23 s of the 86 s).
+
+### What was tried
+
+Each run on TanStack Query with its dependencies; the graph (every edge and node) was compared with
+the first run and was the same in every one that finished.
+
+| Change | Total (ms) | Program creation (ms) | Peak RSS (MB) | Kept |
+|---|---:|---:|---:|---|
+| None (the helper's own resolution without a cache) | 237270 | 117106 | 1849 | the control |
+| A module-resolution cache per program, as the compiler keeps when it resolves by itself | 224891 | 104591 | 1843 | yes: the compiler's normal behavior, same graph |
+| `oldProgram`: each program created from the one before | 216128 | 104271 | 1850 | no: no file is reused (27,057 `node_modules` loads either way), because programs with the same options are already one program and the compiler reuses nothing across different options; the shorter total is run-to-run noise in type checking |
+| Parsed `node_modules` and `lib` files shared between programs with the same parse options | killed | killed | over 7 GB | no: the process ran out of memory; the shared files and every checker's data on them stay alive |
+| Only `lib.*.d.ts` shared | 261367 | 104544 | 3422 | no: no time saved, memory almost doubled |
+
+Configs with different options are not merged into one program: `paths`, `strict`, `jsx`,
+`moduleResolution`, `target` and `module` change what the code means. Only configs that differ in
+what they emit share a program.
+
+### Open options
+
+- Run programs in parallel worker processes: shorter on a machine with more cores, memory
+  multiplied by the workers.
+- Leave example and integration apps out with the existing `"scope"` in `.codemap/rules.json`
+  when they are not what the map is for: they are two thirds of TanStack Query's programs and more
+  than half of its program creation.
+- Keep each program's result keyed by the hashes of the files it loaded, and skip a program whose
+  files did not change on the next index.
+
 ## Cost to watch
 
 TanStack Query with its dependencies: 54 programs (36 of them a single example or integration app

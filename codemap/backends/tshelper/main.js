@@ -47,7 +47,14 @@ const broken = new Set();
 const seenEdge = new Set();
 let decorating = 0;
 let lastMissing = false;         // the last placeholder() named a package that could not be found
-const phase = { program: 0, collect: 0, diagnostics: 0, calls: 0 };     // ms, for CODEMAP_TS_DEBUG               // inside a decorator: its calls run when the class is defined
+// ms per phase, for CODEMAP_TS_DEBUG: reading the configs, building the programs (parsing and module
+// resolution), type checking the owned files, and extracting nodes and edges (values, then calls)
+const phase = { config: 0, program: 0, check: 0, extract: 0 };
+// CODEMAP_TS_PROFILE=1: per program, which files it loaded and what parsing them cost; per file, how
+// many programs loaded it
+const PROFILE = !!process.env.CODEMAP_TS_PROFILE;
+const profile = [];
+const loadedBy = new Map();         // file name -> programs that loaded it
 const ifaceUsed = new Map();    // interface member id -> {decl, name, ext}: the targets of exact interface calls
 
 function count(k, n = 1) { counts[k] = (counts[k] || 0) + n; }
@@ -74,7 +81,9 @@ function loadConfig(r) {
   return { rel: r, dir: path.posix.dirname(r), options: pc.options, names: pc.fileNames.map(rel), errors: pc.errors.length };
 }
 
+const tc = Date.now();
 const configs = (input.configs || []).map(loadConfig).filter(Boolean);
+phase.config += Date.now() - tc;
 const under = (dir, f) => dir === '.' || f.startsWith(dir + '/');
 
 function groupOf(f) {
@@ -442,11 +451,36 @@ function workspaceSource(name) {
 const EXT_OF = { '.ts': ts.Extension.Ts, '.tsx': ts.Extension.Tsx, '.mts': ts.Extension.Mts, '.cts': ts.Extension.Cts,
   '.js': ts.Extension.Js, '.jsx': ts.Extension.Jsx, '.mjs': ts.Extension.Mjs, '.cjs': ts.Extension.Cjs };
 
-function hostFor(options) {
+// where a file comes from, for the profile
+function category(fileName) {
+  if (fileName.includes('/node_modules/typescript/lib/')) return 'lib';
+  if (fileName.includes('/node_modules/')) return 'node_modules';
+  const r = rel(fileName);
+  if (r.startsWith('..')) return 'outside';
+  return isDts(r) ? 'repo_dts' : 'repo';
+}
+
+function hostFor(options, prof) {
   const host = ts.createCompilerHost(options, true);
+  if (prof) {
+    const get = host.getSourceFile.bind(host);
+    host.getSourceFile = (fileName, ...rest) => {
+      const t0 = process.hrtime.bigint();
+      const sf = get(fileName, ...rest);
+      const k = category(fileName);
+      const c = prof.files[k] = prof.files[k] || { files: 0, kb: 0, parse_ms: 0 };
+      c.files++;
+      c.parse_ms += Number(process.hrtime.bigint() - t0) / 1e6;
+      if (sf) c.kb += sf.text.length / 1024;
+      loadedBy.set(fileName, (loadedBy.get(fileName) || 0) + 1);
+      return sf;
+    };
+  }
   if (!workspace.size) return host;
+  // the compiler's own resolution keeps a cache per program; a host that resolves for it must too
+  const cache = ts.createModuleResolutionCache(host.getCurrentDirectory(), host.getCanonicalFileName, options);
   host.resolveModuleNames = (names, containing, reused, redirected, opts) => names.map((n) => {
-    const r = ts.resolveModuleName(n, containing, opts || options, host).resolvedModule;
+    const r = ts.resolveModuleName(n, containing, opts || options, host, cache, redirected).resolvedModule;
     // resolved to the repository's own source: keep it; otherwise a workspace package's source wins
     if (r && !r.isExternalLibraryImport && !isDts(r.resolvedFileName)) return r;
     if (n.startsWith('.') || path.isAbsolute(n)) return r;
@@ -469,14 +503,37 @@ function analyze(group) {
   const rootNames = new Set(group.owned.map((f) => path.join(root, f)));
   if (c) for (const k of group.configs) for (const f of k.names) rootNames.add(path.join(root, f));
   else for (const f of input.files) if (isDts(f)) rootNames.add(path.join(root, f));
+  const prof = PROFILE ? { configs: group.configs.map((k) => k.rel), roots: rootNames.size, files: {} } : null;
   let tp = Date.now();
-  const program = ts.createProgram({ rootNames: [...rootNames], options, host: hostFor(options) });
+  const program = ts.createProgram({ rootNames: [...rootNames], options, host: hostFor(options, prof) });
   const checker = program.getTypeChecker();
   const owned = group.owned.map((f) => program.getSourceFile(path.join(root, f))).filter(Boolean);
   const isTestFile = (n) => tests.has(rel(n.getSourceFile().fileName));
+  const programMs = Date.now() - tp;
+  phase.program += programMs;
+
+  // type checking: the owned files' diagnostics check them, and the declarations they use; what is
+  // extracted afterwards reads the checker's caches
+  tp = Date.now();
+  for (const sf of owned) {
+    const r = inRepo(sf);
+    if (!r || isDts(r)) continue;
+    try {
+      const diags = program.getSemanticDiagnostics(sf).concat(program.getSyntacticDiagnostics(sf)).filter((x) => x.category === ts.DiagnosticCategory.Error);
+      if (diags.length) {
+        broken.add(r);
+        for (const x of diags.slice(0, 50)) {
+          const lc = x.start !== undefined ? sf.getLineAndCharacterOfPosition(x.start) : { line: 0 };
+          errors.push(`${r}:${lc.line + 1}: TS${x.code} ${ts.flattenDiagnosticMessageText(x.messageText, ' ')}`);
+        }
+      }
+    } catch (e) { broken.add(r); }
+  }
+  const checkMs = Date.now() - tp;
+  phase.check += checkMs;
 
   // the values given to each variable, field and parameter, from every file of the program
-  phase.program += Date.now() - tp; tp = Date.now();
+  tp = Date.now();
   const assigns = new Map();
   // one key per declared variable or property: the same prop seen through a union, an intersection or
   // a mapped type (React's JSX props) is a different symbol object, with the same root declaration
@@ -529,7 +586,7 @@ function analyze(group) {
     })(sf);
   }
 
-  phase.collect += Date.now() - tp;
+  let extractMs = Date.now() - tp;
   function classDeclOf(t) {
     const s = t && (t.getSymbol() || (t.aliasSymbol));
     return s && (s.declarations || []).find(ts.isClassLike);
@@ -979,18 +1036,6 @@ function analyze(group) {
     const module = `${d.rel}:<module>`;
     const prod = !tests.has(d.rel);
     const callees = new Set();
-    const td = Date.now();
-    try {
-      const diags = program.getSemanticDiagnostics(sf).concat(program.getSyntacticDiagnostics(sf)).filter((x) => x.category === ts.DiagnosticCategory.Error);
-      if (diags.length) {
-        broken.add(d.rel);
-        for (const x of diags.slice(0, 50)) {
-          const lc = x.start !== undefined ? sf.getLineAndCharacterOfPosition(x.start) : { line: 0 };
-          errors.push(`${d.rel}:${lc.line + 1}: TS${x.code} ${ts.flattenDiagnosticMessageText(x.messageText, ' ')}`);
-        }
-      }
-    } catch (e) { broken.add(d.rel); }
-    phase.diagnostics += Date.now() - td;
 
     const call = (owner, site, callee, kind) => {
       const r = resolve(callee, prod);
@@ -1076,7 +1121,15 @@ function analyze(group) {
     })(sf, module);
   }
 
-  phase.calls += Date.now() - tp;
+  extractMs += Date.now() - tp;
+  phase.extract += extractMs;
+  if (prof) {
+    for (const c of Object.values(prof.files)) { c.kb = Math.round(c.kb); c.parse_ms = Math.round(c.parse_ms); }
+    if (global.gc) global.gc();
+    Object.assign(prof, { program_ms: programMs, check_ms: checkMs, extract_ms: extractMs,
+      heap_mb: Math.round(process.memoryUsage().heapUsed / 1048576), owned: owned.length });
+    profile.push(prof);
+  }
 
   function isFunctionNode(decl) {
     const id = idOf(decl);
@@ -1147,6 +1200,12 @@ process.stdout.write(JSON.stringify({
     programs: groups.size, typescript: ts.version, ms: Date.now() - started,
     max_rss_mb: Math.round(process.resourceUsage().maxRSS / 1024), slowest_programs: slow.sort((a, b) => b[1] - a[1]).slice(0, 5), resolution: counts, unresolved_top: top, errors,
     placeholders: [...placeholders].sort(), incomplete_files: broken.size,
+    ...(PROFILE ? { profile, loaded: (() => {
+      // per category: different files, and loads of them over all programs
+      const o = {};
+      for (const [f, n] of loadedBy) { const k = category(f); const c = o[k] = o[k] || { files: 0, loads: 0 }; c.files++; c.loads += n; }
+      return o;
+    })() } : {}),
     ...(process.env.CODEMAP_TS_DEBUG ? { unresolved_samples: samples, phase,
       groups: [...groups.values()].map((g) => [g.configs.map((c) => c.rel), g.owned.length, g.owned.slice(0, 3)]) } : {}),
   },
