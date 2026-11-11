@@ -434,7 +434,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         <UI.DetailList items={g.comps.map((c) => ({
           label: c.id,
           value: <span>{c.doc ? <>{short(c.doc.text)}<br /><From doc={c.doc} /><br /></>
-            : c.file_docs?.length ? <>{t('沒有代表整個元件的說明；各檔案的開頭註解：')}<span className="entry-list">{c.file_docs.map((d) => (
+            : c.file_docs?.length ? <>{t('元件沒有整體說明，以下為各檔案的開頭註解：')}<span className="entry-list">{c.file_docs.map((d) => (
               <span key={d.file} className="entry-row"><UI.InlineCode>{d.file.split('/').pop()}</UI.InlineCode>{' '}{short(firstSentence(d.text), 90)}</span>))}</span></>
             : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
         }))} />
@@ -451,9 +451,9 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
                   <span key={f} className="entry-row"><UI.InlineCode>{f}</UI.InlineCode>{g.files?.[f] ? <>{' '}{short(firstSentence(g.files[f].text), 90)}</> : null}</span>))}</span></span>,
             }
           })} />
-          {g.hidden_tests ? <p className="small muted">{t('流程、影響範圍與搜尋預設不列出測試程式碼；在設定頁開啟「包含測試程式碼」後會列出。')}</p> : null}
+          {g.hidden_tests ? <p className="small muted">{t('流程、影響範圍與搜尋預設不含測試程式碼，可在設定頁開啟「包含測試程式碼」。')}</p> : null}
         </> : null}
-        {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('沒有專案寫的說明時，顯示元件主要檔案（main.c、__init__.py 或只有一個檔案時那個檔案）的開頭註解；沒有主要檔案時列出各檔案的。元件的用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
+        {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('說明取自主要檔案（main.c、__init__.py 或唯一的檔案）的開頭註解。元件用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
       </section>
       {g.docs?.length ? <Docs docs={g.docs} /> : null}
       {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length ? (
@@ -510,7 +510,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
       {cmds.length ? (
         <section aria-labelledby="ov-cmds">
           <h3 className="small" id="ov-cmds" tabIndex={-1}>{t('執行的外部指令')}</h3>
-          <p className="small muted">{t('{v1} 是執行時才知道的值。經由包裝函式執行的指令，列出每個呼叫它的地方組成的指令。', { v1: '{…}' })}</p>
+          <p className="small muted">{t('{v1}：執行時才決定的值。經由包裝函式執行的指令，逐一列出各呼叫處組成的指令。', { v1: '{…}' })}</p>
           {/* by file: the controller's commands apart from the grader's (checks.py) and the runtime's */}
           {cmdGroups.map(([comp, list]) => (<div key={comp}>
           {cmdGroups.length > 1 ? <h4 className="small">{t('{v1}（{v2} 處）', { v1: comp, v2: list.length })}</h4> : null}
@@ -532,10 +532,10 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h3 className="small" id="ov-env" tabIndex={-1}>{t('執行期設定（環境變數）')}</h3>
           <UI.DetailList items={env.map(([name, v]) => ({
             label: name,
-            value: <span>{name === 'LD_PRELOAD' ? <>{t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。')}<br /></> : null}{((m) => m ? <>{meaning(m)}<br /></> : null)(g.env_info?.[name])}{t('讀取：{v1}', { v1: where(v.get).join(t('、')) || '—' })}{where(v.set).length ? <><br />{t('設定：{v1}', { v1: where(v.set).join(t('、')) })}</> : null}{((n) => n ? <><br /><span className="muted">{cRepo ? t('另有 {v1} 處在 Python 工具、測試或腳本裡，可用搜尋找到', { v1: n }) : t('另有 {v1} 處在測試或腳本裡，可用搜尋找到', { v1: n })}</span></> : null)([...v.get, ...v.set].filter((r) => !inProgram(r)).length)}</span>,
+            value: <span>{name === 'LD_PRELOAD' ? <>{t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。')}<br /></> : null}{((m) => m ? <>{meaning(m)}<br /></> : null)(g.env_info?.[name])}{t('讀取：{v1}', { v1: where(v.get).join(t('、')) || '—' })}{where(v.set).length ? <><br />{t('設定：{v1}', { v1: where(v.set).join(t('、')) })}</> : null}{((n) => n ? <><br /><span className="muted">{cRepo ? t('另有 {v1} 處在 Python 工具、測試或腳本裡，可用搜尋找到', { v1: n }) : t('另有 {v1} 處在測試或腳本中，可用搜尋查看', { v1: n })}</span></> : null)([...v.get, ...v.set].filter((r) => !inProgram(r)).length)}</span>,
           }))} />
           {others > 0 ? <p className="small muted">
-            <button type="button" className="linklike" aria-expanded={openApi === '*env'} onClick={() => setOpenApi(openApi === '*env' ? '' : '*env')}>{cRepo ? t('另有 {v1} 個變數只出現在 Python 工具、測試或腳本裡', { v1: others }) : t('另有 {v1} 個變數只在測試或腳本裡讀取，或只被設定', { v1: others })}</button>
+            <button type="button" className="linklike" aria-expanded={openApi === '*env'} onClick={() => setOpenApi(openApi === '*env' ? '' : '*env')}>{cRepo ? t('另有 {v1} 個變數只出現在 Python 工具、測試或腳本裡', { v1: others }) : t('另有 {v1} 個變數只在測試或腳本中讀取，或只有設定', { v1: others })}</button>
             {openApi === '*env' ? <span className="entry-list">{Object.entries(g.env ?? {}).filter(([name]) => !env.some(([n]) => n === name)).sort(([a], [b]) => a.localeCompare(b)).map(([name, v]) => (
               <span key={name} className="entry-row"><UI.InlineCode>{name}</UI.InlineCode>{' '}{[...v.get, ...v.set].slice(0, 3).join(t('、'))}{[...v.get, ...v.set].length > 3 ? t('，共 {v1} 處', { v1: [...v.get, ...v.set].length }) : ''}</span>))}</span> : null}
           </p> : null}
@@ -558,10 +558,10 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <p className="small muted">{t('只列出程式碼裡的事實，是否有問題要看實際用法。')}</p>
                     {applies('broad') ? <>
           <h4 className="small" id="ov-broad" tabIndex={-1}>{t('捕捉所有例外後繼續執行')}</h4>
-          <p className="small muted">{t('只列 except Exception、except BaseException 與不寫型別的 except，而且處理區塊裡沒有再 raise 的；指定型別的 except 不列。')}</p>
+          <p className="small muted">{t('範圍：except Exception、except BaseException 與未寫型別的 except，且處理區塊未再 raise。指定型別的 except 不列入。')}</p>
           {broad.length ? <UI.DetailList items={broad.map((x, i) => ({
             label: `except ${x.what}`,
-            value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，沒有再拋出', { v1: x.then })}</span></span>,
+            value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，未再拋出', { v1: x.then })}</span></span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           </> : null}
           {applies('stops') ? <>
@@ -652,7 +652,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             value: <span>{fn(e.fid)}{e.use !== e.l ? t(' 在第 {v1} 行使用：', { v1: e.use }) : t(' 直接使用：')}{at(`env${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。每個 getenv 的結果在使用前都檢查過 NULL，或直接回傳給呼叫者。')}</p>}
           </> : null}
-                  {skipped.length ? <p className="small muted">{t('另有 {v1} 項檢查只適用於 {v2}，這個專案沒有這種程式碼，所以不列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })}</p> : null}
+                  {skipped.length ? <p className="small muted">{t('另有 {v1} 項只適用於 {v2} 的檢查，本專案不適用，未列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })}</p> : null}
         </section>
       ) : null}
     </UI.Card>
@@ -754,7 +754,7 @@ function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode;
         value: <span>
           {/* a shared memory object is a file too: it stays in /dev/shm until someone calls shm_unlink */}
           {w.call === 'shm_open' ? t('POSIX shared memory 物件，在 /dev/shm 下，要等 shm_unlink 才會刪除；') : null}
-          {w.name ? null : w.format ? t('檔名在執行時依這個格式組成；') : w.param && w.via?.length ? t('檔名由呼叫者傳入，各呼叫處傳入的檔名列在下面；') : w.param ? t('檔名在執行時由這個參數傳入；') : w.expr ? t('檔名在執行時取自這個運算式；') : t('檔名在執行時決定；')}
+          {w.name ? null : w.format ? t('檔名在執行時依這個格式組成；') : w.param && w.via?.length ? t('檔名由呼叫者傳入，各呼叫處的檔名列於下方；') : w.param ? t('檔名在執行時由這個參數傳入；') : w.expr ? t('檔名在執行時取自這個運算式；') : t('檔名在執行時決定；')}
           {p.fn(w.fid)}{w.call === 'shm_open' ? t(' 以 shm_open（O_CREAT）建立：')
             : /^(write_text|write_bytes)$/.test(w.call) ? t(' 以 {v1} 寫入：', { v1: w.call })
             : /(replace|rename)$/i.test(w.call) ? t(' 以 {v1} 換成這個檔案：', { v1: w.call })
@@ -765,7 +765,7 @@ function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode;
           {w.via?.length ? <span className="entry-list">{w.via.map((v, j) => (
             <span key={j} className="entry-row indent"><UI.InlineCode>{v.name}</UI.InlineCode>{' '}{p.fn(v.fid)}{' '}{p.at(`w${i}-${j}`, v.f, v.l)}</span>))}</span> : null}
         </span>,
-      }))} /> : <p className="small muted">{p.none ? t('沒有寫入檔案的地方（{v1}）。', { v1: p.none }) : t('這個專案的語言沒有寫入檔案的檢查。')}</p>}
+      }))} /> : <p className="small muted">{p.none ? t('沒有寫入檔案的地方（{v1}）。', { v1: p.none }) : t('本專案的語言沒有寫入檔案的檢查。')}</p>}
     </section>
   )
 }

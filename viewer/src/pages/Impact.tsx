@@ -88,16 +88,16 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
                 {t('：{v1}）。', { v1: Object.entries(Object.values(p.ix.funcs).reduce<Record<string, number>>((m, f) => (f.api ? { ...m, [f.api]: (m[f.api] ?? 0) + 1 } : m), {})).sort().map(([a, n]) => `${a} ${n}`).join(t('、')) })}
               </p>
             ) : null}
-            {((n) => n ? <p className="small">{t('測試程式碼沒有列入：另有 {v1} 個測試函式呼叫上面這些函式；在設定頁開啟「包含測試程式碼」後會列出。', { v1: n })}</p> : null)(
+            {((n) => n ? <p className="small">{t('測試程式碼未列入：另有 {v1} 個測試函式呼叫上述函式，可在設定頁開啟「包含測試程式碼」。', { v1: n })}</p> : null)(
               [p.start, ...rows.map((r) => r.id)].reduce((sum, id) => sum + (p.ix.g.hidden_callers?.[id] ?? 0), 0))}
             {sites.length && p.ix.funcs[p.start] ? <div>
-              <p className="small">{t('直接呼叫的寫法（改參數時，這些地方都要跟著改）：')}</p>
+              <p className="small">{t('直接呼叫的寫法（修改參數時須一併修改）：')}</p>
               <UI.DetailList items={sites.map(({ r, l }, i) => ({
                 label: `${r.f.split('/').pop()}:${l}`,
                 value: <span>{siteText[i]?.data ? <UI.InlineCode>{String(siteText[i].data).trim()}</UI.InlineCode> : <span className="muted">{t('讀取中')}</span>}<span className="muted">{t('（{v1}）', { v1: r.name })}</span></span>,
               }))} />
             </div> : null}
-            <p className="small muted">{t('直接：呼叫它的函式；間接：再往上呼叫它們的函式，一路到程式的入口。只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>
+            <p className="small muted">{t('直接：呼叫它的函式；間接：往上到程式入口的其他呼叫者。只計算 repo 內的函式，共用變數只找一層。')}</p>
           </div>
         ) : (
           <div>

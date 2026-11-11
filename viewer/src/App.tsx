@@ -242,7 +242,7 @@ function Shell(p: ShellProps) {
         : t('提到這個名稱，不是呼叫')
       const roleText = role ? ` · ${role}` : ''
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
-        detail: (partial ? t('找不到「{v1}」，列出含 {v2} 的行 · ', { v1: typed, v2: parts.join(t('、')) }) : '') + `${h.file}:${h.line}` + where + roleText + reaches, target: { type: 'file', f: h.file, l: h.line } }
+        detail: (partial ? t('找不到「{v1}」，改列含 {v2} 的行 · ', { v1: typed, v2: parts.join(t('、')) }) : '') + `${h.file}:${h.line}` + where + roleText + reaches, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
   }, [typed, isLive, grepLive.data, ix, partial, grepParts.data, parts])
   const ranked = useMemo(() => rank(palette, query, 40), [palette, query])
@@ -469,7 +469,7 @@ function Shell(p: ShellProps) {
         {((id) => id && !ix.funcs[id] && p.graph.funcs[id]?.scope === 'test' ? (
           <div className="alert-wrap">
             <UI.Alert tone="info" title={t('{v1} 是測試程式碼', { v1: p.graph.funcs[id].name })} actionLabel={t('包含測試程式碼')} onAction={() => prefs.set('tests', true)}>
-              {t('流程、影響範圍與搜尋預設不列出測試程式碼，所以這裡顯示的是別的函式。開啟後會列出它。')}
+              {t('流程、影響範圍與搜尋預設不含測試程式碼，因此這裡顯示其他函式。開啟後即可查看。')}
             </UI.Alert>
           </div>
         ) : null)(chosenStart ?? '')}

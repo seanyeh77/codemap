@@ -120,7 +120,7 @@ export function Detail(p: Props) {
               <span key={g[0].s} className="entry-row"><FnLink id={g[0].s} go={p.goFlow}>{p.ix.funcs[g[0].s].name}</FnLink>{' '}
                 {g.map((c, i) => <span key={c.f + c.l}>{i ? t('、') : ''}{link(c.f, c.l)}</span>)}{g.every((c) => c.k === 'ref') ? <span className="muted">{t('（當作值傳出）')}</span> : null}</span>))}
               {callSites.length > 6 ? <span className="entry-row muted">{t('另有 {v1} 個，見流程頁的「往上」', { v1: callSites.length - 6 })}</span> : null}</span> : null}
-            {p.ix.g.hidden_callers?.[p.sel.id] ? <span className="entry-row muted">{t('另有 {v1} 個測試函式呼叫它，沒有列出；在設定頁開啟「包含測試程式碼」後會列出。', { v1: p.ix.g.hidden_callers[p.sel.id] })}</span> : null}
+            {p.ix.g.hidden_callers?.[p.sel.id] ? <span className="entry-row muted">{t('另有 {v1} 個測試函式呼叫它，未列出；可在設定頁開啟「包含測試程式碼」。', { v1: p.ix.g.hidden_callers[p.sel.id] })}</span> : null}
             {who.main ? t('。程式的起點，由 C 執行環境在程式啟動時呼叫') : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
         // other definitions of the same name: which one a reader landed on is not obvious from the name
         ...(twins.length ? [{ label: t('同名'), value: <span className="entry-list">{twins.map(([id, g]) => (
@@ -136,7 +136,7 @@ export function Detail(p: Props) {
             {extNames.length ? <span className="entry-list">{extNames.slice(0, 10).map(([n, e]) => <span key={n} className="entry-row"><UI.InlineCode>{n}</UI.InlineCode>{' '}{link(e.f, e.l)}</span>)}
               {extNames.length > 10 ? <span className="entry-row muted">{t('另有 {v1} 個', { v1: extNames.length - 10 })}</span> : null}</span> : null}</span> },
         ...(fromEntry && fromEntry.length > 1 && !(chain && chain[0].id === fromEntry[0].id) ? [{ label: t('從進入點到這裡'), value: <span className="entry-list">
-          <span className="entry-row muted">{t('{v1} 沒有被這個 repo 的程式呼叫，是程式的進入點之一；以下是到這裡最短的一條呼叫鏈。', { v1: p.ix.funcs[fromEntry[0].id].name })}</span>
+          <span className="entry-row muted">{t('{v1}：repo 內沒有呼叫者的進入點。以下是從它到這裡最短的呼叫鏈。', { v1: p.ix.funcs[fromEntry[0].id].name })}</span>
           {fromEntry.map((c, i) => (
           <span key={i} className="entry-row">{i ? '→ ' : ''}<FnLink id={c.id} go={p.goFlow}>{p.ix.funcs[c.id]?.name ?? c.id}</FnLink>{c.e ? <>{' '}{link(c.e.f, c.e.l)}{c.e.k === 'ref' ? <span className="muted">{t('（當作值傳出）')}</span> : null}</> : null}</span>))}</span> }] : []),
         // how the flow's start reaches this function: one chain of calls, each with its line

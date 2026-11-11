@@ -211,7 +211,7 @@ export function Flow(p: FlowProps) {
             p.ix.g.stats.resolution?.python ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
             p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到實作它的型別；go、defer 和當作函式值傳遞的另有標示') : '',
             p.ix.g.stats.resolution?.typescript ? t('TypeScript 與 JavaScript 由 TypeScript 編譯器依名稱與型別確定目標；經覆寫、interface 或函式值的呼叫另有標示') : '',
-            p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對到定義，「依名稱推測」的只憑方法名稱') : ''].filter(Boolean).join(t('；')) })}{t('第 5 層以下的列前面的 L5、L6 是從起點算起的層數。')}</p>
+            p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對到定義，「依名稱推測」的只憑方法名稱') : ''].filter(Boolean).join(t('；')) })}{t('L5、L6：從起點算起的層數，第 5 層起標示。')}</p>
     </UI.Card>
   )
 }
