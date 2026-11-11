@@ -69,15 +69,13 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
 function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
   const fg = useMemo(() => fileGraph(p.ix), [p.ix])
   const labels = useMemo(() => fileLabels([...fg.files.keys()]), [fg])
-  const nodes = useMemo(() => [...fg.files].map(([f, x]) => ({ id: 'file:' + f, name: labels.get(f)! + roleText(roleOf(p.ix.g, f)),
-    layer: fg.layer.get(f), size: x.funcs, shared: fg.shared.has(f) })), [fg, labels, p.ix])
+  // the mark is the box's tag, never cut off on a narrow box (受保護 in the warning colors, with a lock)
+  const nodes = useMemo(() => [...fg.files].map(([f, x]) => ((r) => ({ id: 'file:' + f, name: labels.get(f)!,
+    ...(r ? { tag: r === 'editable' ? t('可修改') : t('受保護'), tagTone: r === 'protected' ? 'warning' as const : 'neutral' as const } : {}),
+    layer: fg.layer.get(f), size: x.funcs, shared: fg.shared.has(f) }))(roleOf(p.ix.g, f))), [fg, labels, p.ix])
   const edges = useMemo(() => fg.links.map((l) => ({ id: `file:${l.a}->${l.b}`, from: 'file:' + l.a, to: 'file:' + l.b, count: l.es.length })), [fg])
-  // which files people may change, in words above the diagram: on a narrow box the mark after the name is cut off
-  const roles = (r: Role) => [...fg.files.keys()].filter((f) => roleOf(p.ix.g, f) === r).map((f) => labels.get(f)!)
-  const [mine, theirs] = [roles('editable'), roles('protected')]
   return (
     <>
-    {mine.length || theirs.length ? <p className="small">{[mine.length ? t('可修改：{v1}', { v1: list(mine) }) : '', theirs.length ? t('受保護：{v1}', { v1: list(theirs) }) : ''].filter(Boolean).join(t('；'))}</p> : null}
     <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
       selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('檔案'), edges: t('關係') }}
       label={t('檔案和它們之間的呼叫')} nodeWidth={232} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" />
