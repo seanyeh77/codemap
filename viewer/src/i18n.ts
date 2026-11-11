@@ -17,8 +17,13 @@ const single = (w: string) => (w === 'places' ? 'place' : w.replace(/s$/, ''))
 export const t = (zh: string, vars?: Record<string, string | number | null | undefined>) => {
   // numbers in the interface's language, not the browser's: 1,033 in English even on a German browser
   const s = UI.t(zh, vars && Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, typeof v === 'number' ? (lineLike(zh, k) ? String(v) : num(v)) : v ?? ''])))
-  return current === 'en' ? s.replace(ONE, (_, more = '', w) => `1 ${more}${single(w)}`).replace(/\b1 function (call|use|interpose)\b/g, '1 function $1s') : s
+  return current === 'en' ? s.replace(ONE, (_, more = '', w) => `1 ${more}${single(w)}`).replace(/\b1 function (call|use|interpose)\b/g, '1 function $1s')
+    .replace(VERB, (_, subject: string, verb: string) => `${subject} ${AGREE[verb]}`) : s
 }
+
+/** The verb after a singular count agrees with it: 「1 more variable is」, not 「1 more variable are」. */
+const VERB = /\b(1 (?:more )?(?:function|caller|callee|call|file|place|component|time|product|level|line|variable|header|source file|reference|translation unit)) (are|appear|were|have)\b/g
+const AGREE: Record<string, string> = { are: 'is', appear: 'appears', were: 'was', have: 'has' }
 
 /** A line number (file:{l}, 第 {l} 行, line {l}) is never grouped: ring.c:1024, not ring.c:1,024. */
 const lineLike = (zh: string, k: string) => new RegExp(`(:|第 ?|行 ?)\\{${k}\\}|\\{${k}\\} ?行`).test(zh)

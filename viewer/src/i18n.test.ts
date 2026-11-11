@@ -21,3 +21,13 @@ describe('English', () => {
     expect([...missing]).toEqual([])
   })
 })
+
+describe('one of something', () => {
+  it('takes a singular noun and verb', async () => {
+    const { setLang, t } = await import('./i18n')
+    setLang('en')
+    expect(t('另有 {v1} 個變數只在測試或腳本中讀取，或只有設定', { v1: 1 })).toBe('1 more variable is read only in tests or scripts, or only set')
+    expect(t('另有 {v1} 個變數只在測試或腳本中讀取，或只有設定', { v1: 2 })).toBe('2 more variables are read only in tests or scripts, or only set')
+    setLang('zh-TW')
+  })
+})

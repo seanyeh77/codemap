@@ -186,6 +186,10 @@ class Fixture(unittest.TestCase):
         doc = next(c["doc"] for c in g["comps"] if c["id"] == "src/lib")
         self.assertEqual((doc["text"], doc["file"], doc.get("own")), ("The library.", ".codemap/rules.json", True))
 
+    def test_roles_from_config(self):
+        g = view.build(self.root, self.idx, {"roles": {"src/lib": "protected", "src/app/main.c": "editable", "x": "maybe"}})
+        self.assertEqual(g["roles"], {"src/lib": "protected", "src/app/main.c": "editable"})
+
     def test_check_items_for_the_viewer(self):
         md = self.root / "ok.md"
         md.write_text("| a | b |\n| --- | --- |\n| `use` | `src/lib/lib.c:24` |\n")

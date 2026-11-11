@@ -4,6 +4,7 @@ import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
 import { entryText, push, type Index } from '../data/graph'
+import { fileGraph, fileView, roleOf, type Role } from '../data/files'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
 
@@ -33,7 +34,52 @@ function usesOf(ix: Index, shared: string) {
 }
 
 /** Components in layers with the calls between them, drawn by UI.LayerGraph; shared ones are listed under it. */
+/** The words after a file's name on its box. */
+export const roleText = (r: Role | null) => (r === 'editable' ? t('（可修改）') : r === 'protected' ? t('（受保護）') : '')
+
+/** A file's name as short as the diagram can tell it apart: its base name, or its path when two share one. */
+function fileLabels(files: string[]) {
+  const base = (f: string) => f.split('/').pop()!
+  return new Map(files.map((f) => [f, files.filter((x) => base(x) === base(f)).length > 1 ? f : base(f)]))
+}
+
+/** Boxes per component, or per file when the components are few: the 元件／檔案 tabs above the diagram. */
 export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
+  const view = useMemo(() => fileView(p.ix), [p.ix])
+  const key = `codemap:level:${p.ix.g.repo}`
+  const [level, setLevel] = useState<'comp' | 'file'>(() => {
+    try { const v = localStorage.getItem(key); if (v === 'comp' || v === 'file') return v } catch { /* storage off */ }
+    return view.first ? 'file' : 'comp'
+  })
+  const shown = view.offered ? level : 'comp'
+  const pick = (v: 'comp' | 'file') => {
+    setLevel(v)
+    try { localStorage.setItem(key, v) } catch { /* storage off */ }
+    p.onSel(''); p.onEdge('')
+  }
+  return (
+    <UI.Card className="pane fit">
+      {view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('元件') }, { id: 'file', label: t('檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null}
+      {shown === 'file' ? <FileArch {...p} /> : <CompArch {...p} />}
+    </UI.Card>
+  )
+}
+
+/** One box per production file, with the calls between files; each box says whether the project lets people change it. */
+function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
+  const fg = useMemo(() => fileGraph(p.ix), [p.ix])
+  const labels = useMemo(() => fileLabels([...fg.files.keys()]), [fg])
+  const nodes = useMemo(() => [...fg.files].map(([f, x]) => ({ id: 'file:' + f, name: labels.get(f)! + roleText(roleOf(p.ix.g, f)),
+    layer: fg.layer.get(f), size: x.funcs, shared: fg.shared.has(f) })), [fg, labels, p.ix])
+  const edges = useMemo(() => fg.links.map((l) => ({ id: `file:${l.a}->${l.b}`, from: 'file:' + l.a, to: 'file:' + l.b, count: l.es.length })), [fg])
+  return (
+    <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
+      selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('檔案'), edges: t('關係') }}
+      label={t('檔案和它們之間的呼叫')} nodeWidth={232} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" />
+  )
+}
+
+function CompArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
   const g = p.ix.g
   const entries = useMemo(() => entryGroups(p.ix), [p.ix])
   const starts = useMemo(() => (entries.length ? launchers(p.ix) : []), [p.ix, entries])
@@ -53,13 +99,13 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
       // a channel is declared in .codemap/rules.json: it has a basis, so it is not drawn as a guess
       : { id: edgeId(l), from: l.a, to: l.b, inferred: l.kind !== 'channel', declared: l.kind === 'channel', label: labelOf(l) }))], [g, entries, starts])
   return (
-    <UI.Card className="pane fit">
+    <>
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('元件'), edges: t('關係') }}
         externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
         inferredText={t('函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。')}
         inferredLabel={t('推測')} declaredLabel={t('專案宣告')} declaredLegend={t('專案宣告的關係')} declaredText={t('寫在 .codemap/rules.json 的 channels，例如兩個程式共用的 ring。')} />
-    </UI.Card>
+    </>
   )
 }
 
@@ -154,7 +200,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
   const l = p.ix.g.links.find((x) => edgeId(x) === p.id)
   if (p.id.startsWith('ext:launch->')) return <LaunchDetail ix={p.ix} id={p.id} onPick={(id, at) => p.open(id, at)} onBack={p.onBack} />
   if (p.id.startsWith('ext:')) return <EntryDetail ix={p.ix} id={p.id} onPick={(id) => p.open(id, null)} onBack={p.onBack} />
-  if (!l) return null
+  if (!l && !p.id.startsWith('file:')) return null
   const cur = shown?.id === p.id ? shown : null
   // the component of a file: the longest component path it sits under (setters can be scripts, not functions)
   const ids = p.ix.g.comps.map((c) => c.id).sort((x, y) => y.length - x.length)
@@ -175,6 +221,21 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
       </>
     )
   }
+  if (p.id.startsWith('file:')) {
+    // file:harness/controller.py->harness/routing.py: the calls from one file's functions into the other's
+    const [a, b] = p.id.slice(5).split('->')
+    const es = p.ix.g.edges.filter((e) => written(e) && p.ix.funcs[e.s]?.file === a && p.ix.funcs[e.d]?.file === b
+      && p.ix.funcs[e.s]?.scope !== 'test' && p.ix.funcs[e.d]?.scope !== 'test')
+    const base = (f: string) => f.split('/').pop()
+    return (
+      <UI.Card className="detail" title={`${base(a)} → ${base(b)}`} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
+        <p className="small">{t('{v1} 的函式呼叫 {v2} 的函式，共 {v3} 次。', { v1: a, v2: b, v3: es.length })}</p>
+        <UI.DetailList items={es.slice(0, SHOWN).map((e) => ({ label: `${name(e.s)} → ${name(e.d)}`, value: at(e.s, e.f, e.l) }))} />
+        {es.length > SHOWN ? <p className="small muted">{t('另有 {v1} 處未列出。', { v1: es.length - SHOWN })}</p> : null}
+      </UI.Card>
+    )
+  }
+  if (!l) return null
   let about = '', body: ReactNode = null
   if (l.kind === 'env') {
     about = t('{v1} 設定環境變數，{v2} 執行時讀取它。此為推測的關係。', { v1: l.a, v2: l.b })
@@ -280,7 +341,42 @@ export function CompDetail(p: { ix: Index; comp: string; isLive: boolean; source
   const c = p.ix.g.comps.find((x) => x.id === p.comp)
   if (c?.lang) return <ScriptsDetail ix={p.ix} comp={c.id} isLive={p.isLive} sourceId={p.sourceId} onBack={() => p.onComp('')} />
   if (!p.comp) return <Overview ix={p.ix} isLive={p.isLive} sourceId={p.sourceId} onComp={p.onComp} onPick={p.onPick} />
+  if (p.comp.startsWith('file:')) return <FileDetail ix={p.ix} file={p.comp.slice(5)} onPick={p.onPick} onComp={p.onComp} />
   return <CompTree {...p} onBack={() => p.onComp('')} />
+}
+
+/** A file's box: what it is for, whether people may change it, which files it calls and is called by, and its functions. */
+function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; onComp: (id: string) => void }) {
+  const fg = useMemo(() => fileGraph(p.ix), [p.ix])
+  const ids = useMemo(() => (p.ix.byFile().get(p.file) ?? []).filter((id) => p.ix.funcs[id].scope !== 'test'), [p.ix, p.file])
+  const doc = p.ix.g.files?.[p.file]
+  const role = roleOf(p.ix.g, p.file)
+  const byRules = Object.keys(p.ix.g.roles ?? {}).some((x) => p.file === x || p.file.startsWith(x.replace(/\/$/, '') + '/'))
+  const base = (f: string) => f.split('/').pop()!
+  const other = (xs: { a: string; b: string; es: unknown[] }[], end: 'a' | 'b') => xs.sort((x, y) => y.es.length - x.es.length).map((l) => (
+    <span key={l[end]} className="entry-row"><button type="button" className="linklike" onClick={() => p.onComp('file:' + l[end])}>{base(l[end])}</button>{' '}{t('{n} 次', { n: l.es.length })}</span>))
+  const inn = fg.links.filter((l) => l.b === p.file), out = fg.links.filter((l) => l.a === p.file)
+  return (
+    <div className="detail split">
+      <UI.Card title={p.file} actions={<UI.Button icon="arrow-left" onClick={() => p.onComp('')}>{t('回到概觀')}</UI.Button>}>
+        {role ? <p className="small"><UI.Tag>{role === 'editable' ? t('可修改') : t('受保護')}</UI.Tag>{' '}
+          {byRules ? t('依據：.codemap/rules.json 的 roles') : t('依據：檔案開頭註解的第一個詞')}</p> : null}
+        {doc ? <p className="small">{short(doc.text, 400)}<br /><From doc={doc} /></p> : <p className="small muted">{t('沒有說明註解。')}</p>}
+        <UI.DetailList items={[
+          // a controller's event handlers have no caller in the repo: the framework calls them
+          ...[...new Set(ids.map((id) => p.ix.funcs[id].entry?.framework).filter(Boolean))].map((fw) => ({ label: t('由框架呼叫'),
+            value: t('{v1} 呼叫其中 {v2} 個函式', { v1: fw!, v2: ids.filter((id) => p.ix.funcs[id].entry?.framework === fw).length }) })),
+          { label: t('呼叫它的檔案'), value: inn.length ? <span className="entry-list">{other(inn, 'a')}</span> : t('（無）') },
+          { label: t('它呼叫的檔案'), value: out.length ? <span className="entry-list">{other(out, 'b')}</span> : t('（無）') },
+        ]} />
+      </UI.Card>
+      <div className="tree-panel grow-panel">
+        <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；點選函式會到流程頁', { v1: ids.length })} height="100%"
+          label={t('{v1} 的函式', { v1: base(p.file) })} items={ids.map((id) => ({ id, name: p.ix.funcs[id].name, meta: `${base(p.ix.funcs[id].file)}:${p.ix.funcs[id].line} · ${p.ix.callerText(id)}` }))}
+          onSelect={(n) => { if (p.ix.funcs[n.id]) p.onPick(n.id) }} />
+      </div>
+    </div>
+  )
 }
 
 /** A group of Python tools: each script with the first line of its docstring; click to read it. */

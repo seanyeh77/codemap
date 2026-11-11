@@ -201,6 +201,7 @@ Optional `.codemap/rules.json`:
   "disable": ["exec"],
   "components": {"src/libibtrace/hooks": "hooks"},
   "describe": {"src/libibtrace": "Preloaded into the traced program; records each verbs, UCP and UCT call into the ring."},
+  "roles": {"harness/controller.py": "editable", "harness/checks.py": "protected"},
   "phases": {"main": [{"name": "start-up", "from": "ibmon_parse_args"}, {"name": "collect", "from": "ibmon_sched_start"},
                       {"name": "wind-up", "from": "ibmon_stats_print"}]},
   "channels": [
@@ -224,6 +225,13 @@ the production graph and the type inference of production code leave them out.
 `describe` says what a component is for, in the project's own words. Without
 it the overview shows the top comment of the component's main file and says
 which file it came from.
+
+`roles` marks which files people are meant to change (`editable`) and which
+they must leave alone (`protected`), for a path or a whole folder; the longest
+listed path wins. The file diagram shows the mark on each box. Without it the
+viewer reads the first sentence of a file's top comment: one that starts by
+calling the file editable, or protected, read-only, generated or not to be
+edited, gets that mark.
 
 `phases` splits the calls of a long function into stages in the flow tree. A
 stage's `name` is one string, or one per language for readers in another one:

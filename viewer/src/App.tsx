@@ -149,7 +149,9 @@ function Shell(p: ShellProps) {
   useEffect(() => { try { if (chosenStart && ix.funcs[chosenStart]) localStorage.setItem(lastKey, chosenStart) } catch { /* private mode */ } }, [chosenStart, ix, lastKey])
   // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
   // '' : nothing selected; a component the new index lacks falls back to nothing
-  const selComp = p.graph.comps.some((c) => c.id === chosenComp) || chosenComp === TRACED ? chosenComp : ''
+  // a component, the traced program, or a file of the file diagram (file:harness/controller.py)
+  const selComp = p.graph.comps.some((c) => c.id === chosenComp) || chosenComp === TRACED
+    || (chosenComp.startsWith('file:') && Object.values(p.graph.funcs).some((f) => f.file === chosenComp.slice(5))) ? chosenComp : ''
   // a repo function, or an external one the repo calls (the impact page then lists its callers)
   const start = chosenStart && (ix.funcs[chosenStart] || ix.inn.has(chosenStart)) ? chosenStart : first
   const sel: Sel = ix.funcs[chosenSel.id] || ix.inn.has(chosenSel.id) || ix.out.has(chosenSel.id) ? chosenSel : { id: start ?? '', edge: null, key: 'root' }
@@ -323,13 +325,14 @@ function Shell(p: ShellProps) {
     return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
   }, [])
   // what changed on screen, for screen readers
-  useEffect(() => { if (selComp) UI.announce(t('已開啟 {v1}', { v1: selComp === TRACED ? t('被追蹤的程式（repo 外）') : selComp })) }, [selComp])
+  useEffect(() => { if (selComp) UI.announce(t('已開啟 {v1}', { v1: selComp === TRACED ? t('被追蹤的程式（repo 外）') : selComp.replace(/^file:/, '') })) }, [selComp])
   useEffect(() => {
     if (!selEdge) return
     const l = ix.g.links.find((x) => edgeId(x) === selEdge)
     const to = selEdge.startsWith('ext:') ? selEdge.split('->').pop()! : null      // a line from the traced program
     const launch = selEdge.startsWith('ext:launch->')
-    UI.announce(l ? t('已開啟 {v1} 到 {v2} 的說明', { v1: l.a, v2: l.b })
+    const files = selEdge.startsWith('file:') ? selEdge.slice(5).split('->') : null
+    UI.announce(l ? t('已開啟 {v1} 到 {v2} 的說明', { v1: l.a, v2: l.b }) : files ? t('已開啟 {v1} 到 {v2} 的說明', { v1: files[0], v2: files[1] })
       : to ? t('已開啟 {v1} 到 {v2} 的說明', launch ? { v1: to, v2: t('被追蹤的程式') } : { v1: t('被追蹤的程式'), v2: to }) : '')
   }, [selEdge, ix])
   // changes on the same page that a screen reader would not otherwise hear about

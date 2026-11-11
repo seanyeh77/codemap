@@ -187,6 +187,8 @@ export interface Graph {
   /** File-scope variables used by two or more functions: [function id, first line that uses it]. Older graphs lack it. */
   /** Each file's top comment (or its header's). Older graphs lack it. */
   files?: Record<string, Doc>
+  /** .codemap/rules.json "roles": a path or folder -> whether the project lets people change it. */
+  roles?: Record<string, 'editable' | 'protected'>
   /** Every environment variable the rules found: where it is set and where it is read. */
   env?: Record<string, { set: string[]; get: string[] }>
   /** Files the server may show whole: sources, headers, Makefiles, linker maps. */

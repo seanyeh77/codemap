@@ -109,3 +109,5 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* a span that stands as its own line inside a label (labels hold only phrasing content) */
 .block { display: block; }
 .set-row { cursor: pointer; }
+/* the 元件／檔案 tabs keep their height when the diagram fills the card */
+.level-tabs { flex-shrink: 0; }
