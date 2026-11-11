@@ -37,6 +37,11 @@ export function CodeAt(p: { ix: Index; at: { f: string; l: number }; isLive: boo
 }
 
 /** A whole file opened from the search (a header, the Makefile, where a macro is defined), its line marked. */
+/** Where each function of a file starts: [ and ] in the whole-file view go from one to the next. */
+function sections(ix: Index, file: string) {
+  return Object.values(ix.funcs).filter((f) => f.file === file).sort((a, b) => a.line - b.line).map((f) => ({ line: f.line, label: f.name }))
+}
+
 export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: boolean; sourceId: string; onClose: () => void }) {
   const src = useFileSource(p.at.f, p.isLive, p.sourceId)
   const view = useRef<UI.CodeViewHandle>(null)
@@ -49,7 +54,8 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
       {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
         : src.isPending ? <UI.Skeleton width="80%" height={16} />
         : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('這個檔案不在索引裡。')}</UI.Alert>
-        : <><UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh" />
+        : <><UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
+            sections={sections(p.ix, p.at.f)} />
           {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
     </UI.Card>
     </div>

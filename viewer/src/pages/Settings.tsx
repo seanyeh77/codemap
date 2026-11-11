@@ -131,14 +131,15 @@ export function Settings(p: Props) {
   const display = (
     <>
       <UI.SettingsSection title={t('架構圖與流程')}>
-        <div className="set-row">
-          <div className="grow"><div>{t('流程預設顯示外部函式')}</div><div className="small muted">{t('例如 libc、UCX 的函式。')}</div></div>
+        {/* the text and the switch in one label: clicking the text toggles it too */}
+        <label className="set-row">
+          <span className="grow"><span className="block">{t('流程預設顯示外部函式')}</span><span className="small muted block">{t('例如 libc、UCX 的函式。')}</span></span>
           <UI.Switch label={t('流程預設顯示外部函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
-        </div>
-        {g.stats.tests ? <div className="set-row">
-          <div className="grow"><div>{t('包含測試程式碼')}</div><div className="small muted">{t('在流程、影響範圍與搜尋裡列出測試檔裡的 {v1} 個函式，以及測試對正式程式碼的呼叫。架構圖一律只畫正式程式碼，正式程式碼的型別推論也不採用測試放進去的替身。', { v1: g.stats.tests })}</div></div>
+        </label>
+        {g.stats.tests ? <label className="set-row">
+          <span className="grow"><span className="block">{t('包含測試程式碼')}</span><span className="small muted block">{t('在流程、影響範圍與搜尋裡列出測試檔裡的 {v1} 個函式，以及測試對正式程式碼的呼叫。架構圖一律只畫正式程式碼，正式程式碼的型別推論也不採用測試放進去的替身。', { v1: g.stats.tests })}</span></span>
           <UI.Switch label={t('包含測試程式碼')} checked={pr.tests} onChange={(v) => save('tests', v)} />
-        </div> : null}
+        </label> : null}
       </UI.SettingsSection>
       <UI.SettingsSection title={t('版面')}>{radios(t('原始碼面板'), 'panel', [['right', t('右側')], ['below', t('下方')]])}</UI.SettingsSection>
     </>

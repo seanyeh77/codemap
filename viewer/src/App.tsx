@@ -209,6 +209,13 @@ function Shell(p: ShellProps) {
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
   }, [typed, isLive, grepLive.data, ix])
   const ranked = useMemo(() => rank(palette, query, 40), [palette, query])
+  // how many there are before the lists are cut (40 names, 20 lines): the box says how many it left out
+  const total = useMemo(() => {
+    if (query.trim().length < 1) return undefined
+    const names = rank(palette, query, Number.MAX_SAFE_INTEGER).length
+    const lines = typed.length >= 2 ? (isLive ? grepLive.data ?? [] : snapshotGrep(ix, typed)).length : 0
+    return names + lines
+  }, [palette, query, typed, isLive, grepLive.data, ix])
   // the count is said once the text results are in, not while they are still arriving
   const searching = query.trim().length >= 2 && (typed !== query.trim() || (isLive && grepLive.isFetching))
   // a phrase of several words is a question about the code: the lines that say it come before a
@@ -445,7 +452,7 @@ function Shell(p: ShellProps) {
             // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
-        <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) { setQuery(''); setPaletteKey((k) => k + 1) } }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching}
+        <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) { setQuery(''); setPaletteKey((k) => k + 1) } }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
           noResultsText={(q) => noResults(q)}
           placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />

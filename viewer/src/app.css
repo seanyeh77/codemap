@@ -105,3 +105,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 
 /* a statement that asks for action, in the warning text color */
 .warn-text { color: var(--warning-text); }
+
+/* a span that stands as its own line inside a label (labels hold only phrasing content) */
+.block { display: block; }
+.set-row { cursor: pointer; }
