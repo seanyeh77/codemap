@@ -490,12 +490,15 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   // the checks read some languages only: one the repository does not have is left out, and said so
   const langs = presentLangs(g)
   const covers = (k: string) => g.worth?.covers?.[k] ?? ['c']
+  // production code: also while the tests setting hides test functions (tests/grade.py:<module>), which are then not in ix
+  const hidden = new Set((g.hidden_tests ?? []).flatMap((h) => [h.id, h.file]))
+  const prod = (fid: string) => (p.ix.funcs[fid] ? p.ix.funcs[fid].scope !== 'test' : !hidden.has(fid) && !hidden.has(fid.slice(0, fid.lastIndexOf(':'))))
   const applies = (k: string) => covers(k).some((l) => langs.has(l))
   const inLangs = (k: string, by: Record<string, string>) => covers(k).filter((l) => langs.has(l) && by[l]).map((l) => t(by[l])).join(t('；'))
   const skipped = WORTH.filter(([k]) => !applies(k))
   // the commands the program runs (outside C): tests and grading scripts are left to the search
   // test code's commands (tests/grade.py's docker exec) stay out, also while the tests setting hides its functions
-  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => (p.ix.funcs[c.fid] ? p.ix.funcs[c.fid].scope !== 'test' : !g.hidden_tests?.some((h) => h.id === c.fid)))
+  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => prod(c.fid))
   // by file, the files people may change first (the controller before the grader's checks.py)
   const rank = (f: string) => ((r) => (r === 'editable' ? 0 : r === 'protected' ? 2 : 1))(roleOf(g, f))
   const cmdGroups = [...cmds.map((c, i) => [c, i] as const).reduce((m, x) => {
@@ -506,13 +509,23 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const rows = (xs: (readonly [typeof cmds[number], number])[]) => xs.reduce((n, [c]) => n + 1 + (c.via?.length ?? 0), 0)
   const [cmdOpen, setCmdOpen] = useState<Record<string, boolean>>({})
   const groupOpen = (f: string, xs: (readonly [typeof cmds[number], number])[]) => cmdOpen[f] ?? rows(xs) <= 30
-  const broad = (g.worth?.broad ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
+  const broad = (g.worth?.broad ?? []).filter((x) => prod(x.fid))
+  // one name defined in two files (routing.flow_priority and oracle.flow_priority): a change to one leaves the other
+  // as it was, and a reader can take a call to one for a call to the other. Methods and __init__ are left out.
+  const twins = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const [id, f] of Object.entries(p.ix.funcs)) {
+      if (f.scope === 'test' || f.kind === 'module' || f.kind === 'class' || f.name.includes('.') || /^__\w+__$/.test(f.name)) continue
+      m.set(f.name, [...(m.get(f.name) ?? []), id])
+    }
+    return [...m].filter(([, ids]) => new Set(ids.map((id) => p.ix.funcs[id].file)).size > 1).sort(([a], [b]) => a.localeCompare(b))
+  }, [p.ix])
   // outside C, a function named main that is not a test: the command line's entry
   const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module').map(([id]) => id)
   // in a C repository the program is its C code: Python there is tools and tests, as with the variables above
   const cFile = (f: string) => /\.(c|h|cc|cpp|cxx|hpp|hh)$/.test(f)
-  const stops = (g.worth?.stops ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
-  const writes = (g.writes ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
+  const stops = (g.worth?.stops ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
+  const writes = (g.writes ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
   // test and grading code: left out of the diagram, but a reader needs to know it is there
   const testComps = useMemo(() => {
     const all = g.hidden_tests ?? Object.entries(p.ix.funcs).filter(([, f]) => f.scope === 'test').map(([id, f]) => ({ id, name: f.name, file: f.file, line: f.line, comp: f.comp }))
@@ -521,8 +534,8 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     return [...m].sort(([a], [b]) => a.localeCompare(b))
   }, [p.ix, g])
   const spawns = (g.spawns ?? []).filter((x) => p.ix.funcs[x.target] && p.ix.funcs[x.fid]?.scope !== 'test')
-  const reads = cRepo ? [] : (g.reads ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
-  const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : p.ix.funcs[x.fid]?.scope !== 'test'))
+  const reads = cRepo ? [] : (g.reads ?? []).filter((x) => prod(x.fid))
+  const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
   // a variable the program only sets (PYTHONPATH for a child process) belongs here too, outside a C repository
   const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram) || (!cRepo && v.set.some(inProgram)))
   const others = Object.keys(g.env ?? {}).length - env.length
@@ -684,6 +697,12 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，未再拋出', { v1: x.then })}</span></span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           </> : null}
+          <h4 className="small" id="ov-twins" tabIndex={-1}>{t('不同檔案中的同名函式')}</h4>
+          {twins.length ? <UI.DetailList items={twins.map(([name, ids]) => ({
+            label: name,
+            value: <span className="entry-list">{ids.map((id, i) => (
+              <span key={id} className="entry-row">{at(`twin${name}${i}`, p.ix.funcs[id].file, p.ix.funcs[id].line)}{' '}<span className="muted">{p.ix.callerText(id)}</span></span>))}</span>,
+          }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           {applies('stops') ? <>
 <h4 className="small" id="ov-stops" tabIndex={-1}>{t('結束程式的呼叫')}</h4>
           {stops.length ? <UI.DetailList items={stops.map((s, i) => ({

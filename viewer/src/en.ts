@@ -789,4 +789,5 @@ export const EN: Record<string, string> = {
   "在流程樹展開這條呼叫鏈": "Open this chain in the flow tree",
   "找不到「{v1}」": "No function \"{v1}\"",
   "網址指定的函式不在索引中，這裡改顯示 {v1}。": "The address names a function the index does not have; showing {v1} instead.",
+  "不同檔案中的同名函式": "Functions of one name in different files",
 }
