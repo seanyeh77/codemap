@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { UI } from '../ui'
 import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
 import { noun, t } from '../i18n'
@@ -34,6 +34,9 @@ export function Detail(p: Props) {
   const [shown, setShown] = useState<{ key: string; f: string; l: number } | null>(null)
   const selKey = `${p.sel.id}@${e?.f}:${e?.l}`
   const at = shown?.key === selKey ? shown : null
+  // a line of this function's own code chosen in the panel: the code below marks it instead of the call
+  const [mark, setMark] = useState<{ key: string; l: number } | null>(null)
+  const code = useRef<UI.CodeViewHandle>(null)
   // the whole file instead of the function, until another selection
   const [wholeKey, setWhole] = useState<string | null>(null)
   const whole = wholeKey === selKey
@@ -93,8 +96,13 @@ export function Detail(p: Props) {
   const sameLine = e ? [...new Set(p.ix.callees(e.s ?? "", true).filter((x) => x.f === e.f && x.l === e.l && x.d !== e.d).map((x) => p.ix.bareName(x.d, x)))] : []
   const macros = e?.t ? (p.ix.g.symbols ?? []).filter((s) => s.kind === 'macro' && new RegExp(`\\b${s.name}\\s*\\(`).test(e.t!)) : []
   function link(file: string, line: number) {
+    // a line of the code already shown (a module's line 85): mark it there and scroll to it; another place: show it
     const own = !!f && file === f.file && f.line <= line && line <= f.end
-    return <LineLink ix={p.ix} file={file} line={line} onOpen={() => setShown(own ? null : { key: selKey, f: file, l: line })} />
+    return <LineLink ix={p.ix} file={file} line={line} onOpen={() => {
+      if (!own) return setShown({ key: selKey, f: file, l: line })
+      setShown(null); setMark({ key: selKey, l: line })
+      requestAnimationFrame(() => code.current?.focusTarget())
+    }} />
   }
   return (
     // where to go next sits at the top: under a long list of callers it fell below the window (1440 x 900)
@@ -103,9 +111,11 @@ export function Detail(p: Props) {
       {p.view === 'impact' && here ? null : <UI.Button icon="pulse" onClick={() => p.goImpact(p.sel.id)}>{t('查看影響範圍')}</UI.Button>}
     </>}>
       {/* the panel is read first after a search; from here the tree is many Tab stops away */}
-      {p.view === 'flow' ? <p className="small"><button type="button" className="linklike" onClick={() => {
+      {/* not for a start with nothing under it: the tree is that one row, and the jump showed nothing */}
+      {p.view === 'flow' && !(here && !p.ix.callees(p.sel.id, true).length && !p.ix.callers(p.sel.id).length) ? <p className="small"><button type="button" className="linklike" onClick={() => {
         const el = document.querySelector<HTMLElement>('#flow-tree [role=treeitem][aria-selected=true], #flow-tree [role=treeitem]')
-        el?.focus()
+        el?.scrollIntoView({ block: 'nearest' })
+        el?.focus({ focusVisible: true } as FocusOptions)
       }}>{t('跳到呼叫流程樹')}</button></p> : null}
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
@@ -169,8 +179,8 @@ export function Detail(p: Props) {
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
         : !src.data ? <p className="small muted">{t('匯出快照時無法讀取此檔案。請在 build 環境重新執行 codemap export。')}</p>
-        : <UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
-            code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
+        : <UI.CodeView {...refs} ref={code} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
+            code={src.data.lines.join('\n')} start={src.data.start} target={mark?.key === selKey ? mark.l : focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}
 
     </UI.Card>
