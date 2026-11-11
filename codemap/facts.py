@@ -1230,6 +1230,10 @@ def _argv_text(node, subst=None):
         vals = node.right.elts if isinstance(node.right, ast.Tuple) else [node.right]
         it = iter("{" + ast.unparse(v) + "}" for v in vals)
         return re.sub(r"%[-#0 +]*\d*(?:\.\d+)?[sdifr]", lambda m: next(it, m.group(0)), node.left.value)
+    # shutil.which("osken-manager") is the program found on PATH: the name says what runs
+    if isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] == "which" and node.args \
+            and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+        return node.args[0].value
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("list", "tuple") and len(node.args) == 1:
         return _argv_text(node.args[0], subst)
     if isinstance(node, ast.Starred):
@@ -1359,6 +1363,9 @@ def py_commands(root, funcs, edges):
         if isinstance(argv, ast.Name) and argv.id not in params_of(e["s"]):
             argv = local_value(e["s"], argv.id, n.lineno) or argv
         kw = {k.arg: k.value for k in n.keywords if k.arg}
+        if isinstance(argv, (ast.List, ast.Tuple)):
+            # [executable, "--port", …] where executable = shutil.which("osken-manager") a few lines up
+            argv = type(argv)(elts=[(local_value(e["s"], x.id, n.lineno) or x) if isinstance(x, ast.Name) else x for x in argv.elts], ctx=argv.ctx)
         cmd = _argv_text(argv) if argv is not None else ""
         item = dict(fid=e["s"], f=e["f"], l=n.lineno, call=ast.unparse(n.func), cmd=cmd)
         if "timeout" in kw:

@@ -746,4 +746,8 @@ export const EN: Record<string, string> = {
   "流程、影響範圍與搜尋預設不列出測試程式碼，所以這裡顯示的是別的函式。開啟後會列出它。": "The flow, impact and search pages leave test code out by default, so another function is shown here. Turn it on to list this one.",
   "跳到呼叫流程樹": "Go to the call tree",
   "五個步驟介紹架構、搜尋（上方的放大鏡）、流程、影響範圍與檢查筆記。": "Five steps through the architecture, search (the magnifier at the top), flow, impact and check notes.",
+  "從進入點到這裡": "From an entry point to here",
+  "{v1} 沒有被這個 repo 的程式呼叫，是程式的進入點之一；以下是到這裡最短的一條呼叫鏈。": "Nothing in this repository calls {v1}: it is one of the program's entry points. This is the shortest chain of calls from it to here.",
+  "直接呼叫的寫法（改參數時，這些地方都要跟著改）：": "The direct calls as written (a change of parameters has to change each of them):",
+  "讀取中": "Loading",
 }

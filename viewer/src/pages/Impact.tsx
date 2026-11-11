@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { useQueries } from '@tanstack/react-query'
+import { live } from '../data/load'
 import { UI } from '../ui'
 import { countUnit, t } from '../i18n'
 import { MAX_DEPTH, type Index } from '../data/graph'
@@ -51,6 +53,19 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   const entries = rows.filter((r) => r.api)
   const apis = [...new Set(entries.map((r) => r.api))]
   const name = p.ix.funcs[p.start]?.name ?? p.ix.bareName(p.start)     // an external function: who in the repo calls it
+  // the direct calls as written: which arguments each caller passes is what a change of parameters breaks
+  const sites = rows.filter((r) => r.kind === 'direct').flatMap((r) => r.lines.map((l) => ({ r, l }))).slice(0, 12)
+  const siteText = useQueries({ queries: sites.map(({ r, l }) => ({
+    queryKey: ['line', p.sourceId, r.f, l],
+    staleTime: 30_000,
+    queryFn: async () => {
+      const f = p.ix.funcs[r.fid]
+      const top = f?.top ?? f?.line ?? 0
+      if (f?.src?.length && l >= top && l - top < f.src.length) return f.src[l - top]   // a snapshot keeps each function's lines
+      const got = await live.source(r.f, l, l)
+      return got?.lines?.[0] ?? ''
+    },
+  })) })
   const entryTerm = (api: string) => t('和 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會先執行這裡的版本。呼叫者在 repo 外，不在此表中。', { v1: api })
   return (
     <div className="pane">
@@ -75,6 +90,13 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             ) : null}
             {((n) => n ? <p className="small">{t('測試程式碼沒有列入：另有 {v1} 個測試函式呼叫上面這些函式；在設定頁開啟「包含測試程式碼」後會列出。', { v1: n })}</p> : null)(
               [p.start, ...rows.map((r) => r.id)].reduce((sum, id) => sum + (p.ix.g.hidden_callers?.[id] ?? 0), 0))}
+            {sites.length && p.ix.funcs[p.start] ? <div>
+              <p className="small">{t('直接呼叫的寫法（改參數時，這些地方都要跟著改）：')}</p>
+              <UI.DetailList items={sites.map(({ r, l }, i) => ({
+                label: `${r.f.split('/').pop()}:${l}`,
+                value: <span>{siteText[i]?.data ? <UI.InlineCode>{String(siteText[i].data).trim()}</UI.InlineCode> : <span className="muted">{t('讀取中')}</span>}<span className="muted">{t('（{v1}）', { v1: r.name })}</span></span>,
+              }))} />
+            </div> : null}
             <p className="small muted">{t('直接：呼叫它的函式；間接：再往上呼叫它們的函式，一路到程式的入口。只計算這個 repo 內的函式；共用變數只從起點函式找一層。')}</p>
           </div>
         ) : (

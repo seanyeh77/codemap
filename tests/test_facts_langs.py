@@ -120,3 +120,12 @@ class WriteTargets(unittest.TestCase):
             edges = [dict(s="use.py:run", d="app.py:save", f="use.py", l=5, k="call")]
             w = [x for x in facts.py_write_targets(d, funcs, edges, facts.writes(d, funcs)) if x.get("via")]
             self.assertEqual([(x["l"], [v["name"] for v in x["via"]]) for x in w], [(9, ["STATE / 'out.json'"])])
+
+
+class WhichCommand(unittest.TestCase):
+    def test_program_found_on_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "run.py").write_text("import shutil, subprocess\n\n\ndef start():\n    exe = shutil.which('osken-manager')\n    command = [exe, '--port', '6653']\n    subprocess.Popen(command)\n")
+            funcs = {"run.py:start": dict(name="start", file="run.py", line=4, end=7)}
+            edges = [dict(s="run.py:start", d="ext:subprocess.Popen", f="run.py", l=7, k="call")]
+            self.assertEqual([c["cmd"] for c in facts.py_commands(d, funcs, edges)], ["osken-manager --port 6653"])
