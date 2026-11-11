@@ -164,9 +164,17 @@ def render(index, config=None, svg_name=None):
             out.append(f"- and {len(es) - limit} more")
         out.append("")
 
-    rows("Started as a process", [e for e in groups["exec"] if e["file"].endswith((".c", ".h", ".cc", ".cpp"))],
-         lambda e: f'`{name(nodes, e["src"])}` calls `{e["call"]}` at {loc(e)}')
-    env = [e for e in groups["env"] if not e["file"].endswith(".py")]
+    # every row cites file:line, so `codemap check` on CODEMAP.md verifies each of them
+    callbacks = [e for e in index["edges"] if e.get("kind") == "callback" and e.get("dst") in nodes]
+    rows("Called by a framework", sorted(callbacks, key=lambda e: (e["file"], e["line"])),
+         lambda e: f'`{name(nodes, e["dst"])}` is called by {e.get("rule", "a framework").split(".")[0]} '
+                   f'({e["src"].split(" ", 2)[-1] if e["src"].startswith("ext:") else name(nodes, e["src"])}) at {loc(e)}')
+    rows("Started as a process", sorted(groups["exec"], key=lambda e: (e["file"], e["line"])),
+         lambda e: f'`{name(nodes, e["src"])}` calls `{e["call"]}` at {loc(e)}', limit=20)
+    handed = [e for e in index["edges"] if e.get("kind") == "ref" and e.get("src") in nodes and e.get("dst") in nodes]
+    rows("Functions handed on as values", sorted(handed, key=lambda e: (e["file"], e["line"])),
+         lambda e: f'`{name(nodes, e["src"])}` hands on `{name(nodes, e["dst"])}` at {loc(e)}')
+    env = groups["env"]
     rows("Environment variables", env,
          lambda e: f'`{e["name"]}` is set by `{name(nodes, e["src"])}` at {loc(e)} and read '
                    + (f'at `{e["read_at"]}`' if nodes.get(e["dst"], {}).get("kind") == "site"

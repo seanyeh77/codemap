@@ -66,7 +66,10 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
         <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
-        {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤、{v3} 項待確認。', { v1: dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length, v3: rows.filter((r) => r.status === 'review').length })}</p> : null}
+        {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤、{v3} 項待確認。', { v1: dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length, v3: rows.filter((r) => r.status === 'review').length })
+          // what "0 errors" covers: how many references there were, and how many only had their names checked
+          + ' ' + t('共檢查 {v1} 處引用：{v2} 處核對到呼叫關係，{v3} 處只核對名稱出現在該行，其餘句子沒有檢查。', { v1: rows.length,
+            v2: rows.filter((r) => r.basis === 'calls' || r.basis === 'syntax').length, v3: rows.filter((r) => r.basis === 'names' || r.basis === 'exists').length })}</p> : null}
         {rows.some((r) => r.result === 'syntax') ? <p className="small muted">{t('「呼叫寫在程式碼裡」：程式碼裡有這個呼叫，目標由靜態分析或 tree-sitter 找到，沒有經過編譯器確認；說明欄寫了是哪一種。')}</p> : null}
         <p className="small muted">{t('「呼叫已確認」：筆記寫的呼叫經編譯器確認。「名稱出現」：引用的行出現筆記裡的名稱，句子其餘的說法（例如由誰設定、由誰讀取）沒有檢查。「待確認」的說明欄寫了要對照的位置。')}</p>
         <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}{' '}

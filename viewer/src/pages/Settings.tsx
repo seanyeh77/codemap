@@ -18,6 +18,8 @@ interface Props {
   openError: string | null
   onShowExtDefault: (v: boolean) => void
   refresh: () => void
+  /** opens a file at a line, as a search hit does */
+  openAt?: (f: string, l: number) => void
 }
 
 function when(sec: number) {
@@ -81,7 +83,10 @@ export function Settings(p: Props) {
             {st.ambiguity?.[b] ? <><br /><span className="muted">{t('多個可能目標：repo 內的候選 {v1} 條（{v2} 個呼叫）；外部同名方法的候選 {v3} 條（{v4} 個呼叫，例如聯集型別上的 toString）', { v1: st.ambiguity[b].repo_edges, v2: st.ambiguity[b].repo_sites, v3: st.ambiguity[b].external_edges, v4: st.ambiguity[b].external_sites })}</span></> : null}
             {/* which calls had no target: the reader sees what the flow and impact pages may be missing */}
             {st.unresolved?.[b]?.length ? <details className="unresolved"><summary>{t('最常無法解析的呼叫（前 {v1} 種）', { v1: st.unresolved[b].length })}</summary>
-              <span className="entry-list">{st.unresolved[b].map(([call, n]) => <span key={call} className="entry-row"><UI.InlineCode>{call}</UI.InlineCode>{t(' × {v1}', { v1: n })}</span>)}</span>
+              <span className="entry-list">{st.unresolved[b].map(([call, n, at]) => <span key={call} className="entry-row"><UI.InlineCode>{call}</UI.InlineCode>{t(' × {v1}', { v1: n })}
+                {/* where: a count is a reason to doubt, the places say which flows it may have cut */}
+                {at?.length ? <span className="muted">{t('：')}{at.map(([f, l], i) => <span key={f + l}>{i ? t('、') : ''}{p.openAt
+                  ? <button type="button" className="linklike" onClick={() => p.openAt!(f, l)}>{`${f.split('/').pop()}:${l}`}</button> : `${f}:${l}`}</span>)}{n > at.length ? t('…') : ''}</span> : null}</span>)}</span>
               <span className="muted">{t('多半是型別不知道的物件或參數上的方法；用搜尋找呼叫的文字可以看到每個位置。')}</span></details> : null}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
           ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>

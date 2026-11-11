@@ -154,7 +154,8 @@ export interface Stats {
   /** the analyzers that read the code: gcc, python, go, typescript, syntax-* */
   backends?: string[]
   /** per backend: the call texts that most often had no target, with their counts */
-  unresolved?: Record<string, [string, number][]>
+  /** per backend: the calls most often left unresolved, how many, and up to five places each */
+  unresolved?: Record<string, [string, number, [string, number][]?][]>
   /** framework adapters that ran */
   frameworks?: string[]
   /** functions defined in test files */

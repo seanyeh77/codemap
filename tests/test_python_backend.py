@@ -135,6 +135,15 @@ class Resolve(unittest.TestCase):
     def test_builtin_methods_are_not_unresolved(self):
         self.assertNotIn("append", str(self.idx["backends"]["python"]["unresolved_top"]))
 
+    def test_unresolved_calls_say_where(self):
+        top = self.idx["backends"]["python"]["unresolved_top"]
+        self.assertTrue(top)
+        for label, n, places in top:
+            self.assertTrue(1 <= len(places) <= min(n, 5))
+            self.assertEqual(len(set(map(tuple, places))), len(places))     # each place once
+            for f, line in places:
+                self.assertTrue(f.endswith(".py") and line > 0)
+
 
 if __name__ == "__main__":
     unittest.main()

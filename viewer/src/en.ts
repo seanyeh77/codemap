@@ -750,4 +750,8 @@ export const EN: Record<string, string> = {
   "{v1} 沒有被這個 repo 的程式呼叫，是程式的進入點之一；以下是到這裡最短的一條呼叫鏈。": "Nothing in this repository calls {v1}: it is one of the program's entry points. This is the shortest chain of calls from it to here.",
   "直接呼叫的寫法（改參數時，這些地方都要跟著改）：": "The direct calls as written (a change of parameters has to change each of them):",
   "讀取中": "Loading",
+  "找不到「{v1}」，列出含 {v2} 的行 · ": "Nothing has \"{v1}\"; lines with {v2} · ",
+  "{v1}（{v2} 處）": "{v1} ({v2})",
+  "…": "…",
+  "共檢查 {v1} 處引用：{v2} 處核對到呼叫關係，{v3} 處只核對名稱出現在該行，其餘句子沒有檢查。": "{v1} references checked: {v2} against the call graph, {v3} only for the names on the line; the rest of each sentence is not checked.",
 }

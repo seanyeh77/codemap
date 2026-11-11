@@ -141,8 +141,12 @@ function Shell(p: ShellProps) {
   // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
   const [chosenComp, setSelComp] = useState(init.c ?? '')
   const [selEdge, setSelEdge] = useState(init.e ?? '')        // a line of the architecture diagram; '' when a box or nothing is selected
-  const [chosenStart, setStart] = useState<string | null>(init.s ?? first)
-  const [chosenSel, setSel] = useState<Sel>({ id: init.f ?? init.s ?? first ?? '', edge: null, key: init.k ?? 'root' })
+  // with no start in the address, the function last looked at in this repository (kept per browser), not main
+  const lastKey = `codemap:last:${p.graph.repo}`
+  const remembered = ((id) => (id && ix.funcs[id] ? id : null))((() => { try { return localStorage.getItem(lastKey) } catch { return null } })())
+  const [chosenStart, setStart] = useState<string | null>(init.s ?? remembered ?? first)
+  const [chosenSel, setSel] = useState<Sel>({ id: init.f ?? init.s ?? remembered ?? first ?? '', edge: null, key: init.k ?? 'root' })
+  useEffect(() => { try { if (chosenStart && ix.funcs[chosenStart]) localStorage.setItem(lastKey, chosenStart) } catch { /* private mode */ } }, [chosenStart, ix, lastKey])
   // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
   // '' : nothing selected; a component the new index lacks falls back to nothing
   const selComp = p.graph.comps.some((c) => c.id === chosenComp) || chosenComp === TRACED ? chosenComp : ''
@@ -160,8 +164,27 @@ function Shell(p: ShellProps) {
   const setCat = (c: string) => { lastCat = c; setCatState(c) }
   const [alertOpen, setAlertOpen] = useState(true)
   const [searchOpen, setSearchOpen] = useState(early.search)
+  // opening and closing in one place: a closed box forgets its words and starts empty next time
+  const setPalette = (o: boolean) => { setSearchOpen(o); if (!o) { setQuery(''); setPaletteKey((k) => k + 1) } }
+  const paletteOpen = useRef(setPalette)
+  paletteOpen.current = setPalette
+  const openRef = useRef(searchOpen)
+  openRef.current = searchOpen
   // from here the palette's own Ctrl K listens; the page says it is ready for the early listener
   useEffect(() => { early.search = false; stopEarly(); document.body.dataset.codemapReady = '1' }, [])
+  // Ctrl K / ⌘ K, caught first (capture phase) and by the physical key too (KeyK, whatever the keyboard
+  // layout): reports said it sometimes did nothing; this way no handler further in, and no layout, can lose it.
+  // The palette's own listener is told to stand down for this press, so the box does not open and close at once.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key.toLowerCase() !== 'k' && e.code !== 'KeyK')) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      paletteOpen.current(!openRef.current)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
   const tablet = useTablet()
   const [navOpen, setNavOpen] = useState(false)
   const [recent, setRecent] = useState<PaletteItem[]>([])
@@ -172,9 +195,23 @@ function Shell(p: ShellProps) {
   const typed = useDebounced(query.trim(), 250)
   const grepLive = useQuery({ queryKey: ['grep', p.sourceId, typed], enabled: isLive && !!p.meta?.capabilities.grep && typed.length >= 2,
     queryFn: () => live.grep(typed), staleTime: 30_000, placeholderData: keepPreviousData })   // no flash of an empty list between two queries
+  // nothing has the words as typed (ttl_expired): look for the pieces (ttl, expired), lines with more of them first
+  const parts = useMemo(() => [...new Set(typed.split(/[\s_\-./]+|(?<=[a-z])(?=[A-Z])/).map((w) => w.toLowerCase()).filter((w) => w.length >= 3))].slice(0, 3), [typed])
+  const primaryEmpty = isLive ? grepLive.isSuccess && !grepLive.isPlaceholderData && !(grepLive.data ?? []).length : typed.length >= 2 && !snapshotGrep(ix, typed).length
+  const grepParts = useQuery({ queryKey: ['grep-parts', p.sourceId, parts.join(' ')], enabled: primaryEmpty && parts.length >= 2,
+    queryFn: async () => {
+      const lists = await Promise.all(parts.map((w) => (isLive ? live.grep(w) : Promise.resolve(snapshotGrep(ix, w)))))
+      const score = new Map<string, { h: GrepHit; n: number }>()
+      for (const list of lists) for (const h of list) {
+        const k = `${h.file}:${h.line}`
+        score.set(k, { h, n: (score.get(k)?.n ?? 0) + 1 })
+      }
+      return [...score.values()].sort((a, b) => b.n - a.n).map((x) => x.h)
+    }, staleTime: 30_000 })
+  const partial = primaryEmpty && parts.length >= 2 && !!grepParts.data?.length
   const textHits = useMemo(() => {
     if (typed.length < 2) return []
-    const hits: GrepHit[] = isLive ? grepLive.data ?? [] : snapshotGrep(ix, typed)
+    const hits: GrepHit[] = partial ? grepParts.data ?? [] : isLive ? grepLive.data ?? [] : snapshotGrep(ix, typed)
     const indexed = new Set(ix.byFile().keys())
     // what a line outside every function is: a macro, a file-scope variable, or just text there
     const symAt = new Map((ix.g.symbols ?? []).map((s) => [`${s.file}:${s.line}`, s]))
@@ -205,9 +242,9 @@ function Shell(p: ShellProps) {
         : t('提到這個名稱，不是呼叫')
       const roleText = role ? ` · ${role}` : ''
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
-        detail: `${h.file}:${h.line}` + where + roleText + reaches, target: { type: 'file', f: h.file, l: h.line } }
+        detail: (partial ? t('找不到「{v1}」，列出含 {v2} 的行 · ', { v1: typed, v2: parts.join(t('、')) }) : '') + `${h.file}:${h.line}` + where + roleText + reaches, target: { type: 'file', f: h.file, l: h.line } }
     }).sort((a, b) => TEXT_ORDER.indexOf(a.kind!) - TEXT_ORDER.indexOf(b.kind!)).slice(0, 20)
-  }, [typed, isLive, grepLive.data, ix])
+  }, [typed, isLive, grepLive.data, ix, partial, grepParts.data, parts])
   const ranked = useMemo(() => rank(palette, query, 40), [palette, query])
   // how many there are before the lists are cut (40 names, 20 lines): the box says how many it left out
   const total = useMemo(() => {
@@ -447,12 +484,13 @@ function Shell(p: ShellProps) {
         {view === 'settings'
           ? <Settings graph={p.graph} meta={p.meta} cat={cat} setCat={setCat} snapName={p.snapName} hasLive={p.hasLive}
               backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
-              onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} />
+              onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()}
+              openAt={(f, l) => select({ id: `t:${f}:${l}`, label: `${f}:${l}`, target: { type: 'file', f, l } })} />
           : side && pr.panel !== 'below'
             // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
-        <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={(o) => { setSearchOpen(o); if (!o) { setQuery(''); setPaletteKey((k) => k + 1) } }} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
+        <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
           noResultsText={(q) => noResults(q)}
           placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />

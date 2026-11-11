@@ -396,6 +396,10 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const skipped = WORTH.filter(([k]) => !applies(k))
   // the commands the program runs (outside C): tests and grading scripts are left to the search
   const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => p.ix.funcs[c.fid]?.scope !== 'test')
+  const cmdGroups = [...cmds.map((c, i) => [c, i] as const).reduce((m, x) => {
+    const comp = x[0].f
+    return m.set(comp, [...(m.get(comp) ?? []), x])
+  }, new Map<string, (readonly [typeof cmds[number], number])[]>())]
   const broad = (g.worth?.broad ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
   // outside C, a function named main that is not a test: the command line's entry
   const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module').map(([id]) => id)
@@ -507,15 +511,20 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         <section aria-labelledby="ov-cmds">
           <h3 className="small" id="ov-cmds" tabIndex={-1}>{t('執行的外部指令')}</h3>
           <p className="small muted">{t('{v1} 是執行時才知道的值。經由包裝函式執行的指令，列出每個呼叫它的地方組成的指令。', { v1: '{…}' })}</p>
-          <UI.DetailList items={cmds.map((c, i) => ({
+          {/* by file: the controller's commands apart from the grader's (checks.py) and the runtime's */}
+          {cmdGroups.map(([comp, list]) => (<div key={comp}>
+          {cmdGroups.length > 1 ? <h4 className="small">{t('{v1}（{v2} 處）', { v1: comp, v2: list.length })}</h4> : null}
+          <UI.DetailList items={list.map(([c, i]) => ({
             // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
-            label: ((n) => cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)(p.ix.funcs[c.fid]?.name ?? c.fid),
+            // under its file's heading the name alone; in one flat list the file tells two wrappers of one name apart
+            label: ((n) => cmdGroups.length < 2 && cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)(p.ix.funcs[c.fid]?.name ?? c.fid),
             value: <span><UI.InlineCode>{c.cmd || c.call}</UI.InlineCode>{' '}{at(`cmd${i}`, c.f, c.l)}
               <span className="muted">{t('（{v1}', { v1: c.call })}{c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')}{c.shell ? t('，shell={v1}', { v1: c.shell }) : ''}{t('）')}</span>
               {c.via?.length ? <span className="entry-list">{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
                 <span key={j} className="entry-row indent"><UI.InlineCode>{v.cmd}</UI.InlineCode>{' '}{fn(v.fid)}{' '}{at(`cmd${i}-${j}`, v.f, v.l)}</span>))}
                 {c.via.length > 5 ? <button type="button" className="linklike" aria-expanded={openApi === '*cmd' + i} onClick={() => setOpenApi(openApi === '*cmd' + i ? '' : '*cmd' + i)}>{openApi === '*cmd' + i ? t('收合') : t('另有 {v1} 處', { v1: c.via.length - 5 })}</button> : null}</span> : null}</span>,
           }))} />
+          </div>))}
         </section>
       ) : null}
       {env.length ? (

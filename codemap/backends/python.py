@@ -101,6 +101,7 @@ class Analyzer:
         self.modules, self.by_file, self.short = {}, {}, {}
         self.nodes, self.funcs, self.classes = {}, {}, {}
         self.edges, self.unresolved, self.errors, self.builtin = [], {}, [], 0
+        self.unresolved_at = {}
         self._ret, self._mro, self._busy, self._cache, self._taint, self._vis = {}, {}, set(), {}, set(), {}
         for f in files:
             self._load(f)
@@ -791,9 +792,9 @@ class Analyzer:
                     got = [x for x in got if x[0] != "unknown:"]
                     if not got:
                         self.unresolved[label] = self.unresolved.get(label, 0) + 1
-                        continue
-                    if not got:
-                        self.unresolved[label] = self.unresolved.get(label, 0) + 1
+                        self.unresolved_at.setdefault(label, [])
+                        if len(self.unresolved_at[label]) < 5 and (m.file, n.lineno) not in self.unresolved_at[label]:   # a few places to look at
+                            self.unresolved_at[label].append((m.file, n.lineno))
                         continue
                     repo = [x for x in got if not x[0].startswith("ext:")]
                     many = len(repo) > 1 or partial and bool(repo)
@@ -902,7 +903,7 @@ def build(root, files, tests=None):
     counts["unresolved"] = sum(a.unresolved.values())
     counts["builtin"] = a.builtin
     refs = sum(1 for e in a.edges if e["kind"] == "ref")
-    top = sorted(a.unresolved.items(), key=lambda kv: -kv[1])[:20]
+    top = [(k, n, a.unresolved_at.get(k, [])) for k, n in sorted(a.unresolved.items(), key=lambda kv: -kv[1])[:20]]
     stats = dict(files=len(a.by_file), languages={"python": len(a.by_file)},
                  nodes=sum(1 for n in nodes.values() if n.get("defined")), edges=len(a.edges),
                  resolution=counts, refs=refs, unresolved_top=top, errors=a.errors)
