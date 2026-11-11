@@ -5,6 +5,7 @@ import { usePrefs } from '../data/hooks'
 import { live } from '../data/load'
 import type { Graph, Meta } from '../data/types'
 import { prefs, type Prefs } from '../prefs'
+import { InstallApp } from './OpenSnapshot'
 
 interface Props {
   graph: Graph
@@ -110,6 +111,7 @@ export function Settings(p: Props) {
           ...(p.hasLive ? [{ label: t('回到即時'), primary: true, onClick: p.backLive }] : []),
           { label: t('開啟其他快照'), primary: !p.hasLive, onClick: p.openSnapshot },
         ]} />
+        <InstallApp />
         {isLive ? <p className="small muted">{t('重建索引：在 build 環境執行')} <UI.InlineCode>codemap index</UI.InlineCode> {t('後重新載入。')}</p> : null}
         {p.openError ? <UI.Alert tone="danger" title={t('無法開啟此檔案')}>{p.openError}</UI.Alert> : null}
       </UI.SettingsSection>

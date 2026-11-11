@@ -7,10 +7,12 @@ import { setLang } from './i18n'
 import { useSyncExternalStore } from 'react'
 import './app.css'
 import { listenEarly } from './early'
+import { startApp } from './pwa'
 
 UI.initTheme()
 
 listenEarly()
+startApp()
 UI.setTheme(prefs.get().theme)
 setLang(prefs.get().lang)
 

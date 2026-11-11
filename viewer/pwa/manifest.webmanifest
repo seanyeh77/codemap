@@ -1,0 +1,21 @@
+{
+  "name": "codemap",
+  "short_name": "codemap",
+  "description": "Read a codemap snapshot: the architecture, the call flow, the impact of a change and the checked notes.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fcfbfb",
+  "theme_color": "#2457d6",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    { "action": "./", "accept": { "application/x-codemap": [".codemap"] } }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}

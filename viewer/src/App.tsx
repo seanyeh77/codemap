@@ -19,6 +19,7 @@ import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
 import { FileView } from './pages/CodeAt'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
+import { onLaunchFile } from './pwa'
 
 type View = 'arch' | 'flow' | 'impact' | 'check' | 'settings'
 const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> = {
@@ -94,6 +95,8 @@ export function App() {
     }
   }
   const picker = useFilePicker(open)
+  // a .codemap file the system opened with the installed app
+  useEffect(() => onLaunchFile((f) => { void open(f) }), [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (boot.isPending || (isLive && liveGraph.isPending)) {
     return <div className="boot"><UI.Skeleton width="100%" height={64} /><UI.Skeleton width="60%" height={24} /><UI.Skeleton width="100%" height={320} /></div>

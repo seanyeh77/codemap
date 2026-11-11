@@ -795,4 +795,7 @@ export const EN: Record<string, string> = {
   "，共 {n} 個": ", {n} in all",
   "可修改：{v1}": "Editable: {v1}",
   "受保護：{v1}": "Protected: {v1}",
+  "安裝 codemap": "Install codemap",
+  "安裝後可從桌面或主畫面開啟，離線也能使用，並可直接開啟 .codemap 檔。": "Once installed it opens from the desktop or home screen, works offline and opens .codemap files directly.",
+  "安裝成 app：在 Safari 按「分享」，再選「加入主畫面」。": "To install it as an app: in Safari, tap Share, then Add to Home Screen.",
 }

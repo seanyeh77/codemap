@@ -1,0 +1,48 @@
+# The viewer on GitHub Pages (https://seanyeh77.github.io/codemap/), installable as an app.
+# It opens .codemap snapshots from a file or from ?snapshot=URL; nothing is sent anywhere.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [viewer/**, .github/workflows/pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: viewer
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:pages
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: viewer/dist-pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -162,6 +162,14 @@ codemap export --html                # one HTML file with the viewer and the sna
 codemap viewer -o site/              # static viewer for a web server; open a .codemap file in it
 ```
 
+The static viewer is also on GitHub Pages: https://seanyeh77.github.io/codemap/. Open a
+`.codemap` file there, or add `?snapshot=<URL>` for one on the web (the server must allow
+cross-origin requests; GitHub's raw files do). The snapshot stays in the browser. The page
+can be installed as an app from the browser (the install button on the page, or the browser's
+own menu; in Safari, Share, then Add to Home Screen): it then opens from the desktop or home
+screen, works offline, and opens `.codemap` files directly where the system supports it
+(Chrome and Edge on a desktop).
+
 `--notes` takes any Markdown file, so design documents can be checked the same way:
 `codemap serve --notes notes.md docs/*.md` lists every file:line in them that no
 longer matches the code.
@@ -282,7 +290,12 @@ npm install
 npm run dev          # with `codemap serve` running on port 7300
 npm test
 npm run build        # writes codemap/viewer_dist/index.html; commit it
+npm run build:pages  # the GitHub Pages app in viewer/dist-pages (CI publishes it from main)
 ```
+
+`build:pages` adds what makes the page an installable app: `viewer/pwa/` holds the manifest,
+the service worker (network first, so a new build is used at once; the kept copy answers
+offline) and the icons. The page `codemap serve` returns has none of them.
 
 The build is one self-contained `index.html`, so it can be served by
 `codemap serve`, embedded by `codemap export --html`, and opened from disk.
