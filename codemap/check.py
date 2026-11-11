@@ -97,8 +97,8 @@ def plain(md):
 class Msg:
     """A message for the viewer: the Traditional Chinese template and its values, so the viewer can
     show it in the reader's language (lists are joined there). str() gives the Chinese text."""
-    def __init__(self, t, **v):
-        self.t, self.v = t, v
+    def __init__(self, t, kind=None, **v):
+        self.t, self.v, self.kind = t, v, kind      # kind: what a match rests on (calls, syntax, names)
 
     def __str__(self):
         return self.t.format(**{k: "、".join(x) if isinstance(x, list) else x for k, x in self.v.items()})
@@ -156,7 +156,7 @@ def check(root, md_path, index):
             common = sorted(callees.get(a, set()) & callees.get(b, set()))
             if (a, b) not in pairs and common:
                 # not a call, but both use the same functions: likely data passed through them
-                review.append(Msg("`{a}` 沒有直接呼叫 `{b}`；兩者都呼叫 {common}，可能經由共用的資料相連。若筆記要說的是資料流向，請改寫成文字說明",
+                review.append(Msg("`{a}` 未直接呼叫 `{b}`，兩者皆呼叫 {common}，可能經由共用資料相連。若筆記指的是資料流向，請改寫為文字說明",
                                   a=a, b=b, common=code(common[:3])))
             elif (a, b) not in pairs:
                 problems.append(f"{md_path}:{n}: no edge {a} -> {b} in the index")
@@ -165,22 +165,22 @@ def check(root, md_path, index):
                 e = pairs[(a, b)][1]
                 at = f"`{e['file']}:{e['line']}`"
                 if e.get("rule") == "fnptr_assign":
-                    review.append(Msg("`{a}` 沒有直接呼叫 `{b}`：它在 {at} 把 `{b}` 存入 `{slot}`，之後經由該指標呼叫。可改寫成「`{a}` 註冊 `{b}`」",
+                    review.append(Msg("`{a}` 未直接呼叫 `{b}`：它在 {at} 將 `{b}` 存入 `{slot}`，之後經由該指標呼叫。可改寫為「`{a}` 註冊 `{b}`」",
                                       a=a, b=b, at=at, slot=e.get("slot") or "函式指標"))
                 elif e["source"] == "framework":
-                    review.append(Msg("`{a} -> {b}` 是框架規則「{rule}」推得的：程式碼裡沒有這個呼叫，由框架呼叫；請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
+                    review.append(Msg("`{a} -> {b}` 由框架規則「{rule}」推得，程式碼中沒有此呼叫。請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
                 else:
-                    review.append(Msg("`{a} -> {b}` 由規則「{rule}」推得，編譯器無法確認；請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
+                    review.append(Msg("`{a} -> {b}` 由規則「{rule}」推得，編譯器無法確認。請對照 {at} 確認", a=a, b=b, rule=e.get("rule"), at=at))
             elif pairs[(a, b)][0] == "compiler":
-                why.append(Msg("`{a} -> {b}` 經編譯器確認", a=a, b=b))
+                why.append(Msg("`{a} -> {b}` 經編譯器確認", "calls", a=a, b=b))
             elif pairs[(a, b)][0] == "static:exact":
-                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（靜態分析確定目標）", a=a, b=b))
+                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（靜態分析確定目標）", "syntax", a=a, b=b))
             elif pairs[(a, b)][0] == "static:inferred":
-                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（目標由型別推論得到）", a=a, b=b))
+                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（目標由型別推論得到）", "syntax", a=a, b=b))
             elif pairs[(a, b)][0] == "static:ambiguous":
-                review.append(Msg("`{a} -> {b}`：`{b}` 只是這個呼叫可能的目標之一（聯集型別或子類別覆寫），請確認", a=a, b=b))
+                review.append(Msg("`{a} -> {b}`：`{b}` 僅為此呼叫可能的目標之一（聯集型別或子類別覆寫），請確認", a=a, b=b))
             else:
-                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（tree-sitter 依名稱對到）", a=a, b=b))
+                why.append(Msg("`{a} -> {b}` 寫在程式碼裡（tree-sitter 依名稱對應）", "syntax", a=a, b=b))
         whole = words_in(md)
         for clause in CLAUSE.split(md):
             local = words_in(clause)
@@ -215,17 +215,17 @@ def check(root, md_path, index):
                 if want and not mentions(span, whole):          # a clause's words are among the line's
                     problems.append(f"{md_path}:{n}: {ref} mentions none of {', '.join(sorted(want))}")
                     new = fix_ref(root, f, lo, hi, want, defs, files)
-                    bad.append(Msg("`{ref}` 沒有出現 {words}，行號可能已移動，應為 `{new}`", ref=ref, words=code(sorted(want)), new=new) if new
-                               else Msg("`{ref}` 沒有出現 {words}，請確認行號", ref=ref, words=code(sorted(want))))
+                    bad.append(Msg("`{ref}` 未出現 {words}，行號可能已移動，應為 `{new}`", ref=ref, words=code(sorted(want)), new=new) if new
+                               else Msg("`{ref}` 未出現 {words}，請確認行號", ref=ref, words=code(sorted(want))))
                     fixes.append((ref, new))
                 elif want:
                     hit = sorted(w for w in whole if mentions(span, [w]))
-                    why.append(Msg("`{ref}` 提及 {words}", ref=ref, words=code(hit)))
+                    why.append(Msg("`{ref}` 提及 {words}", "names", ref=ref, words=code(hit)))
                 else:
                     why.append(Msg("`{ref}` 存在", ref=ref))
                 if short and not (want and not mentions(span, whole)):
                     full = ref.replace(f, short, 1)
-                    why.append(Msg("`{f}` 指 `{short}`，建議寫完整路徑", f=f, short=short))
+                    why.append(Msg("`{f}` 指的是 `{short}`，建議寫完整路徑", f=f, short=short))
                     fixes.append((ref, full))
         if bad or why or review:
             # a line that matches but has a better way to write it is not 「相符」: it gets a suggestion to act on
@@ -237,9 +237,9 @@ def check(root, md_path, index):
             # what a match rests on: every call confirmed by the compiler, or only names seen on the
             # referenced lines (the rest of the sentence, such as "set by", is not checked)
             basis = (None if status != "done" else
-                     "calls" if why and all(m.t.endswith("經編譯器確認") for m in why) else
-                     "syntax" if why and all(m.t.endswith(("經編譯器確認", "依名稱對到）", "確定目標）", "型別推論得到）")) for m in why) else
-                     "names" if any("提及" in m.t for m in why) else "exists")
+                     "calls" if why and all(m.kind == "calls" for m in why) else
+                     "syntax" if why and all(m.kind in ("calls", "syntax") for m in why) else
+                     "names" if any(m.kind == "names" for m in why) else "exists")
             items.append(dict(at=f"{rel}:{n}", line=n, text=plain(md),
                               status=status, basis=basis, why="；".join(map(str, bad or review or why)),
                               msgs=[m.json() for m in bad or review or why],

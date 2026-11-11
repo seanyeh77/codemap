@@ -198,6 +198,22 @@ class Fixture(unittest.TestCase):
         it = check.check(self.root, md, self.idx)["items"][0]
         self.assertEqual((it["status"], it["basis"]), ("done", "names"))     # only the names were seen
 
+    def test_check_basis_for_calls(self):
+        nodes = self.idx["nodes"]
+        name = lambda k: nodes[k]["name"]
+        e = next(e for e in self.idx["edges"] if e["source"] == "compiler" and e["kind"] == "call"
+                 and e["src"] in nodes and e["dst"] in nodes)
+        md = self.root / "calls.md"
+        md.write_text(f"- `{name(e['src'])} -> {name(e['dst'])}`\n")
+        it = check.check(self.root, md, self.idx)["items"][0]
+        self.assertEqual((it["status"], it["basis"]), ("done", "calls"))
+        (self.root / "only.py").write_text("def f():\n    g()\n\ndef g():\n    pass\n")
+        idx = {"nodes": {"f": {"name": "f"}, "g": {"name": "g"}},
+               "edges": [{"src": "f", "dst": "g", "source": "syntax", "kind": "call"}]}
+        md.write_text("- `f -> g`\n")
+        it = check.check(self.root, md, idx)["items"][0]
+        self.assertEqual((it["status"], it["basis"]), ("done", "syntax"))
+
     def test_doc_summaries(self):
         d = self.root / "docs"
         d.mkdir(exist_ok=True)
