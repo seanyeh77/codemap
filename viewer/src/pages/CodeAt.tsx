@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { UI } from '../ui'
-import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
+import { DocRefs, OpenFile, langLabel, useCodeRefs } from '../components/DocRefs'
 import { t } from '../i18n'
 import type { Index } from '../data/graph'
 import { useFileSource, useLineSource } from '../data/hooks'
@@ -46,7 +46,22 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
   const src = useFileSource(p.at.f, p.isLive, p.sourceId)
   const view = useRef<UI.CodeViewHandle>(null)
   const refs = useCodeRefs(p.ix)
-  useEffect(() => { if (src.data) view.current?.focusTarget() }, [src.data, p.at.l])
+  const open = useContext(OpenFile)
+  // a Markdown file opens as its preview, unless a line in it was asked for: the preview has no line numbers
+  const md = /\.(md|markdown)$/i.test(p.at.f)
+  const [mode, setMode] = useState<'preview' | 'source'>(p.at.l > 1 ? 'source' : 'preview')
+  const [was, setWas] = useState(p.at)
+  if (was.f !== p.at.f || was.l !== p.at.l) { setWas(p.at); setMode(p.at.l > 1 ? 'source' : 'preview') }     // another file or line asked for
+  const shown = md ? mode : 'source'
+  // a link in the document to another file of the project opens it here; a web address opens in a new tab
+  const local = (href: string) => {
+    if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return null
+    const parts = [...p.at.f.split('/').slice(0, -1), ...href.split('#')[0].split('/')]
+    const out: string[] = []
+    for (const x of parts) { if (x === '..') out.pop(); else if (x && x !== '.') out.push(x) }
+    return out.join('/')
+  }
+  useEffect(() => { if (src.data && shown === 'source') view.current?.focusTarget() }, [src.data, p.at.l, shown])
   return (
     // Escape inside the file closes it, back to where it was opened from (the panel had no keyboard way out)
     <div onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); p.onClose() } }}>
@@ -54,8 +69,11 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
       {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
         : src.isPending ? <UI.Skeleton width="80%" height={16} />
         : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
-        : <><UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
-            sections={sections(p.ix, p.at.f)} />
+        : <>{md ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
+          {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
+            onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
+          : <UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
+            sections={sections(p.ix, p.at.f)} />}
           {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
     </UI.Card>
     </div>

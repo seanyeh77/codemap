@@ -1,5 +1,5 @@
-import { useContext, useMemo, useRef, useState, type ReactNode } from 'react'
-import { OpenFile } from '../components/DocRefs'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { OpenFile, useCodeRefs } from '../components/DocRefs'
 import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
@@ -426,8 +426,10 @@ const firstSentence = (t: string) => ((m) => (m ? m[0] : t))(t.match(/^[\s\S]*?[
 /** The project's documents: the top-level ones and those the code points to first, each with its
  *  title and first sentence; the rest behind one button. The fullest explanation of a design is
  *  often a document, and nothing on the diagram leads to it. */
-function Docs(p: { docs: DocSummary[] }) {
+function Docs(p: { docs: DocSummary[]; ix: Index }) {
   const openFile = useContext(OpenFile)
+  const refs = useCodeRefs(p.ix)
+  const sum = t('{v1} 份', { v1: p.docs.length })
   const [all, setAll] = useState(false)
   // the README and docs/*.md, then documents the code names at least twice, most named first
   const main = p.docs.filter((d) => d.file.split('/').length <= 2 && !/^(CODEMAP|notes)\.md$/i.test(d.file) || d.cited >= 2)
@@ -436,16 +438,15 @@ function Docs(p: { docs: DocSummary[] }) {
   const row = (d: DocSummary) => ({
     label: d.file,
     value: <span><button type="button" className="linklike" onClick={() => openFile(d.file, 1)}>{d.title}</button>
-      {d.text ? <><br /><UI.CodeText className="small" text={d.text} /></> : null}
+      {d.text ? <><br /><UI.Markdown inline size="small" {...refs}>{d.text}</UI.Markdown></> : null}
       {d.cited ? <><br /><span className="small muted">{t('{v1} 個程式碼或腳本檔提到它', { v1: d.cited, v2: countUnit('', 'source file', 'source files')(d.cited) })}</span></> : null}</span>,
   })
   return (
-    <section aria-labelledby="ov-docs">
-      <h3 className="small" id="ov-docs" tabIndex={-1}>{t('專案文件')}</h3>
-      <UI.DetailList items={main.map(row)} />
+    <Part id="ov-docs" title={t('專案文件')} summary={sum}>
+      <DL items={main.map(row)} />
       {rest.length ? <p className="small"><button type="button" className="linklike" aria-expanded={all} onClick={() => setAll(!all)}>{all ? t('收起其餘文件') : t('其餘 {v1} 份文件', { v1: rest.length })}</button></p> : null}
-      {all ? <UI.DetailList items={rest.map(row)} /> : null}
-    </section>
+      {all ? <DL items={rest.map(row)} /> : null}
+    </Part>
   )
 }
 
@@ -458,6 +459,7 @@ function From(p: { doc: Doc }) {
  *  environment controls - the parts the diagram's boxes and lines do not say. */
 function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void }) {
   const g = p.ix.g
+  const refs = useCodeRefs(p.ix)
   // a file:line opens its code right under the row it is in, not at the end of the panel
   const [shown, setShown] = useState<string | null>(null)
   const [openApi, setOpenApi] = useState<string | null>(null)
@@ -544,26 +546,41 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram) || (!cRepo && v.set.some(inProgram)))
   const others = Object.keys(g.env ?? {}).length - env.length
   const where = (refs: string[]) => refs.filter(inProgram).map((r) => (fname(r) ? t('{v1}（{v2}）', { v1: fname(r), v2: r.split('/').pop() }) : r))
+  // the line beside each part's title: the numbers that say whether it is worth opening
+  const join = (xs: (string | false | 0 | undefined)[]) => xs.filter(Boolean).join(t('、'))
+  const fewNames = (xs: string[]) => (xs.length > 2 ? t('{v1} 等 {v2} 個', { v1: xs.slice(0, 2).join(t('、')), v2: xs.length }) : xs.join(t('、')))
+  const spacesAll = [...new Set((g.commands ?? []).filter((c) => prod(c.fid)).flatMap((c) => [c.cmd, ...(c.via ?? []).map((v) => v.cmd)]).map(netns).filter((x) => x && !/^\{[^}]*\}$/.test(x)))]
+  const sums = {
+    comps: t('{v1} 個元件、{v2} 個函式', { v1: g.comps.length, v2: Object.values(p.ix.funcs).filter((f) => f.scope !== 'test' && f.kind !== 'module').length }),
+    entry: join([mains.length && t('程式入口 {v1} 個', { v1: mains.length }), fwEntries.size && t('框架呼叫 {v1} 個', { v1: [...fwEntries.values()].flat().length }),
+      spawns.length && t('背景工作 {v1} 個', { v1: spawns.length }), apis.size && t('外部進入點 {v1} 個', { v1: apis.size }), lifecycle.length && t('自動執行 {v1} 個', { v1: lifecycle.length })]),
+    cmds: join([t('{v1} 個指令', { v1: (g.commands ?? []).filter((c) => prod(c.fid)).length }), spacesAll.length && t('{v1} 個 network namespace', { v1: spacesAll.length }),
+      ((n) => n && t('{v1} 個沒有逾時', { v1: n }))((g.commands ?? []).filter((c) => prod(c.fid) && !c.timeout).length)]),
+    env: fewNames(env.map(([n]) => n)),
+    reads: t('{v1} 處', { v1: reads.length }),
+    worth: '',
+  }
+  const found = ([['broad', broad.length, '捕捉所有例外後繼續執行'], ['twins', twins.length, '不同檔案中的同名函式'], ['stops', stops.length, '結束程式的呼叫'],
+    ['arrays', g.worth?.arrays.length ?? 0, '固定大小的全域陣列'], ['env_if_unset', unsetEnv.length, '只在未設定時才設定的環境變數'], ['errors', g.worth?.errors?.length ?? 0, '回傳固定錯誤碼的地方'],
+    ['loss', g.worth?.loss?.length ?? 0, '會丟掉資料的地方'], ['leftovers', g.worth?.leftovers?.length ?? 0, '程式結束後會留下的東西'], ['limits', g.worth?.limits?.silent.length ?? 0, '到達上限時直接返回、不印訊息'],
+    ['plain_writes', g.worth?.plain_writes?.length ?? 0, '不經 atomic 操作就修改的全域變數'], ['env', g.worth?.env.length ?? 0, '未檢查 NULL 就使用的 getenv 結果']] as const)
+    .filter(([k, n]) => n > 0 && (k === 'twins' || applies(k)))
+  sums.worth = found.length ? t('有發現：{v1}', { v1: found.map(([, , l]) => t(l)).join(t('、')) }) : t('沒有發現')
   return (
     <UI.Card className="detail fit overview" title={t('概觀')}>
       <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
-      <nav className="toc" aria-label={t('概觀的段落')} data-tour="arch">
-        {TOC.filter(([id]) => id !== 'ov-entry' || lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length).filter(([id]) => id !== 'ov-env' || env.length).filter(([id]) => id !== 'ov-cmds' || cmds.length)
-          .filter(([id]) => id !== 'ov-docs' || g.docs?.length).filter(([id]) => id !== 'ov-build' || g.build).filter(([id]) => id !== 'ov-writes' || g.writes).filter(([id]) => id !== 'ov-reads' || reads.length).filter(([id]) => id !== 'ov-worth' || g.worth)
-          .map(([id, label]) => <button key={id} type="button" className="linklike" onClick={() => jump(id)}>{t(label)}</button>)}
-      </nav>
-      <section aria-labelledby="ov-comps">
-        <h3 className="small" id="ov-comps" tabIndex={-1}>{t('元件')}</h3>
-        <UI.DetailList items={g.comps.map((c) => ({
+      <div data-tour="arch"><RepoKey.Provider value={g.repo}><UI.SectionGroup>
+      <Part id="ov-comps" title={t('元件')} summary={sums.comps} open>
+        <DL items={g.comps.map((c) => ({
           label: c.id,
-          value: <span>{c.doc ? <>{short(c.doc.text)}<br /><From doc={c.doc} /><br /></>
+          value: <span>{c.doc ? <><UI.Markdown inline {...refs}>{short(c.doc.text)}</UI.Markdown><br /><From doc={c.doc} /><br /></>
             : c.file_docs?.length ? <>{t('元件沒有整體說明，以下為各檔案的開頭註解：')}<span className="entry-list">{c.file_docs.map((d) => (
-              <span key={d.file} className="entry-row"><UI.InlineCode>{d.file.split('/').pop()}</UI.InlineCode>{' '}{short(firstSentence(d.text), 90)}</span>))}</span></>
+              <span key={d.file} className="entry-row"><UI.InlineCode>{d.file.split('/').pop()}</UI.InlineCode>{' '}<UI.Markdown inline {...refs}>{short(firstSentence(d.text), 90)}</UI.Markdown></span>))}</span></>
             : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
         }))} />
         {testComps.length ? <>
           <h4 className="small">{t('測試與評分程式（不畫在圖上）')}</h4>
-          <UI.DetailList items={testComps.map(([comp, fs]) => {
+          <DL items={testComps.map(([comp, fs]) => {
             const files = [...new Set(fs.map((f) => f.file))].sort()
             const entry = fs.filter((f) => f.name === 'main')
             return {
@@ -577,12 +594,11 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           {g.hidden_tests ? <p className="small muted">{t('流程、影響範圍與搜尋預設不含測試程式碼，可在設定頁開啟「包含測試程式碼」。')}</p> : null}
         </> : null}
         {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('說明取自主要檔案（main.c、__init__.py 或唯一的檔案）的開頭註解。元件用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
-      </section>
-      {g.docs?.length ? <Docs docs={g.docs} /> : null}
+      </Part>
+      {g.docs?.length ? <Docs docs={g.docs} ix={p.ix} /> : null}
       {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length ? (
-        <section aria-labelledby="ov-entry">
-          <h3 className="small" id="ov-entry" tabIndex={-1}>{t('進入與結束')}</h3>
-          <UI.DetailList items={[
+        <Part id="ov-entry" title={t('進入與結束')} summary={sums.entry} open>
+          <DL items={[
             // a program's own entry outside C (main, or code run as a script): where a command line starts
             // a function the program starts in the background: a loop that runs beside the event handlers
             ...spawns.map((x, i) => ({ label: t('背景工作'), value: <span><button type="button" className="linklike" onClick={() => p.onPick(x.target)}>{p.ix.funcs[x.target].name}</button>
@@ -628,11 +644,10 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
               </span>,
             }] : []),
           ]} />
-        </section>
+        </Part>
       ) : null}
       {cmds.length ? (
-        <section aria-labelledby="ov-cmds">
-          <h3 className="small" id="ov-cmds" tabIndex={-1}>{t('執行的外部指令')}</h3>
+        <Part id="ov-cmds" title={t('執行的外部指令')} summary={sums.cmds} lazy>
           <p className="small muted">{t('{v1}：執行時才決定的值。經由包裝函式執行的指令，逐一列出各呼叫處組成的指令。', { v1: '{…}' })}</p>
           {/* by file: the controller's commands apart from the grader's (checks.py) and the runtime's */}
           {cmdGroups.map(([comp, list]) => {
@@ -647,7 +662,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
                   rows(list) > list.length ? t('{v1} 個呼叫處', { v1: rows(list) - list.length }) : '',
                   spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t('，共 {n} 個', { n: spaces.length }) : '') }) : '',
                   untimed ? t('{v1} 個沒有逾時', { v1: untimed }) : ''].filter(Boolean).join(t('，'))}</span></h4> : null}
-              {open ? <UI.DetailList items={list.map(([c, i]) => ({
+              {open ? <DL items={list.map(([c, i]) => ({
                 // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
                 // under its file's heading the name alone; in one flat list the file tells two wrappers of one name apart
                 label: ((n) => (cmdGroups.length < 2 && cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)
@@ -662,12 +677,11 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
               }))} /> : null}
             </div>)
           })}
-        </section>
+        </Part>
       ) : null}
       {env.length ? (
-        <section aria-labelledby="ov-env">
-          <h3 className="small" id="ov-env" tabIndex={-1}>{t('執行期設定（環境變數）')}</h3>
-          <UI.DetailList items={env.map(([name, v]) => ({
+        <Part id="ov-env" title={t('執行期設定（環境變數）')} summary={sums.env}>
+          <DL items={env.map(([name, v]) => ({
             label: name,
             value: <span>{name === 'LD_PRELOAD' ? <>{t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。')}<br /></> : null}{((m) => m ? <>{meaning(m)}<br /></> : null)(g.env_info?.[name])}{t('讀取：{v1}', { v1: where(v.get).join(t('、')) || '—' })}{where(v.set).length ? <><br />{t('設定：{v1}', { v1: where(v.set).join(t('、')) })}</> : null}{((n) => n ? <><br /><span className="muted">{cRepo ? t('另有 {v1} 處在 Python 工具、測試或腳本中，可用搜尋查看', { v1: n }) : t('另有 {v1} 處在測試或腳本中，可用搜尋查看', { v1: n })}</span></> : null)([...v.get, ...v.set].filter((r) => !inProgram(r)).length)}</span>,
           }))} />
@@ -676,47 +690,45 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             {openApi === '*env' ? <span className="entry-list">{Object.entries(g.env ?? {}).filter(([name]) => !env.some(([n]) => n === name)).sort(([a], [b]) => a.localeCompare(b)).map(([name, v]) => (
               <span key={name} className="entry-row"><UI.InlineCode>{name}</UI.InlineCode>{' '}{[...v.get, ...v.set].slice(0, 3).join(t('、'))}{[...v.get, ...v.set].length > 3 ? t('，共 {v1} 處', { v1: [...v.get, ...v.set].length }) : ''}</span>))}</span> : null}
           </p> : null}
-        </section>
+        </Part>
       ) : null}
-      {g.build ? <Products build={g.build} at={at} /> : null}
+      {g.build && (g.build.built.length || g.build.install.length) ? <Products build={g.build} at={at} /> : null}
       {g.writes ? <Writes writes={writes} at={at} fn={fn} none={inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS)} /> : null}
       {reads.length ? (
-        <section aria-labelledby="ov-reads">
-          <h3 className="small" id="ov-reads" tabIndex={-1}>{t('讀取的檔案')}</h3>
-          <UI.DetailList items={reads.map((r, i) => ({
+        <Part id="ov-reads" title={t('讀取的檔案')} summary={sums.reads}>
+          <DL items={reads.map((r, i) => ({
             label: r.name ?? (r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ?? t('（執行時決定）')),
             value: <span>{fn(r.fid)}{t(' 以 {v1} 讀取：', { v1: r.call })}{at(`r${i}`, r.f, r.l)}</span>,
           }))} />
-        </section>
+        </Part>
       ) : null}
       {g.worth ? (
-        <section aria-labelledby="ov-worth">
-          <h3 className="small" id="ov-worth" tabIndex={-1}>{t('值得檢查的地方')}</h3>
+        <Part id="ov-worth" title={t('值得檢查的地方')} summary={sums.worth} lazy>
           <p className="small muted">{t('僅列出程式碼中的事實，是否有問題須視實際用法而定。')}</p>
                     {applies('broad') ? <>
           <h4 className="small" id="ov-broad" tabIndex={-1}>{t('捕捉所有例外後繼續執行')}</h4>
           <p className="small muted">{t('範圍：except Exception、except BaseException 與未寫型別的 except，且處理區塊未再 raise。指定型別的 except 不列入。')}</p>
-          {broad.length ? <UI.DetailList items={broad.map((x, i) => ({
+          {broad.length ? <DL items={broad.map((x, i) => ({
             label: `except ${x.what}`,
             value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，未再拋出', { v1: x.then })}</span></span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           </> : null}
           <h4 className="small" id="ov-twins" tabIndex={-1}>{t('不同檔案中的同名函式')}</h4>
-          {twins.length ? <UI.DetailList items={twins.map(([name, ids]) => ({
+          {twins.length ? <DL items={twins.map(([name, ids]) => ({
             label: name,
             value: <span className="entry-list">{ids.map((id, i) => (
               <span key={id} className="entry-row">{at(`twin${name}${i}`, p.ix.funcs[id].file, p.ix.funcs[id].line)}{' '}<span className="muted">{p.ix.callerText(id)}</span></span>))}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
           {applies('stops') ? <>
 <h4 className="small" id="ov-stops" tabIndex={-1}>{t('結束程式的呼叫')}</h4>
-          {stops.length ? <UI.DetailList items={stops.map((s, i) => ({
+          {stops.length ? <DL items={stops.map((s, i) => ({
             label: `${s.name}()`,
             value: <span>{fn(s.fid)}{t(' 呼叫：')}{at(`stop${i}`, s.f, s.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有結束程式的呼叫（{v1}）。', { v1: inLangs('stops', cRepo ? { c: STOP_CALLS.c } : STOP_CALLS) })}</p>}
           </> : null}
           {applies('arrays') ? <>
           <h4 className="small" id="ov-arrays" tabIndex={-1}>{t('固定大小的全域陣列')}</h4>
-          {g.worth.arrays.length ? <UI.DetailList items={g.worth.arrays.map((a, i) => ({
+          {g.worth.arrays.length ? <DL items={g.worth.arrays.map((a, i) => ({
             label: a.name,
             value: <span>{a.value ? t('上限 {v1} 個（{v2}）：', { v1: a.value, v2: a.size.slice(1, -1).split('][').join(' × ') }) : /^(\[\d+\])+$/.test(a.size) ? t('上限 {v1} 個：', { v1: a.size.replace(/[[\]]/g, ' ').trim().split(/\s+/).join(' × ') }) : t('上限 {v1} 個：', { v1: a.size.slice(1, -1).split('][').join(' × ') })}{at(`arr${i}`, a.file, a.line)}</span>,
           }))} /> : <p className="small muted">{t('沒有以常數決定大小的全域陣列。')}</p>}
@@ -724,7 +736,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           </> : null}
           {applies('env_if_unset') ? <>
           <h4 className="small" id="ov-unset" tabIndex={-1}>{t('只在未設定時才設定的環境變數')}</h4>
-          {unsetEnv.length ? <UI.DetailList items={unsetEnv.map((e, i) => ({
+          {unsetEnv.length ? <DL items={unsetEnv.map((e, i) => ({
             label: e.name,
             // the link goes to the check: the set is a few lines below it, in view
             value: e.check !== e.l
@@ -735,7 +747,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           </> : null}
           {applies('errors') ? <>
           <h4 className="small" id="ov-errors" tabIndex={-1}>{t('回傳固定錯誤碼的地方')}</h4>
-          {g.worth.errors?.length ? <UI.DetailList items={g.worth.errors.map((e, i) => ({
+          {g.worth.errors?.length ? <DL items={g.worth.errors.map((e, i) => ({
             label: e.code,
             value: <span>{fn(e.fid)}{p.ix.funcs[e.fid]?.api ? t('（外部進入點）') : p.ix.callers(e.fid).some((x) => x.k === 'fnptr_assign' || x.k === 'fnptr_table') ? t('（裝進函式指標）') : ''}{e.how === 'errno' ? t(' 設定 errno：') : t(' 回傳：')}{at(`err${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
@@ -744,7 +756,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h4 className="small" id="ov-loss" tabIndex={-1}>{t('會丟掉資料的地方')}</h4>
           {g.worth.loss?.length ? <>
             <p className="small muted">{t('名稱如 lost、dropped、overrun 的計數器遞增處：程式在此捨棄部分資料。')}</p>
-            <UI.DetailList items={g.worth.loss.map((x, i) => ({
+            <DL items={g.worth.loss.map((x, i) => ({
               label: x.var,
               value: <span>{fn(x.fid)}{t('：')}<code className="small">{x.text}</code>{' '}{at(`loss${i}`, x.f, x.l)}
                 {x.via.length ? <span className="write-row">{t('經由：')}{[...new Set(x.via.map((v) => v.fid))].map((v, j) => <span key={v}>{j ? t('、') : ''}{fn(v)}{' '}{x.via.filter((w) => w.fid === v).map((w, k) => <span key={k}>{k ? t('、') : ''}{at(`lossv${i}-${j}-${k}`, w.f, w.l)}</span>)}</span>)}</span> : null}
@@ -756,7 +768,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h4 className="small" id="ov-leftovers" tabIndex={-1}>{t('程式結束後會留下的東西')}</h4>
           {g.worth.leftovers?.length ? <>
             <p className="small muted">{t('以 O_CREAT 建立的 shared memory、具名 semaphore 或 FIFO 會留在系統中，直到被刪除。程式若在刪除前結束（exit、abort、被 signal 終止），就會殘留。')}</p>
-            <UI.DetailList items={g.worth.leftovers.map((x, i) => ({
+            <DL items={g.worth.leftovers.map((x, i) => ({
               label: x.call,
               value: <span>{fn(x.fid)}{t(' 建立：')}{at(`left${i}`, x.f, x.l)}
                 <span className="write-row">{x.removed.length ? <>{t('以 {v1} 刪除：', { v1: x.remove })}{x.removed.map((r, j) => <span key={j}>{j ? t('；') : ''}{fn(r.fid)}{' '}{at(`leftr${i}-${j}`, r.f, r.l)}{r.via.length ? <>{t('（經由 ')}{r.via.map((v, k) => <span key={v}>{k ? t('、') : ''}{fn(v)}</span>)}{t('）')}</> : null}</span>)}</>
@@ -770,7 +782,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h4 className="small" id="ov-limits" tabIndex={-1}>{t('到達上限時直接返回、不印訊息')}</h4>
           {g.worth.limits?.silent.length ? <>
             <p className="small muted">{t('計數達到 MAX 常數時直接 return，使用者不會得知有資料未處理。')}</p>
-            <UI.DetailList items={g.worth.limits.silent.map((x, i) => ({
+            <DL items={g.worth.limits.silent.map((x, i) => ({
               label: x.limit,
               value: <span>{fn(x.fid)}{t('：')}<code className="small">{x.cond}</code>{' '}{at(`lim${i}`, x.f, x.l)}</span>,
             }))} />
@@ -781,7 +793,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h4 className="small" id="ov-plain" tabIndex={-1}>{t('不經 atomic 操作就修改的全域變數')}</h4>
           {g.worth.plain_writes?.length ? <>
             <p className="small muted">{t('未判斷是否有鎖保護或只在單一執行緒執行。標示「載入時」的寫入位於 constructor，通常早於其他執行緒啟動。')}</p>
-            <UI.DetailList items={[...g.worth.plain_writes].sort((a, b) => Number(a.writes.every((w) => p.ix.callerInfo(w.fid).load)) - Number(b.writes.every((w) => p.ix.callerInfo(w.fid).load))).map((v, i) => ({
+            <DL items={[...g.worth.plain_writes].sort((a, b) => Number(a.writes.every((w) => p.ix.callerInfo(w.fid).load)) - Number(b.writes.every((w) => p.ix.callerInfo(w.fid).load))).map((v, i) => ({
               label: v.name,
               value: <span>{v.writes.map((w, j) => (
                 <span key={j} className="write-row">{fn(w.fid)}{p.ix.callerInfo(w.fid).load === 'constructor' ? t('（載入時）') : p.ix.callerInfo(w.fid).load === 'destructor' ? t('（結束時）') : ''}{t('：')}<code className="small">{w.text}</code>{' '}{at(`pw${i}-${j}`, w.f, w.l)}</span>))}</span>,
@@ -790,14 +802,15 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           </> : null}
           {applies('env') ? <>
           <h4 className="small" id="ov-nullenv" tabIndex={-1}>{t('未檢查 NULL 就使用的 getenv 結果')}</h4>
-          {g.worth.env.length ? <UI.DetailList items={g.worth.env.map((e, i) => ({
+          {g.worth.env.length ? <DL items={g.worth.env.map((e, i) => ({
             label: e.name ?? t('（名稱執行時決定）'),
             value: <span>{fn(e.fid)}{e.use !== e.l ? t(' 在第 {v1} 行使用：', { v1: e.use }) : t(' 直接使用：')}{at(`env${i}`, e.f, e.l)}</span>,
           }))} /> : <p className="small muted">{t('未找到。每個 getenv 結果在使用前皆已檢查 NULL，或直接回傳給呼叫者。')}</p>}
           </> : null}
                   {skipped.length ? <p className="small muted">{t('另有 {v1} 項只適用於 {v2} 的檢查，本專案不適用，未列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })}</p> : null}
-        </section>
+        </Part>
       ) : null}
+      </UI.SectionGroup></RepoKey.Provider></div>
     </UI.Card>
   )
 }
@@ -830,12 +843,45 @@ export function pointerEntries(ix: Index): Map<string, string[]> {
   return installed
 }
 
-const TOC = [['ov-comps', '元件'], ['ov-docs', '專案文件'], ['ov-entry', '進入與結束'], ['ov-cmds', '外部指令'], ['ov-env', '環境變數'], ['ov-build', '建置產物'], ['ov-writes', '寫出的檔案'], ['ov-reads', '讀取的檔案'], ['ov-worth', '值得檢查的地方']] as const
-/** Scrolls an overview section into view and puts the keyboard there. */
+const PARTS = new Set(['ov-comps', 'ov-docs', 'ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads', 'ov-worth'])
+
+/** Opens an overview part (a check inside 值得檢查的地方 opens that part), scrolls to it and puts the keyboard on its title. */
 export function jump(id: string) {
-  const h = document.getElementById(id)
-  revealTop(h)
-  h?.focus({ preventScroll: true })
+  dispatchEvent(new CustomEvent('codemap:part', { detail: PARTS.has(id) ? id : 'ov-worth' }))
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const h = document.getElementById(id)
+    revealTop(h)
+    const at = (PARTS.has(id) ? h?.querySelector<HTMLElement>('.ui-sec-btn') : h) ?? h
+    at?.focus({ preventScroll: true })
+  }))
+}
+
+/** The repository whose parts are open or closed: each repository remembers its own. */
+const RepoKey = createContext('')
+
+/** One part of the overview: a Section with its title and the line of numbers; open or closed is kept per repository.
+ *  元件 and 進入與結束 start open, the rest closed. */
+function Part(p: { id: string; title: string; summary?: ReactNode; open?: boolean; lazy?: boolean; children: ReactNode }) {
+  const key = `codemap:part:${useContext(RepoKey)}:${p.id}`
+  const [open, setOpen] = useState(() => {
+    try { const v = localStorage.getItem(key); if (v === '1' || v === '0') return v === '1' } catch { /* storage off */ }
+    return !!p.open
+  })
+  const set = (v: boolean) => {
+    setOpen(v)
+    try { localStorage.setItem(key, v ? '1' : '0') } catch { /* storage off: works, does not remember */ }
+  }
+  useEffect(() => {
+    const f = (e: Event) => { if ((e as CustomEvent<string>).detail === p.id) setOpen(true) }
+    addEventListener('codemap:part', f)
+    return () => removeEventListener('codemap:part', f)
+  }, [p.id])
+  return <UI.Section id={p.id} title={p.title} summary={p.summary || undefined} open={open} onOpenChange={set} lazy={p.lazy}>{p.children}</UI.Section>
+}
+
+/** The overview's lists: a label column as wide as its longest label, in the text's own size and color. */
+function DL(p: ComponentProps<typeof UI.DetailList>) {
+  return <UI.DetailList labelWidth="auto" labelSize="body" {...p} />
 }
 
 const KIND: Record<string, string> = { exec: '執行檔', shared: '共享程式庫', static: '靜態程式庫', generated: '產生的檔案' }
@@ -847,6 +893,7 @@ type At = (key: string, f: string, l: number) => ReactNode
 /** What `make` builds, what each product is made of, and what `make install` puts where. */
 function Products(p: { build: BuildInfo; at: At }) {
   const main = p.build.built.filter((b) => b.goal === p.build.goal)
+  const sum = t('{v1} 個產物', { v1: main.length })
   const goals = [...new Set(p.build.built.map((b) => b.goal))].filter((g) => g !== p.build.goal)
   const copies = p.build.install.filter((i) => !i.link)
   const links = new Map<string, string[]>()
@@ -855,10 +902,9 @@ function Products(p: { build: BuildInfo; at: At }) {
     links.set(k, [...(links.get(k) ?? []), base(i.to)])
   }
   return (
-    <section aria-labelledby="ov-build">
-      <h3 className="small" id="ov-build" tabIndex={-1}>{t('建置產物')}</h3>
+    <Part id="ov-build" title={t('建置產物')} summary={sum}>
       <p className="small muted">{t('取自 Makefile（make -n 的結果）。make {v1} 建置 {v2} 個產物：', { v1: p.build.goal, v2: main.length })}</p>
-      <UI.DetailList items={main.map((b, i) => ({
+      <DL items={main.map((b, i) => ({
         label: b.name,
         value: <span>
           {t(KIND[b.kind])}
@@ -868,7 +914,7 @@ function Products(p: { build: BuildInfo; at: At }) {
           {b.exports.length ? <>{t('；匯出的符號由 ')}{p.at(`exp${i}`, b.exports[0], 1)}{t(' 決定')}</> : null}
         </span>,
       }))} />
-      {goals.length ? <UI.DetailList items={goals.map((g) => {
+      {goals.length ? <DL items={goals.map((g) => {
         const bs = p.build.built.filter((b) => b.goal === g)
         const named = (b: BuildInfo['built'][number]) => (main.some((m) => m.name === b.name) ? t('{v1}（另一個版本，{v2}）', { v1: b.name, v2: b.path }) : b.name)
         return { label: `make ${g}`, value: t('另外建置 {v1} 個：{v2}', { v1: bs.length, v2: bs.map(named).join(t('、')) }) }
@@ -876,23 +922,23 @@ function Products(p: { build: BuildInfo; at: At }) {
       {p.build.install.length ? (
         <>
           <h4 className="small">{t('make install 安裝的檔案')}</h4>
-          <UI.DetailList items={[
+          <DL items={[
             ...copies.map((c) => ({ label: c.to, value: c.what.map(base).join(t('、')) })),
             ...[...links].map(([k, names]) => ({ label: k.split('\u0000')[0], value: t('{v1}（符號連結，指向 {v2}）', { v1: names.join(t('、')), v2: k.split('\u0000')[1] }) })),
           ]} />
           <p className="small muted">{t('路徑為以 Makefile 預設設定執行 make -n install 的結果。')}</p>
         </>
       ) : null}
-    </section>
+    </Part>
   )
 }
 
 /** Where the code creates or writes files, and the file names when the code spells them out. */
 function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode; none: string }) {
+  const sum = t('{v1} 處', { v1: p.writes.length })
   return (
-    <section aria-labelledby="ov-writes">
-      <h3 className="small" id="ov-writes" tabIndex={-1}>{t('寫出的檔案')}</h3>
-      {p.writes.length ? <UI.DetailList items={p.writes.map((w, i) => ({
+    <Part id="ov-writes" title={t('寫出的檔案')} summary={sum} lazy>
+      {p.writes.length ? <DL items={p.writes.map((w, i) => ({
         label: w.name ?? w.format ?? (w.param ? t('參數 {v1}', { v1: w.param }) : w.expr ?? t('（執行時決定）')),
         value: <span>
           {/* a shared memory object is a file too: it stays in /dev/shm until someone calls shm_unlink */}
@@ -909,7 +955,7 @@ function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode;
             <span key={j} className="entry-row indent"><UI.InlineCode>{v.name}</UI.InlineCode>{' '}{p.fn(v.fid)}{' '}{p.at(`w${i}-${j}`, v.f, v.l)}</span>))}</span> : null}
         </span>,
       }))} /> : <p className="small muted">{p.none ? t('沒有寫入檔案的地方（{v1}）。', { v1: p.none }) : t('本專案的語言沒有寫入檔案的檢查。')}</p>}
-    </section>
+    </Part>
   )
 }
 
@@ -948,7 +994,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
           <>
             {comp?.doc ? <h3 className="small">{t('誰使用 {v1}', { v1: p.comp })}</h3> : null}
             {/* which of its functions each user calls shows which way data goes */}
-            <UI.DetailList items={[...uses].sort(([a], [b]) => a.localeCompare(b)).map(([c, es]) => {
+            <DL items={[...uses].sort(([a], [b]) => a.localeCompare(b)).map(([c, es]) => {
               const names = [...new Set(es.map((e) => p.ix.funcs[e.d].name))].sort()
               return { label: c, value: <span>{names.slice(0, 8).map((n, i) => <span key={n}>{i ? t('、') : ''}<UI.InlineCode>{n}</UI.InlineCode></span>)}{names.length > 8 ? t(' 等 {v1} 個', { v1: names.length }) : ''}</span> }
             }).concat(readers.map((l) => ({ label: l.a, value: <span>{t('Python 工具讀取 {v1}（推測，非呼叫）', { v1: list(l.names ?? []) })}</span> })))} />

@@ -111,3 +111,5 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .set-row { cursor: pointer; }
 /* the 元件／檔案 tabs keep their height when the diagram fills the card */
 .level-tabs { flex-shrink: 0; }
+/* a Markdown file's preview scrolls inside the panel like its source does */
+.md-preview { max-height: 70vh; overflow: auto; padding-top: var(--space-3); }
