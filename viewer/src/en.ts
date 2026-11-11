@@ -787,4 +787,6 @@ export const EN: Record<string, string> = {
   "不在 network namespace 內執行：指令前沒有 ip netns exec，與呼叫它的程式在同一個 namespace。": "Not run in a network namespace of its own: no ip netns exec in front, so it runs in the caller's namespace.",
   "以下 {v1} 處呼叫它：": "Called from {v1} places:",
   "在流程樹展開這條呼叫鏈": "Open this chain in the flow tree",
+  "找不到「{v1}」": "No function \"{v1}\"",
+  "網址指定的函式不在索引中，這裡改顯示 {v1}。": "The address names a function the index does not have; showing {v1} instead.",
 }

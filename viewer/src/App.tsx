@@ -153,8 +153,21 @@ function Shell(p: ShellProps) {
   const selComp = p.graph.comps.some((c) => c.id === chosenComp) || chosenComp === TRACED
     || (chosenComp.startsWith('file:') && Object.values(p.graph.funcs).some((f) => f.file === chosenComp.slice(5))) ? chosenComp : ''
   // a repo function, or an external one the repo calls (the impact page then lists its callers)
-  const start = chosenStart && (ix.funcs[chosenStart] || ix.inn.has(chosenStart)) ? chosenStart : first
-  const sel: Sel = ix.funcs[chosenSel.id] || ix.inn.has(chosenSel.id) || ix.out.has(chosenSel.id) ? chosenSel : { id: start ?? '', edge: null, key: 'root' }
+  // an address written by hand: a file (harness/controller.py) or file:name (harness/controller.py:controller.py,
+  // harness/routing.py:parse_fib) is the module or the one function of that name in the file
+  const known = (id: string) => !!(ix.funcs[id] || ix.inn.has(id))
+  const alias = (id: string | null) => {
+    if (!id || known(id)) return id
+    if (known(id + ':<module>')) return id + ':<module>'
+    const cut = id.lastIndexOf(':'), file = id.slice(0, cut), name = id.slice(cut + 1)
+    if (cut < 0) return id
+    if (ix.funcs[file + ':<module>']?.name === name) return file + ':<module>'
+    const hits = Object.keys(ix.funcs).filter((k) => ix.funcs[k].file === file && (ix.funcs[k].name === name || ix.funcs[k].name.endsWith('.' + name)))
+    return hits.length === 1 ? hits[0] : id
+  }
+  const start = ((id) => (id && known(id) ? id : first))(alias(chosenStart))
+  const selId = alias(chosenSel.id) ?? ''
+  const sel: Sel = ix.funcs[selId] || ix.inn.has(selId) || ix.out.has(selId) ? { ...chosenSel, id: selId } : { id: start ?? '', edge: null, key: 'root' }
   const [dir, setDirState] = useState<'down' | 'up'>(init.d === 'up' ? 'up' : 'down')
   // the flow tree is rebuilt when the direction changes: the keyboard goes back to the direction tabs
   const dirMoved = useRef(false)
@@ -278,7 +291,9 @@ function Shell(p: ShellProps) {
 
   // each page and each choice on it is a history entry: back and forward return to the previous
   // selection, and the address can be shared (a typed #check opens that page)
-  const here = hashOf({ view, c: selComp, e: selEdge, s: start ?? '', f: sel.id, k: sel.key ?? '', d: dir })
+  // an address that names no function stays as written, so the page keeps saying so instead of turning into main's
+  const asked = chosenStart && !known(alias(chosenStart) ?? '') && !p.graph.funcs[chosenStart] ? chosenStart : null
+  const here = hashOf({ view, c: selComp, e: selEdge, s: asked ?? start ?? '', f: sel.id, k: sel.key ?? '', d: dir })
   const placed = useRef(false)
   // what had the keyboard on each address when it was left: going back puts the keyboard there again
   const leftFrom = useRef(new Map<string, string>())
@@ -481,6 +496,13 @@ function Shell(p: ShellProps) {
           <div className="alert-wrap">
             <UI.Alert tone="info" title={t('{v1} 是測試程式碼', { v1: p.graph.funcs[id].name })} actionLabel={t('包含測試程式碼')} onAction={() => prefs.set('tests', true)}>
               {t('流程、影響範圍與搜尋預設不含測試程式碼，因此這裡顯示其他函式。開啟後即可查看。')}
+            </UI.Alert>
+          </div>
+        ) : id && !known(alias(id) ?? '') && !p.graph.funcs[id] && (view === 'flow' || view === 'impact') ? (
+          // an address that names no function: say so, rather than showing main as if it were the one asked for
+          <div className="alert-wrap">
+            <UI.Alert tone="warning" title={t('找不到「{v1}」', { v1: id })} actionLabel={t('搜尋')} onAction={() => setSearchOpen(true)}>
+              {t('網址指定的函式不在索引中，這裡改顯示 {v1}。', { v1: start ? ix.funcs[start]?.name ?? start : '' })}
             </UI.Alert>
           </div>
         ) : null)(chosenStart ?? '')}

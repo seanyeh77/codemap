@@ -97,7 +97,11 @@ export function Detail(p: Props) {
     return <LineLink ix={p.ix} file={file} line={line} onOpen={() => setShown(own ? null : { key: selKey, f: file, l: line })} />
   }
   return (
-    <UI.Card className="detail" title={<span id="detail-title" tabIndex={-1} title={f.name}>{f.name}</span>}>
+    // where to go next sits at the top: under a long list of callers it fell below the window (1440 x 900)
+    <UI.Card className="detail" title={<span id="detail-title" tabIndex={-1} title={f.name}>{f.name}</span>} actions={<>
+      {p.view === 'flow' && here ? null : <UI.Button icon="share-network" onClick={() => p.goFlow(p.sel.id)}>{p.view === 'flow' ? t('從這裡追蹤流程') : t('追蹤流程')}</UI.Button>}
+      {p.view === 'impact' && here ? null : <UI.Button icon="pulse" onClick={() => p.goImpact(p.sel.id)}>{t('查看影響範圍')}</UI.Button>}
+    </>}>
       {/* the panel is read first after a search; from here the tree is many Tab stops away */}
       {p.view === 'flow' ? <p className="small"><button type="button" className="linklike" onClick={() => {
         const el = document.querySelector<HTMLElement>('#flow-tree [role=treeitem][aria-selected=true], #flow-tree [role=treeitem]')
@@ -155,12 +159,8 @@ export function Detail(p: Props) {
         ...macros.map((m) => ({ label: t('巨集'), value: <span>{t('這一行使用巨集 {v1}，定義在 ', { v1: m.name })}{link(m.file, m.line)}{t('。呼叫在巨集展開後才發生，因此記在這一行。')}</span> })),
         ...(e && (e.via || e.slot) ? [{ label: t('經由'), value: <UI.InlineCode>{e.via || e.slot}</UI.InlineCode> }] : []),
       ]} />
-      <UI.ActionBar actions={[
-        ...(p.view === 'flow' && here ? [] : [{ label: p.view === 'flow' ? t('從這裡追蹤流程') : t('追蹤流程'), primary: true, onClick: () => p.goFlow(p.sel.id) }]),
-        ...(p.view === 'impact' && here ? [] : [{ label: t('查看影響範圍'), primary: p.view === 'flow' && here, onClick: () => p.goImpact(p.sel.id) }]),
-        // the whole file next to the other actions: at the bottom of a long function it was missed
-        ...(p.isLive ? [{ label: whole ? t('只顯示這個函式') : t('顯示整個檔案'), onClick: () => setWhole(whole ? null : selKey) }] : []),
-      ]} />
+      {/* the whole file above the code: at the bottom of a long function it was missed */}
+      {p.isLive ? <UI.ActionBar actions={[{ label: whole ? t('只顯示這個函式') : t('顯示整個檔案'), onClick: () => setWhole(whole ? null : selKey) }]} /> : null}
       {whole ? (
         file.isPending ? <UI.Skeleton width="80%" height={16} />
           : file.error || !file.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{file.error ? (file.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
