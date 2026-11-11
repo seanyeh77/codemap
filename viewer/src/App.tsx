@@ -407,7 +407,24 @@ function Shell(p: ShellProps) {
     else if (t.type === 'file' && ((hit) => !!hit && ix.funcs[hit.id].line === t.l)(ix.at(`${t.f}:${t.l}`))) (view === 'impact' ? goImpact : goFlow)(ix.at(`${t.f}:${t.l}`)!.id)   // the line that defines a function: the function, with its callers
     else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
     // a function chosen in the search: focus its name in the detail panel, where a screen reader hears what was opened
-    if (t.type === 'func' || t.type === 'line' || t.type === 'file') for (const ms of [120, 400]) setTimeout(() => document.getElementById('detail-title')?.focus(), ms)
+    // once, as soon as the panel shows the chosen function: a second focus later took the keyboard back from whoever
+    // had already pressed Tab (the panel is drawn again after the search closes)
+    if (t.type === 'func' || t.type === 'line' || t.type === 'file') {
+      const want = t.type === 'func' ? ix.funcs[t.id]?.name : t.type === 'line' ? ix.funcs[t.fid]?.name : undefined
+      const begun = performance.now()
+      const step = () => {
+        const el = document.getElementById('detail-title')
+        const open = document.querySelector('[role="dialog"]')
+        if (el && !open && (!want || el.textContent === want)) {
+          // only from where the search left it: the body, or the page's heading a change of page focuses
+          const at = document.activeElement
+          if (!at || at === document.body || at.tagName === 'H1') el.focus()
+          return
+        }
+        if (performance.now() - begun < 1500) requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    }
   }
   function tourGo(i: number) {
     setTourStep(i)
