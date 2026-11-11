@@ -3,6 +3,7 @@ import { OpenFile, useCodeRefs } from '../components/DocRefs'
 import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
+import { toMarkdown } from '../markdown'
 import { entryText, push, type Index } from '../data/graph'
 import { fileGraph, fileView, roleOf, type Role } from '../data/files'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
@@ -460,6 +461,8 @@ function From(p: { doc: Doc }) {
 function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void }) {
   const g = p.ix.g
   const refs = useCodeRefs(p.ix)
+  const body = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
   // a file:line opens its code right under the row it is in, not at the end of the panel
   const [shown, setShown] = useState<string | null>(null)
   const [openApi, setOpenApi] = useState<string | null>(null)
@@ -565,10 +568,20 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     ['loss', g.worth?.loss?.length ?? 0, '會丟掉資料的地方'], ['leftovers', g.worth?.leftovers?.length ?? 0, '程式結束後會留下的東西'], ['limits', g.worth?.limits?.silent.length ?? 0, '到達上限時直接返回、不印訊息'],
     ['plain_writes', g.worth?.plain_writes?.length ?? 0, '不經 atomic 操作就修改的全域變數'], ['env', g.worth?.env.length ?? 0, '未檢查 NULL 就使用的 getenv 結果']] as const)
     .filter(([k, n]) => n > 0 && (k === 'twins' || applies(k)))
+  // the whole overview as Markdown, closed parts too (their content stays on the page, hidden)
+  const copy = async () => {
+    if (!body.current) return
+    try {
+      await navigator.clipboard.writeText(toMarkdown(body.current, t('{v1} 的概觀', { v1: g.repo })))
+      setCopied(true); UI.announce(t('已複製概觀的 Markdown'))
+      setTimeout(() => setCopied(false), 2000)
+    } catch { UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')) }
+  }
   sums.worth = found.length ? t('有發現：{v1}', { v1: found.map(([, , l]) => t(l)).join(t('、')) }) : t('沒有發現')
   return (
-    <UI.Card className="detail fit overview" title={t('概觀')}>
-      <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
+    <UI.Card className="detail fit overview" title={t('概觀')} actions={<UI.Button icon={copied ? 'check' : 'copy'} onClick={() => { void copy() }}>{copied ? t('已複製') : t('複製成 Markdown')}</UI.Button>}>
+      <div ref={body}>
+      <p className="small muted md-skip">{t('點選方塊查看函式，點選線查看依據。')}</p>
       <div data-tour="arch"><RepoKey.Provider value={g.repo}><UI.SectionGroup>
       <Part id="ov-comps" title={t('元件')} summary={sums.comps} open>
         <DL items={g.comps.map((c) => ({
@@ -576,7 +589,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           value: <span>{c.doc ? <><UI.Markdown inline {...refs}>{short(c.doc.text)}</UI.Markdown><br /><From doc={c.doc} /><br /></>
             : c.file_docs?.length ? <>{t('元件沒有整體說明，以下為各檔案的開頭註解：')}<span className="entry-list">{c.file_docs.map((d) => (
               <span key={d.file} className="entry-row"><UI.InlineCode>{d.file.split('/').pop()}</UI.InlineCode>{' '}<UI.Markdown inline {...refs}>{short(firstSentence(d.text), 90)}</UI.Markdown></span>))}</span></>
-            : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
+            : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike md-skip" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
         }))} />
         {testComps.length ? <>
           <h4 className="small">{t('測試與評分程式（不畫在圖上）')}</h4>
@@ -647,7 +660,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         </Part>
       ) : null}
       {cmds.length ? (
-        <Part id="ov-cmds" title={t('執行的外部指令')} summary={sums.cmds} lazy>
+        <Part id="ov-cmds" title={t('執行的外部指令')} summary={sums.cmds} >
           <p className="small muted">{t('{v1}：執行時才決定的值。經由包裝函式執行的指令，逐一列出各呼叫處組成的指令。', { v1: '{…}' })}</p>
           {/* by file: the controller's commands apart from the grader's (checks.py) and the runtime's */}
           {cmdGroups.map(([comp, list]) => {
@@ -662,7 +675,8 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
                   rows(list) > list.length ? t('{v1} 個呼叫處', { v1: rows(list) - list.length }) : '',
                   spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t('，共 {n} 個', { n: spaces.length }) : '') }) : '',
                   untimed ? t('{v1} 個沒有逾時', { v1: untimed }) : ''].filter(Boolean).join(t('，'))}</span></h4> : null}
-              {open ? <DL items={list.map(([c, i]) => ({
+              {/* a closed file keeps its list on the page, hidden: 複製成 Markdown copies it too */}
+              <div hidden={!open}><DL items={list.map(([c, i]) => ({
                 // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
                 // under its file's heading the name alone; in one flat list the file tells two wrappers of one name apart
                 label: ((n) => (cmdGroups.length < 2 && cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)
@@ -674,7 +688,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
                   {c.via?.length ? <span className="entry-list"><span className="entry-row muted">{t('以下 {v1} 處呼叫它：', { v1: c.via.length })}</span>{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
                     <span key={j} className="entry-row indent"><UI.InlineCode>{v.cmd}</UI.InlineCode>{' '}{fn(v.fid)}{' '}{at(`cmd${i}-${j}`, v.f, v.l)}</span>))}
                     {c.via.length > 5 ? <button type="button" className="linklike" aria-expanded={openApi === '*cmd' + i} onClick={() => setOpenApi(openApi === '*cmd' + i ? '' : '*cmd' + i)}>{openApi === '*cmd' + i ? t('收合') : t('另有 {v1} 處', { v1: c.via.length - 5 })}</button> : null}</span> : null}</span>,
-              }))} /> : null}
+              }))} /></div>
             </div>)
           })}
         </Part>
@@ -703,7 +717,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         </Part>
       ) : null}
       {g.worth ? (
-        <Part id="ov-worth" title={t('值得檢查的地方')} summary={sums.worth} lazy>
+        <Part id="ov-worth" title={t('值得檢查的地方')} summary={sums.worth} >
           <p className="small muted">{t('僅列出程式碼中的事實，是否有問題須視實際用法而定。')}</p>
                     {applies('broad') ? <>
           <h4 className="small" id="ov-broad" tabIndex={-1}>{t('捕捉所有例外後繼續執行')}</h4>
@@ -811,6 +825,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         </Part>
       ) : null}
       </UI.SectionGroup></RepoKey.Provider></div>
+      </div>
     </UI.Card>
   )
 }
@@ -937,7 +952,7 @@ function Products(p: { build: BuildInfo; at: At }) {
 function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode; none: string }) {
   const sum = t('{v1} 處', { v1: p.writes.length })
   return (
-    <Part id="ov-writes" title={t('寫出的檔案')} summary={sum} lazy>
+    <Part id="ov-writes" title={t('寫出的檔案')} summary={sum} >
       {p.writes.length ? <DL items={p.writes.map((w, i) => ({
         label: w.name ?? w.format ?? (w.param ? t('參數 {v1}', { v1: w.param }) : w.expr ?? t('（執行時決定）')),
         value: <span>

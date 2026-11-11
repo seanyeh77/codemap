@@ -812,4 +812,9 @@ export const EN: Record<string, string> = {
   "顯示方式": "Show as",
   "預覽": "Preview",
   "原始碼": "Source",
+  "複製成 Markdown": "Copy as Markdown",
+  "已複製": "Copied",
+  "{v1} 的概觀": "Overview of {v1}",
+  "已複製概觀的 Markdown": "Copied the overview as Markdown",
+  "瀏覽器不允許寫入剪貼簿，請改用選取後複製。": "The browser does not allow writing to the clipboard; select the text and copy it instead.",
 }
