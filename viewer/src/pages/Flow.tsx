@@ -11,7 +11,7 @@ interface Entry { fid: string; edge: Edge | null; names: string[]; open: boolean
 /** The call tree handed to TreeList. Only the start's level is built; TreeList loads a node's
  *  children when it is opened (loadChildren). Guess mode: a node, the start included, opens only once revealed. */
 function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolean, predict: boolean, revealed: Record<string, boolean>,
-  openLine: (fid: string, e: Edge, key: string) => void, index: Record<string, Entry> = {}) {
+  openLine: (fid: string, e: Edge, key: string) => void, index: Record<string, Entry> = {}, along: Set<string> = new Set()) {
   const stageIds: string[] = []
   const kidsOf = (fid: string) => (dir === 'down' ? ix.callees(fid, showExt) : ix.callers(fid))
   function node(nid: string, e: Edge | null, key: string, path: string[], parent: string, sites: Edge[] = []): TreeNode {
@@ -32,7 +32,8 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
     if (n.tags?.length) n.ariaLabel = [n.name, e && (uncertain(e) || e.resolution === 'inferred' || e.mode || e.k === 'ref' || e.infer?.how === 'embedding') ? ix.explain(e).label : '', sites.length > 1 ? t('呼叫 {n} 次', { n: sites.length }) : '', at ?? ''].filter(Boolean).join(t('，'))
     const open = kids.length > 0 && !path.includes(nid)
     index[key] = { fid: nid, edge: e, names: [...new Set(kids.map((k) => dir === 'down' ? ix.bareName(k.d, k) : ix.bareName(k.s, k)))], open, kids, path }
-    if (open && (predict ? revealed[key] : key === 'root')) n.children = children(key)     // shown open from the start
+    // shown open from the start: the start, and the rows of a chain of calls opened from 從進入點到這裡
+    if (open && (predict ? revealed[key] : key === 'root' || along.has(key))) n.children = children(key)
     else if (open && !predict) n.hasChildren = true
     return n
   }
@@ -87,6 +88,18 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
   return { items, index, children, stageIds }
 }
 
+/** The tree keys of a chain of calls from the start down (ids[0] is the start): a row's key is its parent's, then the
+ *  function and the line of its first call there, as children() makes them. null when a step is not a call. */
+export function chainKeys(ix: Index, ids: string[], showExt: boolean): string[] | null {
+  const keys = ['root']
+  for (let i = 1; i < ids.length; i++) {
+    const e = ix.callees(ids[i - 1], showExt).find((x) => x.d === ids[i])
+    if (!e) return null
+    keys.push(`${keys[i - 1]}/${ids[i]}@${e.l}`)
+  }
+  return keys
+}
+
 /** The relation tag in a tree row. Its own clicks and keys stay inside, so opening the
  *  explanation does not also select the row. */
 function RelationTag(p: { ix: Index; e: Edge; open: () => void }) {
@@ -117,6 +130,8 @@ interface FlowProps {
   showExt: boolean
   setShowExt: (v: boolean) => void
   selKey: string | null
+  /** rows opened from the start: a chain of calls shown at once */
+  along?: string[]
   onSel: (id: string, edge: Sel['edge'], key: string) => void
   openSearch: () => void
 }
@@ -130,10 +145,10 @@ export function Flow(p: FlowProps) {
   useEffect(() => { selRef.current = p.onSel })
   const kept = useRef<{ for: string; index: Record<string, Entry> }>({ for: '', index: {} })
   const tree = useMemo(() => {
-    const id = [p.start, p.dir, p.showExt, p.predict].join('|')
+    const id = [p.start, p.dir, p.showExt, p.predict, (p.along ?? []).join(',')].join('|')
     if (kept.current.for !== id) kept.current = { for: id, index: {} }
-    return buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, (fid, e, key) => selRef.current(fid, e, key), kept.current.index)
-  }, [p.ix, p.start, p.dir, p.showExt, p.predict, revealed])
+    return buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, (fid, e, key) => selRef.current(fid, e, key), kept.current.index, new Set(p.along ?? []))
+  }, [p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.along])
   const selKey = p.selKey && tree.index[p.selKey] ? p.selKey : 'root'
   const { onSel, start } = p
   // a selection made on another page is not in this tree: select the start, so the tree and Detail agree
@@ -152,7 +167,7 @@ export function Flow(p: FlowProps) {
     cardRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
   }, [p.dirMoved])
   // guess mode keeps even the start closed until its level is revealed
-  const openKeys = [...(p.predict ? [] : ['root']), ...Object.keys(revealed)]
+  const openKeys = [...(p.predict ? [] : ['root', ...(p.along ?? [])]), ...Object.keys(revealed)]
   const reveal = () => {
     setRevealed({ ...revealed, [selKey]: true })
     requestAnimationFrame(() => resultRef.current?.focus())       // the field and button are gone: keep the keyboard here

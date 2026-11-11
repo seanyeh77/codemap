@@ -12,7 +12,7 @@ import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } f
 import { written, type Func, type Graph, type GrepHit, type Meta, type Sel } from './data/types'
 import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, TRACED, edgeId, jump } from './pages/Arch'
-import { Flow } from './pages/Flow'
+import { Flow, chainKeys } from './pages/Flow'
 import { Impact } from './pages/Impact'
 import { Check } from './pages/Check'
 import { Settings } from './pages/Settings'
@@ -357,7 +357,15 @@ function Shell(p: ShellProps) {
   }
   // a page change made here (not by the search or the navigation, which move focus themselves): focus goes to the new page
   const moved = (v: View) => { if (v !== view) requestAnimationFrame(() => UI.focusMain()) }
-  const goFlow = (id: string, edge: Sel['edge'] = null) => { setFileAt(null); setStart(id); setSel({ id, edge, key: 'root' }); setView('flow'); moved('flow') }
+  const [along, setAlong] = useState<{ start: string; keys: string[] } | null>(null)
+  const goFlow = (id: string, edge: Sel['edge'] = null) => { setFileAt(null); setAlong(null); setStart(id); setSel({ id, edge, key: 'root' }); setView('flow'); moved('flow') }
+  // a chain of calls from an entry point: the flow starts there, opened row by row down to the last one, which is selected
+  const goChain = (ids: string[]) => {
+    const keys = chainKeys(ix, ids, showExt)
+    if (!keys) return goFlow(ids[ids.length - 1])
+    setFileAt(null); setDirState('down'); setPredict(false); setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setStart(ids[0])
+    setSel({ id: ids[ids.length - 1], edge: null, key: keys[keys.length - 1] }); setView('flow'); moved('flow')
+  }
   const goImpact = (id: string) => { setFileAt(null); setStart(id); setSel({ id, edge: null, key: null }); setView('impact'); moved('impact') }
   // the impact page starts from the function the reader has open, not from where the flow began
   const switchView = (v: View) => {
@@ -422,12 +430,12 @@ function Shell(p: ShellProps) {
 
   const caps = p.meta?.capabilities
   const detail = start ? (
-    <Detail ix={ix} sel={sel} isLive={isLive} sourceId={p.sourceId} canMacro={!!caps?.macro} goFlow={goFlow} goImpact={goImpact} view={view} start={start} />
+    <Detail ix={ix} sel={sel} isLive={isLive} sourceId={p.sourceId} canMacro={!!caps?.macro} goFlow={goFlow} goChain={goChain} goImpact={goImpact} view={view} start={start} />
   ) : null
   const empty = !p.graph.comps.length
   const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={(c) => { setFileAt(null); setSelComp(c) }} edge={selEdge} onEdge={(e) => { setFileAt(null); setSelEdge(e) }} />
     : view === 'flow' && start ? <Flow key={start + dir} ix={ix} start={start} dir={dir} setDir={setDir} dirMoved={dirMoved}
-        predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} onSel={pick} openSearch={() => setSearchOpen(true)} />
+        predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} along={along?.start === start ? along.keys : undefined} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
     : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
