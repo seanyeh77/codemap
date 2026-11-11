@@ -78,7 +78,7 @@ function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
     <>
     <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
       selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('檔案'), edges: t('關係') }}
-      label={t('檔案和它們之間的呼叫')} nodeWidth={232} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" />
+      label={t('檔案和它們之間的呼叫')} nodeWidth={232} resizable heightKey={`codemap:graph:${p.ix.g.repo}:files`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" />
     </>
   )
 }
@@ -106,7 +106,9 @@ function CompArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
     <>
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('元件'), edges: t('關係') }}
-        externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
+        externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')}
+        // a handle under the diagram stretches it (the layers apart) or shortens it (it scrolls); kept per repository
+        resizable heightKey={`codemap:graph:${g.repo}:comps`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
         inferredText={t('函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。')}
         inferredLabel={t('推測')} declaredLabel={t('專案宣告')} declaredLegend={t('專案宣告的關係')} declaredText={t('寫在 .codemap/rules.json 的 channels，例如兩個程式共用的 ring。')} />
     </>
