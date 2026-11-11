@@ -779,4 +779,11 @@ export const EN: Record<string, string> = {
   "{v1} 個函式；點選函式會到流程頁": "{v1} functions; choose one to open it in the flow",
   "{v1} 的函式": "Functions of {v1}",
   "{v1} 呼叫其中 {v2} 個函式": "{v1} calls {v2} of its functions",
+  "{v1} 個指令": "{v1} commands",
+  "{v1} 個呼叫處": "{v1} call sites",
+  "network namespace：{v1}": "network namespace: {v1}",
+  "{v1} 個沒有逾時": "{v1} without a timeout",
+  "（包裝函式）": " (wrapper)",
+  "不在 network namespace 內執行：指令前沒有 ip netns exec，與呼叫它的程式在同一個 namespace。": "Not run in a network namespace of its own: no ip netns exec in front, so it runs in the caller's namespace.",
+  "以下 {v1} 處呼叫它：": "Called from {v1} places:",
 }

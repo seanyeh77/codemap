@@ -398,6 +398,9 @@ function ScriptsDetail(p: { ix: Index; comp: string; isLive: boolean; sourceId: 
   )
 }
 
+/** The network namespace a command line runs in, when it says so: ip netns exec l3-r{as_id} … */
+const netns = (cmd: string) => /\bip netns exec (\S+)/.exec(cmd)?.[1] ?? null
+
 /** Languages as the checks name them; JavaScript is read with TypeScript. */
 const LANG_NAME: Record<string, string> = { c: 'C/C++', python: 'Python', go: 'Go', typescript: 'TypeScript/JavaScript' }
 function presentLangs(g: Graph): Set<string> {
@@ -491,11 +494,18 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const inLangs = (k: string, by: Record<string, string>) => covers(k).filter((l) => langs.has(l) && by[l]).map((l) => t(by[l])).join(t('；'))
   const skipped = WORTH.filter(([k]) => !applies(k))
   // the commands the program runs (outside C): tests and grading scripts are left to the search
-  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => p.ix.funcs[c.fid]?.scope !== 'test')
+  // test code's commands (tests/grade.py's docker exec) stay out, also while the tests setting hides its functions
+  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => (p.ix.funcs[c.fid] ? p.ix.funcs[c.fid].scope !== 'test' : !g.hidden_tests?.some((h) => h.id === c.fid)))
+  // by file, the files people may change first (the controller before the grader's checks.py)
+  const rank = (f: string) => ((r) => (r === 'editable' ? 0 : r === 'protected' ? 2 : 1))(roleOf(g, f))
   const cmdGroups = [...cmds.map((c, i) => [c, i] as const).reduce((m, x) => {
     const comp = x[0].f
     return m.set(comp, [...(m.get(comp) ?? []), x])
-  }, new Map<string, (readonly [typeof cmds[number], number])[]>())]
+  }, new Map<string, (readonly [typeof cmds[number], number])[]>())].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+  // a file whose commands and call sites fill several screens starts closed: the controller's are not lost under the grader's
+  const rows = (xs: (readonly [typeof cmds[number], number])[]) => xs.reduce((n, [c]) => n + 1 + (c.via?.length ?? 0), 0)
+  const [cmdOpen, setCmdOpen] = useState<Record<string, boolean>>({})
+  const groupOpen = (f: string, xs: (readonly [typeof cmds[number], number])[]) => cmdOpen[f] ?? rows(xs) <= 30
   const broad = (g.worth?.broad ?? []).filter((x) => p.ix.funcs[x.fid]?.scope !== 'test')
   // outside C, a function named main that is not a test: the command line's entry
   const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module').map(([id]) => id)
@@ -608,19 +618,33 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           <h3 className="small" id="ov-cmds" tabIndex={-1}>{t('執行的外部指令')}</h3>
           <p className="small muted">{t('{v1}：執行時才決定的值。經由包裝函式執行的指令，逐一列出各呼叫處組成的指令。', { v1: '{…}' })}</p>
           {/* by file: the controller's commands apart from the grader's (checks.py) and the runtime's */}
-          {cmdGroups.map(([comp, list]) => (<div key={comp}>
-          {cmdGroups.length > 1 ? <h4 className="small">{t('{v1}（{v2} 處）', { v1: comp, v2: list.length })}</h4> : null}
-          <UI.DetailList items={list.map(([c, i]) => ({
-            // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
-            // under its file's heading the name alone; in one flat list the file tells two wrappers of one name apart
-            label: ((n) => cmdGroups.length < 2 && cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)(p.ix.funcs[c.fid]?.name ?? c.fid),
-            value: <span><UI.InlineCode>{c.cmd || c.call}</UI.InlineCode>{' '}{at(`cmd${i}`, c.f, c.l)}
-              <span className="muted">{t('（{v1}', { v1: c.call })}{c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')}{c.shell ? t('，shell={v1}', { v1: c.shell }) : ''}{t('）')}</span>
-              {c.via?.length ? <span className="entry-list">{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
-                <span key={j} className="entry-row indent"><UI.InlineCode>{v.cmd}</UI.InlineCode>{' '}{fn(v.fid)}{' '}{at(`cmd${i}-${j}`, v.f, v.l)}</span>))}
-                {c.via.length > 5 ? <button type="button" className="linklike" aria-expanded={openApi === '*cmd' + i} onClick={() => setOpenApi(openApi === '*cmd' + i ? '' : '*cmd' + i)}>{openApi === '*cmd' + i ? t('收合') : t('另有 {v1} 處', { v1: c.via.length - 5 })}</button> : null}</span> : null}</span>,
-          }))} />
-          </div>))}
+          {cmdGroups.map(([comp, list]) => {
+            const open = cmdGroups.length < 2 || groupOpen(comp, list)
+            const all = list.flatMap(([c]) => [c.cmd, ...(c.via ?? []).map((v) => v.cmd)])
+            const spaces = [...new Set(all.map(netns).filter((x) => x && !/^\{[^}]*\}$/.test(x)))] as string[]     // {namespace}: known only when it runs
+            const untimed = list.filter(([c]) => !c.timeout).length
+            return (<div key={comp}>
+              {cmdGroups.length > 1 ? <h4 className="small"><button type="button" className="linklike" aria-expanded={open} onClick={() => setCmdOpen({ ...cmdOpen, [comp]: !open })}>
+                {comp}{roleText(roleOf(g, comp))}</button>{' '}<span className="muted">{[
+                  t('{v1} 個指令', { v1: list.length }),
+                  rows(list) > list.length ? t('{v1} 個呼叫處', { v1: rows(list) - list.length }) : '',
+                  spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t(' 等 {n} 個', { n: spaces.length }) : '') }) : '',
+                  untimed ? t('{v1} 個沒有逾時', { v1: untimed }) : ''].filter(Boolean).join(t('，'))}</span></h4> : null}
+              {open ? <UI.DetailList items={list.map(([c, i]) => ({
+                // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
+                // under its file's heading the name alone; in one flat list the file tells two wrappers of one name apart
+                label: ((n) => (cmdGroups.length < 2 && cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)
+                  + (c.via?.some((v) => v.cmd !== c.cmd) ? t('（包裝函式）') : ''))(p.ix.funcs[c.fid]?.name ?? c.fid),
+                value: <span><UI.InlineCode>{c.cmd || c.call}</UI.InlineCode>{' '}{at(`cmd${i}`, c.f, c.l)}
+                  <span className="muted">{t('（{v1}', { v1: c.call })}{c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')}{c.shell ? t('，shell={v1}', { v1: c.shell }) : ''}{t('）')}</span>
+                  {/* where it runs: inside a namespace when the command says ip netns exec; a launcher without it runs where the caller does */}
+                  {!c.via?.length && c.cmd && !netns(c.cmd) ? <span className="entry-row muted">{t('不在 network namespace 內執行：指令前沒有 ip netns exec，與呼叫它的程式在同一個 namespace。')}</span> : null}
+                  {c.via?.length ? <span className="entry-list"><span className="entry-row muted">{t('以下 {v1} 處呼叫它：', { v1: c.via.length })}</span>{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
+                    <span key={j} className="entry-row indent"><UI.InlineCode>{v.cmd}</UI.InlineCode>{' '}{fn(v.fid)}{' '}{at(`cmd${i}-${j}`, v.f, v.l)}</span>))}
+                    {c.via.length > 5 ? <button type="button" className="linklike" aria-expanded={openApi === '*cmd' + i} onClick={() => setOpenApi(openApi === '*cmd' + i ? '' : '*cmd' + i)}>{openApi === '*cmd' + i ? t('收合') : t('另有 {v1} 處', { v1: c.via.length - 5 })}</button> : null}</span> : null}</span>,
+              }))} /> : null}
+            </div>)
+          })}
         </section>
       ) : null}
       {env.length ? (
