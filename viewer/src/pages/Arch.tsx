@@ -59,7 +59,7 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
   }
   return (
     <UI.Card className="pane fit">
-      {view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('元件') }, { id: 'file', label: t('檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null}
+      {view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('依元件') }, { id: 'file', label: t('依檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null}
       {shown === 'file' ? <FileArch {...p} /> : <CompArch {...p} />}
     </UI.Card>
   )
@@ -72,10 +72,16 @@ function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
   const nodes = useMemo(() => [...fg.files].map(([f, x]) => ({ id: 'file:' + f, name: labels.get(f)! + roleText(roleOf(p.ix.g, f)),
     layer: fg.layer.get(f), size: x.funcs, shared: fg.shared.has(f) })), [fg, labels, p.ix])
   const edges = useMemo(() => fg.links.map((l) => ({ id: `file:${l.a}->${l.b}`, from: 'file:' + l.a, to: 'file:' + l.b, count: l.es.length })), [fg])
+  // which files people may change, in words above the diagram: on a narrow box the mark after the name is cut off
+  const roles = (r: Role) => [...fg.files.keys()].filter((f) => roleOf(p.ix.g, f) === r).map((f) => labels.get(f)!)
+  const [mine, theirs] = [roles('editable'), roles('protected')]
   return (
+    <>
+    {mine.length || theirs.length ? <p className="small">{[mine.length ? t('可修改：{v1}', { v1: list(mine) }) : '', theirs.length ? t('受保護：{v1}', { v1: list(theirs) }) : ''].filter(Boolean).join(t('；'))}</p> : null}
     <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
       selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('檔案'), edges: t('關係') }}
       label={t('檔案和它們之間的呼叫')} nodeWidth={232} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" />
+    </>
   )
 }
 
@@ -641,7 +647,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
                 {comp}{roleText(roleOf(g, comp))}</button>{' '}<span className="muted">{[
                   t('{v1} 個指令', { v1: list.length }),
                   rows(list) > list.length ? t('{v1} 個呼叫處', { v1: rows(list) - list.length }) : '',
-                  spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t(' 等 {n} 個', { n: spaces.length }) : '') }) : '',
+                  spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t('，共 {n} 個', { n: spaces.length }) : '') }) : '',
                   untimed ? t('{v1} 個沒有逾時', { v1: untimed }) : ''].filter(Boolean).join(t('，'))}</span></h4> : null}
               {open ? <UI.DetailList items={list.map(([c, i]) => ({
                 // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart

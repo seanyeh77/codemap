@@ -790,4 +790,9 @@ export const EN: Record<string, string> = {
   "找不到「{v1}」": "No function \"{v1}\"",
   "網址指定的函式不在索引中，這裡改顯示 {v1}。": "The address names a function the index does not have; showing {v1} instead.",
   "不同檔案中的同名函式": "Functions of one name in different files",
+  "依元件": "By component",
+  "依檔案": "By file",
+  "，共 {n} 個": ", {n} in all",
+  "可修改：{v1}": "Editable: {v1}",
+  "受保護：{v1}": "Protected: {v1}",
 }
