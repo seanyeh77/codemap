@@ -222,12 +222,12 @@ function Shell(p: ShellProps) {
       const kind = /^\s*(\/\/|\/\*|\*|#(?!\s*(include|define|if|ifdef|ifndef|else|elif|endif|pragma|undef)\b))/.test(h.text) && textKind(h.file) !== '文件' ? '註解' : textKind(h.file)
       // a C line outside every indexed function: either between functions, or in a file the build does not compile
       const where = fid ? ` · ${ix.funcs[fid].name}` : kind !== '程式碼' && kind !== '測試' ? ''
-        : ((u) => u ? ` · ${t('{v1}（{v2}，這次的 build 沒有編進去）', { v1: u.name, v2: u.cond })}` : null)(
+        : ((u) => u ? ` · ${t('{v1}（{v2}，本次 build 未編入）', { v1: u.name, v2: u.cond })}` : null)(
             ix.g.uncompiled_funcs?.find((u) => u.f === h.file && u.line <= h.line && h.line <= u.end))
           ?? (indexed.has(h.file) || symAt.has(`${h.file}:${h.line}`)
             ? ((s) => s ? ` · ${t(s.kind === 'macro' ? '{v1} 巨集定義' : '{v1} 全域變數宣告', { v1: s.name })}`
               : /^#\s*define\b/.test(h.text) ? ` · ${t('巨集定義')}` : ` · ${t('在函式之外')}`)(symAt.get(`${h.file}:${h.line}`))
-            : ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? ` · ${t('在函式之外')}` : ` · ${t('這個檔案不在 build 裡，只找得到文字，沒有呼叫關係')}`)
+            : ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? ` · ${t('在函式之外')}` : ` · ${t('此檔案不在 build 中，只有文字，沒有呼叫關係')}`)
       // a call on this line to a name defined more than once: which definition it reaches
       const twinCalls = fid ? [...new Set(ix.callees(fid, true).filter((e) => e.l === h.line && e.f === h.file && ix.funcs[e.d]
         && Object.values(ix.funcs).some((g) => g !== ix.funcs[e.d] && g.name.split('.').pop() === ix.funcs[e.d].name.split('.').pop())).map((e) => e.d))] : []
@@ -492,12 +492,12 @@ function Shell(p: ShellProps) {
             : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
         <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
           noResultsText={(q) => noResults(q)}
-          placeholder={t('搜尋名稱，或程式碼與文件裡的字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
+          placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
         <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
-          { target: 'arch', title: t('架構圖'), text: t('方塊是元件，線是元件之間的關係。點選概觀的段落名稱，跳到該段。') },
+          { target: 'arch', title: t('架構圖'), text: t('方塊為元件，線為元件之間的關係。點選概觀的段落名稱可跳到該段。') },
           { target: 'search', title: t('搜尋'), text: COARSE ? t('點選畫面上方的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
-          { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則：…）」的關係由括號裡的規則推得，點選標籤查看依據。') },
+          { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則：…）」的關係由括號中的規則推得，點選標籤可查看依據。') },
           { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
           { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
         ]} />
@@ -597,8 +597,8 @@ function noResults(q: string): string {
   const words = q.trim().split(/\s+/).filter((w) => w.length >= 2)
   const tryWords = (ws: string[]) => ws.map((w) => t('「{v1}」', { v1: w })).join(t('、'))
   return words.length > 1
-    ? t('找不到「{v1}」。可以分開找{v2}；想找風險或限制，可以搜尋{v3}。', { v1: q, v2: tryWords(words), v3: tryWords([t('風險'), 'overrun', t('上限')]) })
-    : t('找不到「{v1}」。請改用較短的詞或名稱的一部分；想找風險或限制，可以搜尋{v2}。', { v1: q, v2: tryWords([t('風險'), 'overrun', t('上限')]) })
+    ? t('找不到「{v1}」。可分開搜尋{v2}；若要找風險或限制，可搜尋{v3}。', { v1: q, v2: tryWords(words), v3: tryWords([t('風險'), 'overrun', t('上限')]) })
+    : t('找不到「{v1}」。請改用較短的詞或名稱的一部分；若要找風險或限制，可搜尋{v2}。', { v1: q, v2: tryWords([t('風險'), 'overrun', t('上限')]) })
 }
 function textKind(file: string): string {
   if (/\.(md|rst|txt|adoc)$/i.test(file) || /(^|\/)docs?\//.test(file) && !/\.(c|h|py)$/.test(file)) return '文件'
@@ -618,7 +618,7 @@ const SECTION_WORDS: Record<string, string[]> = { 'ov-docs': ['docs', 'documenta
 const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束'], ['ov-env', '執行期設定（環境變數）'], ['ov-build', '建置產物'],
   ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方'], ['ov-stops', '結束程式的呼叫'], ['ov-arrays', '固定大小的全域陣列'],
   ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-docs', '專案文件'], ['ov-loss', '會丟掉資料的地方'], ['ov-leftovers', '程式結束後會留下的東西'], ['ov-limits', '到達上限時直接返回、不印訊息'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],
-  ['ov-nullenv', '沒有先檢查 NULL 就使用的 getenv 結果']] as const
+  ['ov-nullenv', '未檢查 NULL 就使用的 getenv 結果']] as const
 
 let lastCat = 'source'
 

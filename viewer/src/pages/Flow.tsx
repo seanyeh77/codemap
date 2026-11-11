@@ -172,7 +172,7 @@ export function Flow(p: FlowProps) {
         <div className="grow" />
         {/* self-test last, so its field follows it in the Tab order */}
         <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label={t('顯示外部函式')} disabled={p.dir !== 'down'} /><span>{t('外部函式')}</span></label>
-        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下下一層的函式，再按「揭曉」比對。用來練習讀程式，不是工具的推測。')}>{t('自我測驗')}</UI.Term></label>
+        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下下一層的函式，再按「揭曉」比對。此功能用於練習讀程式，並非工具的推測。')}>{t('自我測驗')}</UI.Term></label>
       </div>
       {p.predict && cur ? (
         <div className="predict">
@@ -186,7 +186,7 @@ export function Flow(p: FlowProps) {
             </>
           ) : res ? (
             <div ref={resultRef} tabIndex={-1}>{t('預測正確')} <span aria-hidden="true">{UI.format.fraction(res.hit.length, cur.names.length, t('個'))}</span><span className="ui-visually-hidden">{UI.format.fractionLabel(res.hit.length, cur.names.length, t('個'))}</span>{res.hit.length ? t('：') + res.hit.join(t('、')) : ''}
-              {hidden.length ? t('。{v1} 是 repo 外的函式，目前沒有顯示，所以不計入', { v1: hidden.join(t('、')) }) : ''}
+              {hidden.length ? t('。{v1} 為 repo 外的函式，目前未顯示，因此不計入', { v1: hidden.join(t('、')) }) : ''}
               {res.miss.filter((m) => !hidden.includes(m)).length ? t('。不在這一層：{v1}', { v1: res.miss.filter((m) => !hidden.includes(m)).join(t('、')) }) : ''}</div>
           ) : (
             <div className="muted" ref={resultRef} tabIndex={-1}>{cur.open ? t('選擇未展開的函式繼續預測。') : t('此函式沒有下一層。')}</div>
@@ -200,18 +200,18 @@ export function Flow(p: FlowProps) {
       </div>
       {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api
-          ? t('找不到 caller：它是外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
-          : t('找不到 caller。可能從 repo 外呼叫、經由沒偵測到的函式指標呼叫，或沒有被使用。')}</p>
+          ? t('找不到 caller：此為外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
+          : t('找不到 caller。可能從 repo 外呼叫、經由未偵測到的函式指標呼叫，或未被使用。')}</p>
       ) : null}
       <p className="small muted" data-tour="tree">{
         // what an untagged line rests on depends on which backends read the repository
-        !p.ix.g.stats.syntax && !p.ix.g.stats.static ? t('沒有標示的關係由編譯器確認，標示「推測（規則：…）」的由括號裡那條 codemap 規則從原始碼推得。')
-          : t('沒有標示的關係：{v1}。標示「推測（規則：…）」或框架名稱的，程式碼裡沒有直接的呼叫。', { v1: [
+        !p.ix.g.stats.syntax && !p.ix.g.stats.static ? t('未標示的關係由編譯器確認。標示「推測（規則：…）」的關係，由括號中的 codemap 規則從原始碼推得。')
+          : t('未標示的關係：{v1}。標示「推測（規則：…）」或框架名稱的關係，程式碼中沒有直接呼叫。', { v1: [
             p.ix.g.stats.edges ? t('C/C++ 由編譯器確認') : '',
             p.ix.g.stats.resolution?.python ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
-            p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到實作它的型別；go、defer 和當作函式值傳遞的另有標示') : '',
+            p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到其實作型別；go、defer 與當作函式值傳遞的另有標示') : '',
             p.ix.g.stats.resolution?.typescript ? t('TypeScript 與 JavaScript 由 TypeScript 編譯器依名稱與型別確定目標；經覆寫、interface 或函式值的呼叫另有標示') : '',
-            p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對到定義，「依名稱推測」的只憑方法名稱') : ''].filter(Boolean).join(t('；')) })}{t('L5、L6：從起點算起的層數，第 5 層起標示。')}</p>
+            p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對應定義，「依名稱推測」僅憑方法名稱') : ''].filter(Boolean).join(t('；')) })}{t('L5、L6：從起點算起的層數，第 5 層起標示。')}</p>
     </UI.Card>
   )
 }

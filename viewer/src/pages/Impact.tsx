@@ -66,7 +66,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
       return got?.lines?.[0] ?? ''
     },
   })) })
-  const entryTerm = (api: string) => t('和 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會先執行這裡的版本。呼叫者在 repo 外，不在此表中。', { v1: api })
+  const entryTerm = (api: string) => t('與 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會優先執行此版本。呼叫者在 repo 外，不在此表中。', { v1: api })
   return (
     <div className="pane">
       <UI.Card data-tour="impact" className="stack">
@@ -77,12 +77,12 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
           <div>
             {p.ix.funcs[p.start]
               ? <UI.CodeText as="p" text={t('修改 `{name}` 影響 {v1} 個函式，跨 {v2} 個元件。', { name, v1: rows.length, v2: comps.length })} />
-              : <UI.CodeText as="p" text={t('有 {v1} 個函式呼叫 `{name}`（repo 外的函式）；連同呼叫它們的函式，共 {v2} 個，跨 {v3} 個元件。', { name, v1: rows.filter((r) => r.kind === 'direct').length, v2: rows.length, v3: comps.length })} />}
-            {vars.length ? <p className="small">{t('其中 {v1} 個和它使用相同的全域變數（{v2}），沒有呼叫關係也會受影響。', { v1: rows.filter((r) => r.kind === 'state').length, v2: vars.join(t('、')) })}</p> : null}
+              : <UI.CodeText as="p" text={t('有 {v1} 個函式呼叫 `{name}`（repo 外的函式）。連同其呼叫者共 {v2} 個，跨 {v3} 個元件。', { name, v1: rows.filter((r) => r.kind === 'direct').length, v2: rows.length, v3: comps.length })} />}
+            {vars.length ? <p className="small">{t('其中 {v1} 個與它共用全域變數（{v2}），即使沒有呼叫關係也會受影響。', { v1: rows.filter((r) => r.kind === 'state').length, v2: vars.join(t('、')) })}</p> : null}
             {entries.length ? (
               <p className="small">
                 {/* one sentence, the term last before its own list: a break after the ⓘ left 「. They run」 alone on a line */}
-                {t('受影響的函式中有 {v1} 個，會在被追蹤的程式呼叫 {v2} 的同名函式時直接執行（repo 裡共有 {v3} 個這樣的', { v1: entries.length, v2: apis.join(t('、')),
+                {t('受影響的函式中有 {v1} 個，會在被追蹤的程式呼叫 {v2} 的同名函式時直接執行（repo 中共有 {v3} 個這樣的', { v1: entries.length, v2: apis.join(t('、')),
                   v3: Object.values(p.ix.funcs).filter((f) => f.api).length })}
                 <UI.Term text={entryTerm(apis.join(t('、')))}>{t('外部進入點')}</UI.Term>
                 {t('：{v1}）。', { v1: Object.entries(Object.values(p.ix.funcs).reduce<Record<string, number>>((m, f) => (f.api ? { ...m, [f.api]: (m[f.api] ?? 0) + 1 } : m), {})).sort().map(([a, n]) => `${a} ${n}`).join(t('、')) })}
@@ -104,8 +104,8 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             <p>{t('找不到呼叫')} <UI.InlineCode>{name}</UI.InlineCode> {t('或和它共用全域變數的函式。')}</p>
             {p.ix.callerInfo(p.start).others.length || p.ix.callerInfo(p.start).load ? <p className="small muted">{t('它不是由函式直接呼叫：{v1}。', { v1: p.ix.callerText(p.start).split('；').slice(1).join(t('；')) })}</p> : null}
             <p className="small muted">{p.ix.funcs[p.start]?.api
-              ? t('它是外部進入點：呼叫者是載入此程式庫、呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
-              : t('編譯器和規則都沒找到。經由函式指標或從 repo 外的呼叫可能沒有偵測到。')}</p>
+              ? t('外部進入點：呼叫者是載入此程式庫並呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
+              : t('編譯器與規則皆未找到。經由函式指標或來自 repo 外的呼叫可能未偵測到。')}</p>
           </div>
         )}
       </UI.Card>

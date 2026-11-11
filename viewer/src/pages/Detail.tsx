@@ -107,13 +107,13 @@ export function Detail(p: Props) {
         // a framework calls it by itself: no line of the repository does
         // the outside interfaces it implements: what may run it behind err.Error(), without a call edge per site
         ...(p.ix.impls.get(p.sel.id)?.length ? [{ label: t('實作'), value: <span>{p.ix.impls.get(p.sel.id)!.map((e, i) => <span key={e.d}>{i ? t('、') : ''}<UI.InlineCode>{p.ix.bareName(e.d, e)}</UI.InlineCode></span>)}<span className="muted">{t('（經由這些 interface 的呼叫可能執行到它）')}</span></span> }] : []),
-        ...(f.types_incomplete ? [{ label: t('分析限制'), value: <span className="muted">{(f.lang === 'go' ? t('這個檔案的型別檢查不完整（缺少 module 或需要較新的 Go），裡面可能漏掉一些呼叫。')
-          : t('這個檔案的型別檢查不完整（常見原因是沒有安裝 node_modules），裡面可能漏掉一些呼叫。'))}</span> }] : []),
+        ...(f.types_incomplete ? [{ label: t('分析限制'), value: <span className="muted">{(f.lang === 'go' ? t('此檔案的型別檢查不完整（缺少 module 或需要較新的 Go），可能漏掉部分呼叫。')
+          : t('此檔案的型別檢查不完整（常見原因是未安裝 node_modules），可能漏掉部分呼叫。'))}</span> }] : []),
         ...(f.scope === 'test' ? [{ label: t('範圍'), value: t('測試程式碼') }] : []),
         ...(f.entry ? [{ label: t('由框架呼叫'), value: <span>{t('{v1}：{v2}', { v1: f.entry.framework, v2: entryText(f.entry) })}</span> }] : []),
         // two rows, each number right after its own word: 「1 個 caller · 0 個 callee」 was read as caller · 0
         { label: t('被誰呼叫'),
-          value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一個函式只算一次，推測的另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}
+          value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一函式只算一次，推測的關係另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}
             {/* the callers by name, compiler-seen first: a count alone sends people to the flow page to learn who */}
             {/* each caller with the line it calls from, so a file:line needs no detour through the impact page */}
             {nCallers ? <span className="entry-list">{callSites.slice(0, 6).map((g) => (
@@ -126,7 +126,7 @@ export function Detail(p: Props) {
         ...(twins.length ? [{ label: t('同名'), value: <span className="entry-list">{twins.map(([id, g]) => (
           <span key={id} className="entry-row"><FnLink id={id} go={p.goFlow}>{g.name}</FnLink>{' '}{link(g.file, g.line)}{t('（{v1}）', { v1: g.comp })}</span>))}</span> }] : []),
         { label: t('呼叫誰'),
-          value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一個函式只算一次。流程樹的 ×N 是呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}
+          value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一函式只算一次。流程樹的 ×N 為呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}
             {calleeSites.length ? <span className="entry-list">{calleeSites.slice(0, 12).map((g) => (
               <span key={g[0].d} className="entry-row"><FnLink id={g[0].d} go={p.goFlow}>{p.ix.funcs[g[0].d].name}</FnLink>{' '}
                 {g.map((c, i) => <span key={c.f + c.l}>{i ? t('、') : ''}{link(c.f, c.l)}</span>)}{inferred(g[0]) ? <span className="muted">{t('（推測）')}</span> : g.every((c) => c.k === 'ref') ? <span className="muted">{t('（當作值傳出）')}</span> : null}</span>))}
@@ -143,13 +143,13 @@ export function Detail(p: Props) {
         ...(chain && chain.length > 1 ? [{ label: t('從起點到這裡'), value: <span className="entry-list">{chain.map((c, i) => (
           <span key={i} className="entry-row">{i ? '→ ' : ''}<FnLink id={c.id} go={p.goFlow}>{p.ix.funcs[c.id]?.name ?? c.id}</FnLink>{c.e ? <>{' '}{link(c.e.f, c.e.l)}</> : null}</span>))}</span> }] : []),
         // calls the compiler never saw: inside #if/#ifdef blocks this build leaves out
-        ...((u) => u?.length ? [{ label: t('條件編譯'), value: <span>{t('另有 {v1} 處呼叫在條件編譯裡，這次的 build 沒有編進去，所以不算在上面：', { v1: u.length })}{u.map((x, i) => (
+        ...((u) => u?.length ? [{ label: t('條件編譯'), value: <span>{t('另有 {v1} 處呼叫在條件編譯中，本次 build 未編入，因此未計入上方：', { v1: u.length })}{u.map((x, i) => (
           <span key={i} className="write-row">{x.by}{t('（{v1}）', { v1: x.cond })}{' '}{link(x.f, x.l)}</span>))}</span> }] : [])(p.ix.g.uncompiled?.[p.sel.id]),
-        ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('和 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會先執行這裡的版本。呼叫者在 repo 外，所以 caller 可能是 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
+        ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('與 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會優先執行此版本。呼叫者在 repo 外，因此 caller 可能為 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
         ...(e && !inside ? [{ label: t('呼叫位置'), value: sites.length > 1
           ? <span>{sites.map((s, i) => <span key={s.l}>{i ? t('、') : ''}{link(s.f, s.l)}</span>)}</span> : link(e.f, e.l) }] : []),
-        ...(sameLine.length ? [{ label: t('同一行'), value: t('這一行還呼叫 {v1}，兩個呼叫寫在同一個運算式裡。', { v1: sameLine.join(t('、')) }) }] : []),
-        ...macros.map((m) => ({ label: t('巨集'), value: <span>{t('這一行使用巨集 {v1}，定義在 ', { v1: m.name })}{link(m.file, m.line)}{t('。呼叫在巨集展開後才發生，所以記在這一行。')}</span> })),
+        ...(sameLine.length ? [{ label: t('同一行'), value: t('這一行另呼叫 {v1}，兩個呼叫位於同一個運算式。', { v1: sameLine.join(t('、')) }) }] : []),
+        ...macros.map((m) => ({ label: t('巨集'), value: <span>{t('這一行使用巨集 {v1}，定義在 ', { v1: m.name })}{link(m.file, m.line)}{t('。呼叫在巨集展開後才發生，因此記在這一行。')}</span> })),
         ...(e && (e.via || e.slot) ? [{ label: t('經由'), value: <UI.InlineCode>{e.via || e.slot}</UI.InlineCode> }] : []),
       ]} />
       <UI.ActionBar actions={[
@@ -160,12 +160,12 @@ export function Detail(p: Props) {
       ]} />
       {whole ? (
         file.isPending ? <UI.Skeleton width="80%" height={16} />
-          : file.error || !file.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{file.error ? (file.error as Error).message : t('這個檔案不在索引裡。')}</UI.Alert>
+          : file.error || !file.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{file.error ? (file.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
           : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" {...refs} languageLabel={langLabel(file.data.file)} /><DocRefs ix={p.ix} lines={file.data.lines} /></>
       ) : at ? <CodeAt ix={p.ix} at={at} isLive={p.isLive} sourceId={p.sourceId} maxHeight="60vh" focus />
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
-        : !src.data ? <p className="small muted">{t('匯出快照時讀不到這個檔案。請在 build 環境重新執行 codemap export。')}</p>
+        : !src.data ? <p className="small muted">{t('匯出快照時無法讀取此檔案。請在 build 環境重新執行 codemap export。')}</p>
         : <UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}
