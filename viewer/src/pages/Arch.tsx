@@ -1,9 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { OpenFile, useCodeRefs } from '../components/DocRefs'
 import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
-import { toMarkdown } from '../markdown'
 import { entryText, push, type Index } from '../data/graph'
 import { fileGraph, fileView, roleOf, type Role } from '../data/files'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
@@ -424,31 +423,24 @@ const short = (t: string, n = 140) => (t.length > n ? t.slice(0, n).replace(/\s+
 /** The first sentence of a comment: enough to tell a file's role (Protected ..., Editable ...). */
 const firstSentence = (t: string) => ((m) => (m ? m[0] : t))(t.match(/^[\s\S]*?[.。](?=\s|$)/))
 
+/** A function as a Markdown link to the flow page; a name the index does not have stays code. */
+const fnLink = (ix: Index, id: string) => (ix.funcs[id] ? `[${esc(ix.funcs[id].name)}](fn:${encodeURIComponent(id)})` : code(id))
+const loc = (f: string, l: number, inTable = false) => code(`${f}:${l}`, inTable)
+
 /** The project's documents: the top-level ones and those the code points to first, each with its
- *  title and first sentence; the rest behind one button. The fullest explanation of a design is
+ *  title and first sentence; the rest in a closed block. The fullest explanation of a design is
  *  often a document, and nothing on the diagram leads to it. */
-function Docs(p: { docs: DocSummary[]; ix: Index }) {
-  const openFile = useContext(OpenFile)
-  const refs = useCodeRefs(p.ix)
-  const sum = t('{v1} 份', { v1: p.docs.length })
-  const [all, setAll] = useState(false)
+function docsPart(docs: DocSummary[]): PartMd {
   // the README and docs/*.md, then documents the code names at least twice, most named first
-  const main = p.docs.filter((d) => d.file.split('/').length <= 2 && !/^(CODEMAP|notes)\.md$/i.test(d.file) || d.cited >= 2)
+  const main = docs.filter((d) => d.file.split('/').length <= 2 && !/^(CODEMAP|notes)\.md$/i.test(d.file) || d.cited >= 2)
     .sort((a, b) => Number(b.file === 'README.md') - Number(a.file === 'README.md') || b.cited - a.cited || a.file.localeCompare(b.file)).slice(0, 8)
-  const rest = p.docs.filter((d) => !main.includes(d))
-  const row = (d: DocSummary) => ({
-    label: d.file,
-    value: <span><button type="button" className="linklike" onClick={() => openFile(d.file, 1)}>{d.title}</button>
-      {d.text ? <><br /><UI.Markdown inline size="small" {...refs}>{d.text}</UI.Markdown></> : null}
-      {d.cited ? <><br /><span className="small muted">{t('{v1} 個程式碼或腳本檔提到它', { v1: d.cited, v2: countUnit('', 'source file', 'source files')(d.cited) })}</span></> : null}</span>,
-  })
-  return (
-    <Part id="ov-docs" title={t('專案文件')} summary={sum}>
-      <DL items={main.map(row)} />
-      {rest.length ? <p className="small"><button type="button" className="linklike" aria-expanded={all} onClick={() => setAll(!all)}>{all ? t('收起其餘文件') : t('其餘 {v1} 份文件', { v1: rest.length })}</button></p> : null}
-      {all ? <DL items={rest.map(row)} /> : null}
-    </Part>
-  )
+  const rest = docs.filter((d) => !main.includes(d))
+  const row = (d: DocSummary) => `- [${esc(d.title)}](${d.file}) ${code(d.file)}`
+    + (d.text ? BR + oneLine(d.text) : '') + (d.cited ? BR + t('{v1} 個程式碼或腳本檔提到它', { v1: d.cited, v2: countUnit('', 'source file', 'source files')(d.cited) }) : '')
+  return {
+    id: 'ov-docs', title: t('專案文件'), summary: t('{v1} 份', { v1: docs.length }),
+    md: [main.map(row).join('\n'), rest.length ? details(t('其餘 {v1} 份文件', { v1: rest.length }), rest.map(row).join('\n')) : ''].filter(Boolean).join('\n\n'),
+  }
 }
 
 /** Where a comment came from, so a reader can check it. */
@@ -461,21 +453,9 @@ function From(p: { doc: Doc }) {
 function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void }) {
   const g = p.ix.g
   const refs = useCodeRefs(p.ix)
-  const body = useRef<HTMLDivElement>(null)
+  const openFile = useContext(OpenFile)
   const [copied, setCopied] = useState(false)
-  // a file:line opens its code right under the row it is in, not at the end of the panel
-  const [shown, setShown] = useState<string | null>(null)
-  const [openApi, setOpenApi] = useState<string | null>(null)
-  const at = (key: string, f: string, l: number) => (
-    <>
-      <LineLink ix={p.ix} file={f} line={l} onOpen={() => setShown(shown === key ? null : key)} />
-      {shown === key ? <div className="row-code"><CodeAt ix={p.ix} at={{ f, l }} isLive={p.isLive} sourceId={p.sourceId} focus /></div> : null}
-    </>
-  )
-  // a function's name opens the flow page: the arrow says so before the click
-  const fn = (id: string) => p.ix.funcs[id]
-    ? <button type="button" className="linklike to-flow" title={t('在流程頁開啟')} onClick={() => p.onPick(id)}>{p.ix.funcs[id].name}<UI.Icon name="arrow-right" size={14} /></button>
-    : <UI.InlineCode>{id}</UI.InlineCode>
+  const links = useMemo(() => ({ refs, openFile, onFn: p.onPick }), [refs, openFile, p.onPick])
   const fname = (ref: string) => { const hit = p.ix.at(ref); return hit ? p.ix.funcs[hit.id].name : null }
   const lifecycle = g.edges.filter((e) => e.k === 'constructor' || e.k === 'destructor').filter((e) => p.ix.funcs[e.d])
   const apis = new Map<string, number>()
@@ -489,9 +469,6 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     for (const ids of m.values()) ids.sort((a, b) => p.ix.funcs[a].file.localeCompare(p.ix.funcs[b].file) || p.ix.funcs[a].line - p.ix.funcs[b].line)
     return new Map([...m].sort(([a], [b]) => a.localeCompare(b)))
   }, [p.ix])
-  // null: nobody has clicked yet; a short list is open from the start
-  const ptrOpen = openApi === '*ptr' || (openApi === null && [...installed.values()].flat().length <= 5)
-  const line = (id: string, key: string) => <>{fn(id)}{' '}{at(key, p.ix.funcs[id].file, p.ix.funcs[id].line)}</>
   // variables the program reads: in a C repository, a C file's reads (Python there is tools and tests);
   // in a repository of Python, Go or TypeScript, a read inside any of its functions that is not a test
   const cRepo = g.stats.backends ? g.stats.backends.includes('gcc') : true
@@ -516,8 +493,6 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   }, new Map<string, (readonly [typeof cmds[number], number])[]>())].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
   // a file whose commands and call sites fill several screens starts closed: the controller's are not lost under the grader's
   const rows = (xs: (readonly [typeof cmds[number], number])[]) => xs.reduce((n, [c]) => n + 1 + (c.via?.length ?? 0), 0)
-  const [cmdOpen, setCmdOpen] = useState<Record<string, boolean>>({})
-  const groupOpen = (f: string, xs: (readonly [typeof cmds[number], number])[]) => cmdOpen[f] ?? rows(xs) <= 30
   const broad = (g.worth?.broad ?? []).filter((x) => prod(x.fid))
   // one name defined in two files (routing.flow_priority and oracle.flow_priority): a change to one leaves the other
   // as it was, and a reader can take a call to one for a call to the other. Methods and __init__ are left out.
@@ -548,7 +523,6 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   // a variable the program only sets (PYTHONPATH for a child process) belongs here too, outside a C repository
   const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram) || (!cRepo && v.set.some(inProgram)))
   const others = Object.keys(g.env ?? {}).length - env.length
-  const where = (refs: string[]) => refs.filter(inProgram).map((r) => (fname(r) ? t('{v1}（{v2}）', { v1: fname(r), v2: r.split('/').pop() }) : r))
   // the line beside each part's title: the numbers that say whether it is worth opening
   const join = (xs: (string | false | 0 | undefined)[]) => xs.filter(Boolean).join(t('、'))
   const fewNames = (xs: string[]) => (xs.length > 2 ? t('{v1} 等 {v2} 個', { v1: xs.slice(0, 2).join(t('、')), v2: xs.length }) : xs.join(t('、')))
@@ -568,280 +542,179 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     ['loss', g.worth?.loss?.length ?? 0, '會丟掉資料的地方'], ['leftovers', g.worth?.leftovers?.length ?? 0, '程式結束後會留下的東西'], ['limits', g.worth?.limits?.silent.length ?? 0, '到達上限時直接返回、不印訊息'],
     ['plain_writes', g.worth?.plain_writes?.length ?? 0, '不經 atomic 操作就修改的全域變數'], ['env', g.worth?.env.length ?? 0, '未檢查 NULL 就使用的 getenv 結果']] as const)
     .filter(([k, n]) => n > 0 && (k === 'twins' || applies(k)))
-  // the whole overview as Markdown, closed parts too (their content stays on the page, hidden)
-  const copy = async () => {
-    if (!body.current) return
-    try {
-      await navigator.clipboard.writeText(toMarkdown(body.current, t('{v1} 的概觀', { v1: g.repo })))
-      setCopied(true); UI.announce(t('已複製概觀的 Markdown'))
-      setTimeout(() => setCopied(false), 2000)
-    } catch { UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')) }
-  }
   sums.worth = found.length ? t('有發現：{v1}', { v1: found.map(([, , l]) => t(l)).join(t('、')) }) : t('沒有發現')
+  const fnL = (id: string) => fnLink(p.ix, id)
+  const fnLoc = (id: string) => `${fnL(id)} ${loc(p.ix.funcs[id].file, p.ix.funcs[id].line)}`
+  // a list that fills more than a few lines goes into a closed block
+  const longList = (label: string, lines: string[]) => (lines.length > 5 ? details(label, lines.join('\n')) : `${esc(label)}\n\n${lines.join('\n')}`)
+  const parts: PartMd[] = []
+
+  // 元件: what each one is for, in its own words; test code apart
+  parts.push({ id: 'ov-comps', title: t('元件'), summary: sums.comps, open: true, md: [
+    g.comps.map((c) => `- **${esc(c.id)}**：` + (c.doc
+      ? oneLine(short(c.doc.text)) + BR + (c.doc.own ? t('專案在 .codemap/rules.json 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: c.doc.file, v2: c.doc.line }))
+      : c.file_docs?.length ? t('元件沒有整體說明，以下為各檔案的開頭註解：') + c.file_docs.map((d) => `\n  - ${code(d.file.split('/').pop()!)} ${oneLine(short(firstSentence(d.text), 90))}`).join('')
+      : t('沒有說明註解。'))).join('\n'),
+    testComps.length ? [`### ${t('測試與評分程式（不畫在圖上）')}`, testComps.map(([comp, fs]) => {
+      const files = [...new Set(fs.map((f) => f.file))].sort()
+      const entry = fs.filter((f) => f.name === 'main')
+      return `- **${esc(comp)}**：${t('{v1} 個檔案、{v2} 個函式', { v1: files.length, v2: fs.length })}` + (entry.length ? t('，入口 ') + entry.map((f) => loc(f.file, f.line)).join(t('、')) : '')
+        + files.slice(0, 8).map((f) => `\n  - ${code(f)}${g.files?.[f] ? ' ' + oneLine(short(firstSentence(g.files[f].text), 90)) : ''}`).join('')
+    }).join('\n'), g.hidden_tests ? note(t('流程、影響範圍與搜尋預設不含測試程式碼，可在設定頁開啟「包含測試程式碼」。')) : ''].filter(Boolean).join('\n\n') : '',
+    g.comps.some((c) => !c.doc?.own) ? note(t('說明取自主要檔案（main.c、__init__.py 或唯一的檔案）的開頭註解。元件用途可寫在 .codemap/rules.json 的 describe。')) : '',
+  ].filter(Boolean).join('\n\n') })
+
+  if (g.docs?.length) parts.push(docsPart(g.docs))
+
+  // 進入與結束: where control comes in from outside the repository, and what runs on its own
+  if (lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length) {
+    const simple = [
+      ...spawns.map((x) => `- **${t('背景工作')}**：${fnL(x.target)}${t('（由 {v1} 以 {v2} 啟動，', { v1: esc(p.ix.funcs[x.fid]?.name ?? x.fid), v2: x.call })}${loc(x.f, x.l)}${t('）')}`),
+      ...mains.map((id) => `- **${t('程式入口')}**：${fnLoc(id)}${p.ix.callerInfo(id).sure ? t('（由 {v1} 呼叫）', { v1: esc(list(p.ix.callerInfo(id).names.slice(0, 2))) }) : ''}`),
+      ...lifecycle.map((e) => `- **${e.k === 'constructor' ? t('載入時自動執行') : t('結束時自動執行')}**：${fnL(e.d)}${t('（{v1}）', { v1: p.ix.funcs[e.d].comp })} ${loc(p.ix.funcs[e.d].file, p.ix.funcs[e.d].line)}`
+        // two constructors in one component (one .so): the loader does not promise an order
+        + (e.k === 'constructor' && lifecycle.filter((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp).length > 1
+          && lifecycle.find((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp) === e ? BR + t('{v1} 有多個 constructor，同一程式庫中的執行順序沒有保證。', { v1: p.ix.funcs[e.d].comp }) : '')),
+    ]
+    const groups = [
+      // functions a framework calls by itself: routes, tests, event handlers, grouped by framework and kind
+      ...[...fwEntries].map(([, ids]) => {
+        const e0 = p.ix.funcs[ids[0]].entry!
+        return `### ${t('{v1}：{v2}', { v1: e0.framework, v2: entryText({ kind: e0.kind, text: '' }) })}\n\n`
+          + longList(t('{v1} 個函式由 {v2} 呼叫', { v1: ids.length, v2: e0.framework, v3: countUnit('', 'function', 'functions')(ids.length) }),
+            ids.map((id) => `- ${fnLoc(id)}${p.ix.funcs[id].entry!.text ? ' ' + esc(p.ix.funcs[id].entry!.text) : ''}`))
+      }),
+      ...[...apis].sort().map(([api, n]) => `### ${t('外部進入點')}\n\n` + longList(t('{v1} 個函式攔截 {v2} 的同名函式（LD_PRELOAD）', { v1: n, v2: api }),
+        Object.entries(p.ix.funcs).filter(([, f]) => f.api === api).sort(([, a], [, b]) => a.name.localeCompare(b.name)).map(([id]) => `- ${fnLoc(id)}`))),
+      ...(installed.size ? [`### ${t('經由函式指標進入')}\n\n` + longList(t('{v1} 個函式只裝入函式指標，由 repo 外呼叫（推測）', { v1: [...installed.values()].flat().length }),
+        [...installed].sort(([, a], [, b]) => b.length - a.length).map(([by, ids]) => `- ${t('{v1} 裝入：', { v1: esc(p.ix.funcs[by].name) })}`
+          + [...ids].sort((a, b) => p.ix.funcs[a].name.localeCompare(p.ix.funcs[b].name)).map((id) => `\n  - ${fnLoc(id)}`).join('')))] : []),
+    ]
+    parts.push({ id: 'ov-entry', title: t('進入與結束'), summary: sums.entry, open: true, md: [simple.join('\n'), ...groups].filter(Boolean).join('\n\n') })
+  }
+
+  // 執行的外部指令: by file, the files people may change first; where each runs and whether it can hang
+  if (cmds.length) {
+    const group = ([comp, xs]: (typeof cmdGroups)[number]) => {
+      const all = xs.flatMap(([c]) => [c.cmd, ...(c.via ?? []).map((v) => v.cmd)])
+      const spaces = [...new Set(all.map(netns).filter((x) => x && !/^\{[^}]*\}$/.test(x)))] as string[]     // {namespace}: known only when it runs
+      const untimed = xs.filter(([c]) => !c.timeout).length
+      const head = [t('{v1} 個指令', { v1: xs.length }), rows(xs) > xs.length ? t('{v1} 個呼叫處', { v1: rows(xs) - xs.length }) : '',
+        spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t('，共 {n} 個', { n: spaces.length }) : '') }) : '',
+        untimed ? t('{v1} 個沒有逾時', { v1: untimed }) : ''].filter(Boolean).join(t('，'))
+      // where it runs: the namespace an ip netns exec names; a launcher without one runs where its caller does
+      const wraps = (c: (typeof cmds)[number]) => !!c.via?.some((v) => v.cmd !== c.cmd)
+      const where = (c: (typeof cmds)[number]) => (wraps(c) ? t('依呼叫處') : netns(c.cmd) ?? t('與呼叫者相同'))
+      const rowsMd = mdTable([t('函式'), t('指令'), t('位置'), t('network namespace'), t('執行方式')], xs.map(([c]) => [
+        fnLink(p.ix, c.fid) + (wraps(c) ? t('（包裝函式）') : ''),
+        code(c.cmd || c.call, true), loc(c.f, c.l, true), esc(where(c)),
+        c.call + (c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')) + (c.shell ? t('，shell={v1}', { v1: c.shell }) : ''),
+      ]))
+      // a wrapper's call sites, each with the command it makes: in a closed block (a plain command's one caller adds nothing)
+      const sites = xs.filter(([c]) => wraps(c)).map(([c]) => details(t('{v1} 的 {v2} 個呼叫處', { v1: p.ix.funcs[c.fid]?.name ?? c.fid, v2: c.via!.length }),
+        mdTable([t('呼叫者'), t('組成的指令'), t('位置')], c.via!.map((v) => [fnLink(p.ix, v.fid), code(v.cmd, true), loc(v.f, v.l, true)]))))
+      const body = [rowsMd, ...sites].join('\n\n')
+      return [`### ${esc(comp)}${roleText(roleOf(g, comp))}`, head,
+        // a file whose call sites fill several screens is closed: the controller's are not lost under the grader's
+        rows(xs) > 30 ? details(t('展開 {v1} 的指令', { v1: comp.split('/').pop() }), body) : body].join('\n\n')
+    }
+    parts.push({ id: 'ov-cmds', title: t('執行的外部指令'), summary: sums.cmds, md: [
+      noteMd(t('{v1}：執行時才決定的值。經由包裝函式執行的指令，逐一列出各呼叫處組成的指令。', { v1: code('{…}') })),
+      ...cmdGroups.map(group)].join('\n\n') })
+  }
+
+  // 執行期設定: what each variable does, and where it is read and set
+  if (env.length) {
+    const at = (refs: string[]) => refs.filter(inProgram).map((r) => (fname(r) ? `${esc(fname(r)!)} ${code(r)}` : code(r))).join(t('、'))
+    parts.push({ id: 'ov-env', title: t('執行期設定（環境變數）'), summary: sums.env, md: [
+      env.map(([name, v]) => `- **${code(name)}**：` + [
+        name === 'LD_PRELOAD' ? t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。') : '',
+        ...(g.env_info?.[name] ? meaning(g.env_info[name]) : []),
+        t('讀取：{v1}', { v1: at(v.get) || '—' }),
+        at(v.set) ? t('設定：{v1}', { v1: at(v.set) }) : '',
+        ((n) => (n ? (cRepo ? t('另有 {v1} 處在 Python 工具、測試或腳本中，可用搜尋查看', { v1: n }) : t('另有 {v1} 處在測試或腳本中，可用搜尋查看', { v1: n })) : ''))([...v.get, ...v.set].filter((r) => !inProgram(r)).length),
+      ].filter(Boolean).join(BR)).join('\n'),
+      others > 0 ? details(cRepo ? t('另有 {v1} 個變數只出現在 Python 工具、測試或腳本中', { v1: others }) : t('另有 {v1} 個變數只在測試或腳本中讀取，或只有設定', { v1: others }),
+        Object.entries(g.env ?? {}).filter(([name]) => !env.some(([n]) => n === name)).sort(([a], [b]) => a.localeCompare(b))
+          .map(([name, v]) => `- ${code(name)} ${[...v.get, ...v.set].slice(0, 3).map((r) => code(r)).join(t('、'))}${[...v.get, ...v.set].length > 3 ? t('，共 {v1} 處', { v1: [...v.get, ...v.set].length }) : ''}`).join('\n')) : '',
+    ].filter(Boolean).join('\n\n') })
+  }
+
+  if (g.build && (g.build.built.length || g.build.install.length)) parts.push(buildPart(g.build))
+  if (g.writes) parts.push(writesPart(p.ix, writes, inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS)))
+  if (reads.length) parts.push({ id: 'ov-reads', title: t('讀取的檔案'), summary: sums.reads, md: mdTable([t('檔案'), t('函式'), t('方式'), t('位置')], reads.map((r) => [
+    r.name ? code(r.name, true) : r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ? code(r.expr, true) : t('（執行時決定）'), fnLink(p.ix, r.fid), code(r.call, true), loc(r.f, r.l, true)])) })
+
+  // 值得檢查的地方: one ### per check, its findings or 沒有找到
+  if (g.worth) {
+    const w = g.worth
+    const none = note(t('沒有找到。'))
+    const check = (k: string, title: string, body: string) => (k === 'twins' || applies(k) ? `### ${title}\n\n${body}` : '')
+    const kept = <T,>(xs: T[], f: (x: T) => string) => xs.map(f).join('\n')
+    parts.push({ id: 'ov-worth', title: t('值得檢查的地方'), summary: sums.worth, md: [
+      note(t('僅列出程式碼中的事實，是否有問題須視實際用法而定。')),
+      check('broad', t('捕捉所有例外後繼續執行'), [note(t('範圍：except Exception、except BaseException 與未寫型別的 except，且處理區塊未再 raise。指定型別的 except 不列入。')),
+        broad.length ? kept(broad, (x) => `- **except ${esc(x.what)}**：${fnL(x.fid)} ${loc(x.f, x.l)}${t('：接著執行 {v1}，未再拋出', { v1: code(x.then) })}`) : none].join('\n\n')),
+      check('twins', t('不同檔案中的同名函式'), twins.length ? kept(twins, ([name, ids]) => `- **${esc(name)}**` + ids.map((id) => `\n  - ${loc(p.ix.funcs[id].file, p.ix.funcs[id].line)} ${esc(p.ix.callerText(id))}`).join('')) : none),
+      check('stops', t('結束程式的呼叫'), stops.length ? kept(stops, (x) => `- **${esc(x.name)}()**：${fnL(x.fid)}${t(' 呼叫：')}${loc(x.f, x.l)}`)
+        : note(t('沒有結束程式的呼叫（{v1}）。', { v1: inLangs('stops', cRepo ? { c: STOP_CALLS.c } : STOP_CALLS) }))),
+      check('arrays', t('固定大小的全域陣列'), w.arrays.length ? [kept(w.arrays, (a) => `- **${esc(a.name)}**：` + (a.value ? t('上限 {v1} 個（{v2}）：', { v1: a.value, v2: a.size.slice(1, -1).split('][').join(' × ') })
+        : /^(\[\d+\])+$/.test(a.size) ? t('上限 {v1} 個：', { v1: a.size.replace(/[[\]]/g, ' ').trim().split(/\s+/).join(' × ') }) : t('上限 {v1} 個：', { v1: a.size.slice(1, -1).split('][').join(' × ') })) + loc(a.file, a.line)),
+        ((n) => (n ? note(t('其中 {v1} 個的上限為 enum 或運算式，未換算成數字。', { v1: n })) : ''))(w.arrays.filter((a) => !a.value && !/^(\[\d+\])+$/.test(a.size)).length)].filter(Boolean).join('\n\n')
+        : note(t('沒有以常數決定大小的全域陣列。'))),
+      check('env_if_unset', t('只在未設定時才設定的環境變數'), unsetEnv.length ? kept(unsetEnv, (e) => `- **${code(e.name)}**：${fnL(e.fid)}` + (e.check !== e.l
+        ? t(' 先檢查是否已設定：') + loc(e.f, e.check) + t('；未設定時才設定：') + loc(e.f, e.l) + (e.says === false ? t('。已設定時沿用原值，不印訊息。') : '')
+        : e.how === 'setdefault' ? t(' 以 os.environ.setdefault 設定，已設定時不覆寫：') + loc(e.f, e.check) : t(' 以 setenv 第三個參數為 0 設定，已設定時不覆寫：') + loc(e.f, e.check))) : none),
+      check('errors', t('回傳固定錯誤碼的地方'), w.errors?.length ? kept(w.errors, (e) => `- **${code(e.code)}**：${fnL(e.fid)}`
+        + (p.ix.funcs[e.fid]?.api ? t('（外部進入點）') : p.ix.callers(e.fid).some((x) => x.k === 'fnptr_assign' || x.k === 'fnptr_table') ? t('（裝進函式指標）') : '')
+        + (e.how === 'errno' ? t(' 設定 errno：') : t(' 回傳：')) + loc(e.f, e.l)) : none),
+      check('loss', t('會丟掉資料的地方'), w.loss?.length ? [note(t('名稱如 lost、dropped、overrun 的計數器遞增處：程式在此捨棄部分資料。')), kept(w.loss, (x) => `- **${code(x.var)}**：${fnL(x.fid)}：${code(x.text)} ${loc(x.f, x.l)}`
+        + (x.via.length ? BR + t('經由：') + [...new Set(x.via.map((v) => v.fid))].map((v) => `${fnL(v)} ${x.via.filter((y) => y.fid === v).map((y) => loc(y.f, y.l)).join(t('、'))}`).join(t('、')) : '')
+        + BR + (x.said.length ? t('回報：') + x.said.map((y) => loc(y.f, y.l)).join(t('、')) : t('沒有找到印出這個計數的地方。')))].join('\n\n') : none),
+      check('leftovers', t('程式結束後會留下的東西'), w.leftovers?.length ? [note(t('以 O_CREAT 建立的 shared memory、具名 semaphore 或 FIFO 會留在系統中，直到被刪除。程式若在刪除前結束（exit、abort、被 signal 終止），就會殘留。')),
+        kept(w.leftovers, (x) => `- **${code(x.call)}**：${fnL(x.fid)}${t(' 建立：')}${loc(x.f, x.l)}`
+          + BR + (x.removed.length ? t('以 {v1} 刪除：', { v1: x.remove }) + x.removed.map((r) => `${fnL(r.fid)} ${loc(r.f, r.l)}${r.via.length ? t('（經由 ') + r.via.map(fnL).join(t('、')) + t('）') : ''}`).join(t('；'))
+            : t('未找到呼叫 {v1} 的位置，每次執行都會殘留一個。', { v1: x.remove }))
+          + (x.stops.length ? BR + t('同一元件另有 {v1} 處直接結束程式，須確認其位於建立之前或刪除之後：', { v1: x.stops.length }) + x.stops.map((y) => `${esc(y.name)} ${loc(y.f, y.l)}`).join(t('、')) : ''))].join('\n\n') : none),
+      check('limits', t('到達上限時直接返回、不印訊息'), w.limits?.silent.length ? [note(t('計數達到 MAX 常數時直接 return，使用者不會得知有資料未處理。')),
+        kept(w.limits.silent, (x) => `- **${code(x.limit)}**：${fnL(x.fid)}：${code(x.cond)} ${loc(x.f, x.l)}`),
+        w.limits.said.length ? noteMd(t('另有 {v1} 處到達上限時會先印出訊息：', { v1: w.limits.said.length }) + w.limits.said.map((x) => `${fnL(x.fid)} ${loc(x.f, x.l)}`).join(t('、'))) : ''].filter(Boolean).join('\n\n') : none),
+      check('plain_writes', t('不經 atomic 操作就修改的全域變數'), w.plain_writes?.length ? [note(t('未判斷是否有鎖保護或只在單一執行緒執行。標示「載入時」的寫入位於 constructor，通常早於其他執行緒啟動。')),
+        kept([...w.plain_writes].sort((a, b) => Number(a.writes.every((x) => p.ix.callerInfo(x.fid).load)) - Number(b.writes.every((x) => p.ix.callerInfo(x.fid).load))), (v) => `- **${code(v.name)}**`
+          + v.writes.map((x) => `\n  - ${fnL(x.fid)}${p.ix.callerInfo(x.fid).load === 'constructor' ? t('（載入時）') : p.ix.callerInfo(x.fid).load === 'destructor' ? t('（結束時）') : ''}${t('：')}${code(x.text)} ${loc(x.f, x.l)}`).join(''))].join('\n\n') : none),
+      check('env', t('未檢查 NULL 就使用的 getenv 結果'), w.env.length ? kept(w.env, (e) => `- **${e.name ? code(e.name) : t('（名稱執行時決定）')}**：${fnL(e.fid)}${e.use !== e.l ? t(' 在第 {v1} 行使用：', { v1: e.use }) : t(' 直接使用：')}${loc(e.f, e.l)}`)
+        : note(t('未找到。每個 getenv 結果在使用前皆已檢查 NULL，或直接回傳給呼叫者。'))),
+      skipped.length ? note(t('另有 {v1} 項只適用於 {v2} 的檢查，本專案不適用，未列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })) : '',
+    ].filter(Boolean).join('\n\n') })
+  }
+
+  // the whole overview, the same text the page shows
+  const all = [`# ${t('{v1} 的概觀', { v1: g.repo })}`, ...parts.map(partText)].join('\n\n') + '\n'
+  const copy = () => navigator.clipboard.writeText(all).then(() => { setCopied(true); UI.announce(t('已複製概觀的 Markdown')); setTimeout(() => setCopied(false), 2000) },
+    () => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')))
   return (
     <UI.Card className="detail fit overview" title={t('概觀')} actions={<UI.Button icon={copied ? 'check' : 'copy'} onClick={() => { void copy() }}>{copied ? t('已複製') : t('複製成 Markdown')}</UI.Button>}>
-      <div ref={body}>
-      <p className="small muted md-skip">{t('點選方塊查看函式，點選線查看依據。')}</p>
-      <div data-tour="arch"><RepoKey.Provider value={g.repo}><UI.SectionGroup>
-      <Part id="ov-comps" title={t('元件')} summary={sums.comps} open>
-        <DL items={g.comps.map((c) => ({
-          label: c.id,
-          value: <span>{c.doc ? <><UI.Markdown inline {...refs}>{short(c.doc.text)}</UI.Markdown><br /><From doc={c.doc} /><br /></>
-            : c.file_docs?.length ? <>{t('元件沒有整體說明，以下為各檔案的開頭註解：')}<span className="entry-list">{c.file_docs.map((d) => (
-              <span key={d.file} className="entry-row"><UI.InlineCode>{d.file.split('/').pop()}</UI.InlineCode>{' '}<UI.Markdown inline {...refs}>{short(firstSentence(d.text), 90)}</UI.Markdown></span>))}</span></>
-            : <span className="muted">{t('沒有說明註解。')}</span>}<button type="button" className="linklike md-skip" onClick={() => p.onComp(c.id)}>{c.lang ? t('查看 {v1} 的 Python 工具', { v1: c.id }) : t('查看 {v1} 的函式', { v1: c.id })}</button></span>,
-        }))} />
-        {testComps.length ? <>
-          <h4 className="small">{t('測試與評分程式（不畫在圖上）')}</h4>
-          <DL items={testComps.map(([comp, fs]) => {
-            const files = [...new Set(fs.map((f) => f.file))].sort()
-            const entry = fs.filter((f) => f.name === 'main')
-            return {
-              label: comp,
-              value: <span>{t('{v1} 個檔案、{v2} 個函式', { v1: files.length, v2: fs.length })}
-                {entry.length ? <>{t('，入口 ')}{entry.map((f) => <span key={f.id}>{p.ix.funcs[f.id] ? line(f.id, 'tmain' + f.id) : at('tmain' + f.id, f.file, f.line)}</span>)}</> : null}
-                <span className="entry-list">{files.slice(0, 8).map((f) => (
-                  <span key={f} className="entry-row"><UI.InlineCode>{f}</UI.InlineCode>{g.files?.[f] ? <>{' '}{short(firstSentence(g.files[f].text), 90)}</> : null}</span>))}</span></span>,
-            }
-          })} />
-          {g.hidden_tests ? <p className="small muted">{t('流程、影響範圍與搜尋預設不含測試程式碼，可在設定頁開啟「包含測試程式碼」。')}</p> : null}
-        </> : null}
-        {g.comps.some((c) => !c.doc?.own) ? <p className="small muted">{t('說明取自主要檔案（main.c、__init__.py 或唯一的檔案）的開頭註解。元件用途可寫在 .codemap/rules.json 的 describe。')}</p> : null}
-      </Part>
-      {g.docs?.length ? <Docs docs={g.docs} ix={p.ix} /> : null}
-      {lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length ? (
-        <Part id="ov-entry" title={t('進入與結束')} summary={sums.entry} open>
-          <DL items={[
-            // a program's own entry outside C (main, or code run as a script): where a command line starts
-            // a function the program starts in the background: a loop that runs beside the event handlers
-            ...spawns.map((x, i) => ({ label: t('背景工作'), value: <span><button type="button" className="linklike" onClick={() => p.onPick(x.target)}>{p.ix.funcs[x.target].name}</button>
-              <span className="muted">{t('（由 {v1} 以 {v2} 啟動，', { v1: p.ix.funcs[x.fid]?.name ?? x.fid, v2: x.call })}</span>{at(`spawn${i}`, x.f, x.l)}<span className="muted">{t('）')}</span></span> })),
-            ...mains.map((id) => ({ label: t('程式入口'), value: <span>{line(id, 'main' + id)}{p.ix.callerInfo(id).sure ? <span className="muted">{t('（由 {v1} 呼叫）', { v1: list(p.ix.callerInfo(id).names.slice(0, 2)) })}</span> : null}</span> })),
-            ...lifecycle.map((e, i) => ({
-              label: e.k === 'constructor' ? t('載入時自動執行') : t('結束時自動執行'),
-              value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.d)}>{p.ix.funcs[e.d].name}</button>{t('（{v1}）', { v1: p.ix.funcs[e.d].comp })}{' '}{at(`life${i}`, p.ix.funcs[e.d].file, p.ix.funcs[e.d].line)}
-                {/* two constructors in one component (one .so): the loader does not promise an order */}
-                {e.k === 'constructor' && lifecycle.filter((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp).length > 1
-                  && lifecycle.find((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp) === e
-                  ? <><br /><span className="muted">{t('{v1} 有多個 constructor，同一程式庫中的執行順序沒有保證。', { v1: p.ix.funcs[e.d].comp })}</span></> : null}</span>,
-            })),
-            ...[...apis].sort().map(([api, n]) => ({
-              label: t('外部進入點'),
-              value: <span>
-                <button type="button" className="linklike" aria-expanded={openApi === api} onClick={() => setOpenApi(openApi === api ? '' : api)}>{t('{v1} 個函式攔截 {v2} 的同名函式（LD_PRELOAD）', { v1: n, v2: api })}</button>
-                {openApi === api ? <span className="entry-list">{Object.entries(p.ix.funcs).filter(([, f]) => f.api === api).sort(([, a], [, b]) => a.name.localeCompare(b.name)).map(([id]) => <span key={id} className="entry-row">{line(id, 'api' + id)}</span>)}</span> : null}
-              </span>,
-            })),
-            // functions a framework calls by itself: routes, tests, event handlers, grouped by framework and kind
-            ...[...fwEntries].map(([k, ids]) => {
-              const key = '*fw' + k, open = openApi === key || (openApi === null && ids.length <= 5)
-              const e0 = p.ix.funcs[ids[0]].entry!
-              return {
-                label: t('{v1}：{v2}', { v1: e0.framework, v2: entryText({ kind: e0.kind, text: '' }) }),
-                value: <span>
-                  <button type="button" className="linklike" aria-expanded={open} onClick={() => setOpenApi(open ? '' : key)}>{t('{v1} 個函式由 {v2} 呼叫', { v1: ids.length, v2: e0.framework, v3: countUnit('', 'function', 'functions')(ids.length) })}</button>
-                  {open ? <span className="entry-list">{ids.map((id) => <span key={id} className="entry-row">{line(id, 'fw' + id)}{p.ix.funcs[id].entry!.text ? <span className="muted">{' '}{p.ix.funcs[id].entry!.text}</span> : null}</span>)}</span> : null}
-                </span>,
-              }
-            }),
-            ...(installed.size ? [{
-              label: t('經由函式指標進入'),
-              value: <span>
-                <button type="button" className="linklike" aria-expanded={ptrOpen} onClick={() => setOpenApi(ptrOpen ? '' : '*ptr')}>{t('{v1} 個函式只裝入函式指標，由 repo 外呼叫（推測）', { v1: [...installed.values()].flat().length })}</button>
-                {/* who installs them is always said; the functions and their lines open with the button (shown at once when there are 5 or fewer) */}
-                {!ptrOpen ? <span className="entry-list">{[...installed].sort(([, a], [, b]) => b.length - a.length).map(([by, ids]) => (
-                  <span key={by} className="entry-row muted">{t('{v1} 裝入 {v2} 個', { v1: p.ix.funcs[by].name, v2: ids.length })}</span>))}</span> : null}
-                {ptrOpen ? <span className="entry-list">{[...installed].sort(([, a], [, b]) => b.length - a.length).map(([by, ids]) => (
-                  <span key={by} className="entry-row"><span className="muted">{t('{v1} 裝入：', { v1: p.ix.funcs[by].name })}</span>
-                    {[...ids].sort((a, b) => p.ix.funcs[a].name.localeCompare(p.ix.funcs[b].name)).map((id) => <span key={id} className="entry-row indent">{line(id, 'ins' + id)}</span>)}</span>))}</span> : null}
-              </span>,
-            }] : []),
-          ]} />
-        </Part>
-      ) : null}
-      {cmds.length ? (
-        <Part id="ov-cmds" title={t('執行的外部指令')} summary={sums.cmds} >
-          <p className="small muted">{t('{v1}：執行時才決定的值。經由包裝函式執行的指令，逐一列出各呼叫處組成的指令。', { v1: '{…}' })}</p>
-          {/* by file: the controller's commands apart from the grader's (checks.py) and the runtime's */}
-          {cmdGroups.map(([comp, list]) => {
-            const open = cmdGroups.length < 2 || groupOpen(comp, list)
-            const all = list.flatMap(([c]) => [c.cmd, ...(c.via ?? []).map((v) => v.cmd)])
-            const spaces = [...new Set(all.map(netns).filter((x) => x && !/^\{[^}]*\}$/.test(x)))] as string[]     // {namespace}: known only when it runs
-            const untimed = list.filter(([c]) => !c.timeout).length
-            return (<div key={comp}>
-              {cmdGroups.length > 1 ? <h4 className="small"><button type="button" className="linklike" aria-expanded={open} onClick={() => setCmdOpen({ ...cmdOpen, [comp]: !open })}>
-                {comp}{roleText(roleOf(g, comp))}</button>{' '}<span className="muted">{[
-                  t('{v1} 個指令', { v1: list.length }),
-                  rows(list) > list.length ? t('{v1} 個呼叫處', { v1: rows(list) - list.length }) : '',
-                  spaces.length ? t('network namespace：{v1}', { v1: spaces.slice(0, 3).join(t('、')) + (spaces.length > 3 ? t('，共 {n} 個', { n: spaces.length }) : '') }) : '',
-                  untimed ? t('{v1} 個沒有逾時', { v1: untimed }) : ''].filter(Boolean).join(t('，'))}</span></h4> : null}
-              {/* a closed file keeps its list on the page, hidden: 複製成 Markdown copies it too */}
-              <div hidden={!open}><DL items={list.map(([c, i]) => ({
-                // two wrappers of one name (checks.py and controller.py each have a _run): the file tells them apart
-                // under its file's heading the name alone; in one flat list the file tells two wrappers of one name apart
-                label: ((n) => (cmdGroups.length < 2 && cmds.filter((d) => p.ix.funcs[d.fid]?.name === n).length > 1 ? `${n}（${c.f.split('/').pop()}）` : n)
-                  + (c.via?.some((v) => v.cmd !== c.cmd) ? t('（包裝函式）') : ''))(p.ix.funcs[c.fid]?.name ?? c.fid),
-                value: <span><UI.InlineCode>{c.cmd || c.call}</UI.InlineCode>{' '}{at(`cmd${i}`, c.f, c.l)}
-                  <span className="muted">{t('（{v1}', { v1: c.call })}{c.timeout ? t('，逾時 {v1}', { v1: c.timeout }) : t('，沒有逾時')}{c.shell ? t('，shell={v1}', { v1: c.shell }) : ''}{t('）')}</span>
-                  {/* where it runs: inside a namespace when the command says ip netns exec; a launcher without it runs where the caller does */}
-                  {!c.via?.length && c.cmd && !netns(c.cmd) ? <span className="entry-row muted">{t('不在 network namespace 內執行：指令前沒有 ip netns exec，與呼叫它的程式在同一個 namespace。')}</span> : null}
-                  {c.via?.length ? <span className="entry-list"><span className="entry-row muted">{t('以下 {v1} 處呼叫它：', { v1: c.via.length })}</span>{c.via.slice(0, openApi === '*cmd' + i ? 99 : 5).map((v, j) => (
-                    <span key={j} className="entry-row indent"><UI.InlineCode>{v.cmd}</UI.InlineCode>{' '}{fn(v.fid)}{' '}{at(`cmd${i}-${j}`, v.f, v.l)}</span>))}
-                    {c.via.length > 5 ? <button type="button" className="linklike" aria-expanded={openApi === '*cmd' + i} onClick={() => setOpenApi(openApi === '*cmd' + i ? '' : '*cmd' + i)}>{openApi === '*cmd' + i ? t('收合') : t('另有 {v1} 處', { v1: c.via.length - 5 })}</button> : null}</span> : null}</span>,
-              }))} /></div>
-            </div>)
-          })}
-        </Part>
-      ) : null}
-      {env.length ? (
-        <Part id="ov-env" title={t('執行期設定（環境變數）')} summary={sums.env}>
-          <DL items={env.map(([name, v]) => ({
-            label: name,
-            value: <span>{name === 'LD_PRELOAD' ? <>{t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。')}<br /></> : null}{((m) => m ? <>{meaning(m)}<br /></> : null)(g.env_info?.[name])}{t('讀取：{v1}', { v1: where(v.get).join(t('、')) || '—' })}{where(v.set).length ? <><br />{t('設定：{v1}', { v1: where(v.set).join(t('、')) })}</> : null}{((n) => n ? <><br /><span className="muted">{cRepo ? t('另有 {v1} 處在 Python 工具、測試或腳本中，可用搜尋查看', { v1: n }) : t('另有 {v1} 處在測試或腳本中，可用搜尋查看', { v1: n })}</span></> : null)([...v.get, ...v.set].filter((r) => !inProgram(r)).length)}</span>,
-          }))} />
-          {others > 0 ? <p className="small muted">
-            <button type="button" className="linklike" aria-expanded={openApi === '*env'} onClick={() => setOpenApi(openApi === '*env' ? '' : '*env')}>{cRepo ? t('另有 {v1} 個變數只出現在 Python 工具、測試或腳本中', { v1: others }) : t('另有 {v1} 個變數只在測試或腳本中讀取，或只有設定', { v1: others })}</button>
-            {openApi === '*env' ? <span className="entry-list">{Object.entries(g.env ?? {}).filter(([name]) => !env.some(([n]) => n === name)).sort(([a], [b]) => a.localeCompare(b)).map(([name, v]) => (
-              <span key={name} className="entry-row"><UI.InlineCode>{name}</UI.InlineCode>{' '}{[...v.get, ...v.set].slice(0, 3).join(t('、'))}{[...v.get, ...v.set].length > 3 ? t('，共 {v1} 處', { v1: [...v.get, ...v.set].length }) : ''}</span>))}</span> : null}
-          </p> : null}
-        </Part>
-      ) : null}
-      {g.build && (g.build.built.length || g.build.install.length) ? <Products build={g.build} at={at} /> : null}
-      {g.writes ? <Writes writes={writes} at={at} fn={fn} none={inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS)} /> : null}
-      {reads.length ? (
-        <Part id="ov-reads" title={t('讀取的檔案')} summary={sums.reads}>
-          <DL items={reads.map((r, i) => ({
-            label: r.name ?? (r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ?? t('（執行時決定）')),
-            value: <span>{fn(r.fid)}{t(' 以 {v1} 讀取：', { v1: r.call })}{at(`r${i}`, r.f, r.l)}</span>,
-          }))} />
-        </Part>
-      ) : null}
-      {g.worth ? (
-        <Part id="ov-worth" title={t('值得檢查的地方')} summary={sums.worth} >
-          <p className="small muted">{t('僅列出程式碼中的事實，是否有問題須視實際用法而定。')}</p>
-                    {applies('broad') ? <>
-          <h4 className="small" id="ov-broad" tabIndex={-1}>{t('捕捉所有例外後繼續執行')}</h4>
-          <p className="small muted">{t('範圍：except Exception、except BaseException 與未寫型別的 except，且處理區塊未再 raise。指定型別的 except 不列入。')}</p>
-          {broad.length ? <DL items={broad.map((x, i) => ({
-            label: `except ${x.what}`,
-            value: <span>{fn(x.fid)}{' '}{at(`broad${i}`, x.f, x.l)}<span className="muted">{t('：接著執行 {v1}，未再拋出', { v1: x.then })}</span></span>,
-          }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          <h4 className="small" id="ov-twins" tabIndex={-1}>{t('不同檔案中的同名函式')}</h4>
-          {twins.length ? <DL items={twins.map(([name, ids]) => ({
-            label: name,
-            value: <span className="entry-list">{ids.map((id, i) => (
-              <span key={id} className="entry-row">{at(`twin${name}${i}`, p.ix.funcs[id].file, p.ix.funcs[id].line)}{' '}<span className="muted">{p.ix.callerText(id)}</span></span>))}</span>,
-          }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
-          {applies('stops') ? <>
-<h4 className="small" id="ov-stops" tabIndex={-1}>{t('結束程式的呼叫')}</h4>
-          {stops.length ? <DL items={stops.map((s, i) => ({
-            label: `${s.name}()`,
-            value: <span>{fn(s.fid)}{t(' 呼叫：')}{at(`stop${i}`, s.f, s.l)}</span>,
-          }))} /> : <p className="small muted">{t('沒有結束程式的呼叫（{v1}）。', { v1: inLangs('stops', cRepo ? { c: STOP_CALLS.c } : STOP_CALLS) })}</p>}
-          </> : null}
-          {applies('arrays') ? <>
-          <h4 className="small" id="ov-arrays" tabIndex={-1}>{t('固定大小的全域陣列')}</h4>
-          {g.worth.arrays.length ? <DL items={g.worth.arrays.map((a, i) => ({
-            label: a.name,
-            value: <span>{a.value ? t('上限 {v1} 個（{v2}）：', { v1: a.value, v2: a.size.slice(1, -1).split('][').join(' × ') }) : /^(\[\d+\])+$/.test(a.size) ? t('上限 {v1} 個：', { v1: a.size.replace(/[[\]]/g, ' ').trim().split(/\s+/).join(' × ') }) : t('上限 {v1} 個：', { v1: a.size.slice(1, -1).split('][').join(' × ') })}{at(`arr${i}`, a.file, a.line)}</span>,
-          }))} /> : <p className="small muted">{t('沒有以常數決定大小的全域陣列。')}</p>}
-          {((n) => n ? <p className="small muted">{t('其中 {v1} 個的上限為 enum 或運算式，未換算成數字。', { v1: n })}</p> : null)(g.worth.arrays.filter((a) => !a.value && !/^(\[\d+\])+$/.test(a.size)).length)}
-          </> : null}
-          {applies('env_if_unset') ? <>
-          <h4 className="small" id="ov-unset" tabIndex={-1}>{t('只在未設定時才設定的環境變數')}</h4>
-          {unsetEnv.length ? <DL items={unsetEnv.map((e, i) => ({
-            label: e.name,
-            // the link goes to the check: the set is a few lines below it, in view
-            value: e.check !== e.l
-              ? <span>{fn(e.fid)}{t(' 先檢查是否已設定：')}{at(`unset${i}`, e.f, e.check)}{t('；未設定時才設定：')}{at(`unset${i}s`, e.f, e.l)}{e.says === false ? t('。已設定時沿用原值，不印訊息。') : ''}</span>
-              : e.how === 'setdefault' ? <span>{fn(e.fid)}{t(' 以 os.environ.setdefault 設定，已設定時不覆寫：')}{at(`unset${i}`, e.f, e.check)}</span>
-              : <span>{fn(e.fid)}{t(' 以 setenv 第三個參數為 0 設定，已設定時不覆寫：')}{at(`unset${i}`, e.f, e.check)}</span>,
-          }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          {applies('errors') ? <>
-          <h4 className="small" id="ov-errors" tabIndex={-1}>{t('回傳固定錯誤碼的地方')}</h4>
-          {g.worth.errors?.length ? <DL items={g.worth.errors.map((e, i) => ({
-            label: e.code,
-            value: <span>{fn(e.fid)}{p.ix.funcs[e.fid]?.api ? t('（外部進入點）') : p.ix.callers(e.fid).some((x) => x.k === 'fnptr_assign' || x.k === 'fnptr_table') ? t('（裝進函式指標）') : ''}{e.how === 'errno' ? t(' 設定 errno：') : t(' 回傳：')}{at(`err${i}`, e.f, e.l)}</span>,
-          }))} /> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          {applies('loss') ? <>
-          <h4 className="small" id="ov-loss" tabIndex={-1}>{t('會丟掉資料的地方')}</h4>
-          {g.worth.loss?.length ? <>
-            <p className="small muted">{t('名稱如 lost、dropped、overrun 的計數器遞增處：程式在此捨棄部分資料。')}</p>
-            <DL items={g.worth.loss.map((x, i) => ({
-              label: x.var,
-              value: <span>{fn(x.fid)}{t('：')}<code className="small">{x.text}</code>{' '}{at(`loss${i}`, x.f, x.l)}
-                {x.via.length ? <span className="write-row">{t('經由：')}{[...new Set(x.via.map((v) => v.fid))].map((v, j) => <span key={v}>{j ? t('、') : ''}{fn(v)}{' '}{x.via.filter((w) => w.fid === v).map((w, k) => <span key={k}>{k ? t('、') : ''}{at(`lossv${i}-${j}-${k}`, w.f, w.l)}</span>)}</span>)}</span> : null}
-                <span className="write-row">{x.said.length ? <>{t('回報：')}{x.said.map((s, j) => <span key={j}>{j ? t('、') : ''}{at(`losss${i}-${j}`, s.f, s.l)}</span>)}</> : t('沒有找到印出這個計數的地方。')}</span></span>,
-            }))} />
-          </> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          {applies('leftovers') ? <>
-          <h4 className="small" id="ov-leftovers" tabIndex={-1}>{t('程式結束後會留下的東西')}</h4>
-          {g.worth.leftovers?.length ? <>
-            <p className="small muted">{t('以 O_CREAT 建立的 shared memory、具名 semaphore 或 FIFO 會留在系統中，直到被刪除。程式若在刪除前結束（exit、abort、被 signal 終止），就會殘留。')}</p>
-            <DL items={g.worth.leftovers.map((x, i) => ({
-              label: x.call,
-              value: <span>{fn(x.fid)}{t(' 建立：')}{at(`left${i}`, x.f, x.l)}
-                <span className="write-row">{x.removed.length ? <>{t('以 {v1} 刪除：', { v1: x.remove })}{x.removed.map((r, j) => <span key={j}>{j ? t('；') : ''}{fn(r.fid)}{' '}{at(`leftr${i}-${j}`, r.f, r.l)}{r.via.length ? <>{t('（經由 ')}{r.via.map((v, k) => <span key={v}>{k ? t('、') : ''}{fn(v)}</span>)}{t('）')}</> : null}</span>)}</>
-                  : t('未找到呼叫 {v1} 的位置，每次執行都會殘留一個。', { v1: x.remove })}</span>
-                {x.stops.length ? <span className="write-row">{t('同一元件另有 {v1} 處直接結束程式，須確認其位於建立之前或刪除之後：', { v1: x.stops.length })}{x.stops.map((s, j) => <span key={j}>{j ? t('、') : ''}{s.name}{' '}{at(`lefts${i}-${j}`, s.f, s.l)}</span>)}</span> : null}
-              </span>,
-            }))} />
-          </> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          {applies('limits') ? <>
-          <h4 className="small" id="ov-limits" tabIndex={-1}>{t('到達上限時直接返回、不印訊息')}</h4>
-          {g.worth.limits?.silent.length ? <>
-            <p className="small muted">{t('計數達到 MAX 常數時直接 return，使用者不會得知有資料未處理。')}</p>
-            <DL items={g.worth.limits.silent.map((x, i) => ({
-              label: x.limit,
-              value: <span>{fn(x.fid)}{t('：')}<code className="small">{x.cond}</code>{' '}{at(`lim${i}`, x.f, x.l)}</span>,
-            }))} />
-            {g.worth.limits.said.length ? <p className="small muted">{t('另有 {v1} 處到達上限時會先印出訊息：', { v1: g.worth.limits.said.length })}{g.worth.limits.said.map((x, i) => <span key={i}>{i ? t('、') : ''}{fn(x.fid)}{' '}{at(`said${i}`, x.f, x.l)}</span>)}</p> : null}
-          </> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          {applies('plain_writes') ? <>
-          <h4 className="small" id="ov-plain" tabIndex={-1}>{t('不經 atomic 操作就修改的全域變數')}</h4>
-          {g.worth.plain_writes?.length ? <>
-            <p className="small muted">{t('未判斷是否有鎖保護或只在單一執行緒執行。標示「載入時」的寫入位於 constructor，通常早於其他執行緒啟動。')}</p>
-            <DL items={[...g.worth.plain_writes].sort((a, b) => Number(a.writes.every((w) => p.ix.callerInfo(w.fid).load)) - Number(b.writes.every((w) => p.ix.callerInfo(w.fid).load))).map((v, i) => ({
-              label: v.name,
-              value: <span>{v.writes.map((w, j) => (
-                <span key={j} className="write-row">{fn(w.fid)}{p.ix.callerInfo(w.fid).load === 'constructor' ? t('（載入時）') : p.ix.callerInfo(w.fid).load === 'destructor' ? t('（結束時）') : ''}{t('：')}<code className="small">{w.text}</code>{' '}{at(`pw${i}-${j}`, w.f, w.l)}</span>))}</span>,
-            }))} />
-          </> : <p className="small muted">{t('沒有找到。')}</p>}
-          </> : null}
-          {applies('env') ? <>
-          <h4 className="small" id="ov-nullenv" tabIndex={-1}>{t('未檢查 NULL 就使用的 getenv 結果')}</h4>
-          {g.worth.env.length ? <DL items={g.worth.env.map((e, i) => ({
-            label: e.name ?? t('（名稱執行時決定）'),
-            value: <span>{fn(e.fid)}{e.use !== e.l ? t(' 在第 {v1} 行使用：', { v1: e.use }) : t(' 直接使用：')}{at(`env${i}`, e.f, e.l)}</span>,
-          }))} /> : <p className="small muted">{t('未找到。每個 getenv 結果在使用前皆已檢查 NULL，或直接回傳給呼叫者。')}</p>}
-          </> : null}
-                  {skipped.length ? <p className="small muted">{t('另有 {v1} 項只適用於 {v2} 的檢查，本專案不適用，未列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })}</p> : null}
-        </Part>
-      ) : null}
-      </UI.SectionGroup></RepoKey.Provider></div>
-      </div>
+      <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
+      <div data-tour="arch"><RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}><UI.SectionGroup>
+        {parts.map((x) => <Part key={x.id} {...x} />)}
+      </UI.SectionGroup></MdLinksCtx.Provider></RepoKey.Provider></div>
     </UI.Card>
   )
+
 }
 
-/** What a variable does, from the code (or the project's own words in .codemap/rules.json). */
-function meaning(m: NonNullable<Graph['env_info']>[string]): ReactNode {
+/** What a variable does, from the code (or the project's own words in .codemap/rules.json), as Markdown lines. */
+function meaning(m: NonNullable<Graph['env_info']>[string]): string[] {
   const kind = m.kind === 'flag' ? t('開關，0 為關閉、其他數字為開啟') : m.kind === 'number' ? t('數字') : m.kind === 'presence' ? t('只看是否已設定') : m.kind === 'text' ? t('文字') : ''
   const unset = !m.default ? '' : m.default === 'on' ? t('開啟') : m.default === 'off' ? t('關閉') : m.default === 'early-return' ? t('提早返回，不執行後續動作') : m.default
   // the project's own words: rules.json first, else the comment that names the variable (trace.h: IBTRACE_X=1: ...)
   const said = m.comments?.find((c) => c.defines)
   const near = !said && !(m.own && m.purpose) ? m.comments?.[0] : undefined
-  return <>
-    {m.own && m.purpose ? <>{m.purpose}<br /></> : said ? <><UI.CodeText text={said.text} />{' '}<span className="muted small">{t('（取自 {v1} 的註解）', { v1: said.at.split('/').pop() })}</span><br /></> : null}
-    {near ? <><span className="muted small">{t('相關註解（{v1}）：', { v1: near.at.split('/').pop() })}</span><UI.CodeText text={near.text} /><br /></> : null}
-    {[kind, unset ? t('未設定時：{v1}', { v1: unset }) + (m.own && m.default ? t('（專案寫的）') : '') : '', m.into ? t('存入 {v1}', { v1: m.into }) : ''].filter(Boolean).join(t('；'))}
-  </>
+  return [
+    m.own && m.purpose ? esc(m.purpose) : said ? `${oneLine(said.text)} ${t('（取自 {v1} 的註解）', { v1: said.at.split('/').pop() })}` : '',
+    near ? `${t('相關註解（{v1}）：', { v1: near.at.split('/').pop() })}${oneLine(near.text)}` : '',
+    [kind, unset ? t('未設定時：{v1}', { v1: unset }) + (m.own && m.default ? t('（專案寫的）') : '') : '', m.into ? t('存入 {v1}', { v1: m.into }) : ''].filter(Boolean).join(t('；')),
+  ].filter(Boolean)
 }
 
 /** Functions nothing in the repo calls directly, put into a function pointer that code outside the repo calls
@@ -864,7 +737,7 @@ const PARTS = new Set(['ov-comps', 'ov-docs', 'ov-entry', 'ov-cmds', 'ov-env', '
 export function jump(id: string) {
   dispatchEvent(new CustomEvent('codemap:part', { detail: PARTS.has(id) ? id : 'ov-worth' }))
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    const h = document.getElementById(id)
+    const h = document.getElementById(id) ?? document.getElementById(PARTS.has(id) ? id : 'ov-worth')
     revealTop(h)
     const at = (PARTS.has(id) ? h?.querySelector<HTMLElement>('.ui-sec-btn') : h) ?? h
     at?.focus({ preventScroll: true })
@@ -874,9 +747,47 @@ export function jump(id: string) {
 /** The repository whose parts are open or closed: each repository remembers its own. */
 const RepoKey = createContext('')
 
-/** One part of the overview: a Section with its title and the line of numbers; open or closed is kept per repository.
- *  元件 and 進入與結束 start open, the rest closed. */
-function Part(p: { id: string; title: string; summary?: ReactNode; open?: boolean; lazy?: boolean; children: ReactNode }) {
+// The overview is Markdown: each part's content is text made from the index and shown by UI.Markdown, so the page and
+// 複製成 Markdown are the same text. A function is a fn: link (opens the flow page), a file:line a path in code
+// (opens in the side panel), a long list a <details> block.
+const esc = (s: string) => s.replace(/([\\`*_[\]<>|])/g, '\\$1')
+const code = (s: string, inTable = false) => {
+  const ticks = Math.max(0, ...[...s.matchAll(/`+/g)].map((m) => m[0].length))
+  const fence = '`'.repeat(ticks + 1), pad = ticks ? ' ' : ''
+  return fence + pad + (inTable ? s.replace(/\|/g, '\\|') : s) + pad + fence
+}
+const oneLine = (s: string) => s.replace(/\s*\n\s*/g, ' ').trim()
+const mdTable = (head: string[], rows: string[][]) =>
+  [`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.map((c) => c.replace(/\n/g, ' ')).join(' | ')} |`)].join('\n')
+const details = (summary: string, body: string) => `<details><summary>${esc(summary)}</summary>\n\n${body}\n\n</details>`
+/** A note in the muted quote style; plain text (`__init__.py` is not bold). noteMd keeps marks already written. */
+const note = (s: string) => '> ' + esc(s)
+const noteMd = (s: string) => '> ' + s
+/** A line break inside a list item. */
+const BR = '\\\n  '
+
+interface MdLinks { onFn: (id: string) => void; openFile: (f: string, l: number) => void; refs: ReturnType<typeof useCodeRefs> }
+const MdLinksCtx = createContext<MdLinks | null>(null)
+
+/** The overview's Markdown: ### is an h4 under the part's h3 title; fn: links open the flow page. */
+function OvMd(p: { children: string }) {
+  const c = useContext(MdLinksCtx)!
+  const web = (h: string) => /^[a-z][a-z0-9+.-]*:/i.test(h) && !h.startsWith('fn:')
+  return (
+    <UI.Markdown topLevel={2} schemes={['fn']} {...c.refs}
+      linkHref={(h) => (h.startsWith('fn:') ? '#flow?s=' + h.slice(3) : web(h) ? h : '#' + h)}
+      onLink={(h) => { if (h.startsWith('fn:')) c.onFn(decodeURIComponent(h.slice(3))); else if (web(h)) window.open(h, '_blank', 'noopener'); else c.openFile(h, 1) }}>
+      {p.children}
+    </UI.Markdown>
+  )
+}
+
+interface PartMd { id: string; title: string; summary?: string; open?: boolean; md: string }
+const partText = (x: PartMd) => [`## ${x.title}`, x.summary, x.md].filter(Boolean).join('\n\n')
+
+/** One part of the overview: a Section with its title, its line of numbers and a copy button; open or closed is
+ *  kept per repository. 元件 and 進入與結束 start open, the rest closed. */
+function Part(p: PartMd) {
   const key = `codemap:part:${useContext(RepoKey)}:${p.id}`
   const [open, setOpen] = useState(() => {
     try { const v = localStorage.getItem(key); if (v === '1' || v === '0') return v === '1' } catch { /* storage off */ }
@@ -891,87 +802,72 @@ function Part(p: { id: string; title: string; summary?: ReactNode; open?: boolea
     addEventListener('codemap:part', f)
     return () => removeEventListener('codemap:part', f)
   }, [p.id])
-  return <UI.Section id={p.id} title={p.title} summary={p.summary || undefined} open={open} onOpenChange={set} lazy={p.lazy}>{p.children}</UI.Section>
+  const [copied, setCopied] = useState(false)
+  const copy = () => navigator.clipboard.writeText(partText(p)).then(() => { setCopied(true); UI.announce(t('已複製 {v1}', { v1: p.title })); setTimeout(() => setCopied(false), 2000) },
+    () => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')))
+  return (
+    <UI.Section id={p.id} title={p.title} summary={p.summary || undefined} open={open} onOpenChange={set}
+      actions={<UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製這一段')} onClick={() => { void copy() }} />}>
+      <OvMd>{p.md}</OvMd>
+    </UI.Section>
+  )
 }
 
-/** The overview's lists: a label column as wide as its longest label, in the text's own size and color. */
-function DL(p: ComponentProps<typeof UI.DetailList>) {
-  return <UI.DetailList labelWidth="auto" labelSize="body" {...p} />
-}
 
 const KIND: Record<string, string> = { exec: '執行檔', shared: '共享程式庫', static: '靜態程式庫', generated: '產生的檔案' }
 const base = (path: string) => path.replace(/\/$/, '').split('/').pop()!
 const dir = (path: string) => (path.endsWith('/') ? path : path.slice(0, path.lastIndexOf('/') + 1))
 
-type At = (key: string, f: string, l: number) => ReactNode
-
 /** What `make` builds, what each product is made of, and what `make install` puts where. */
-function Products(p: { build: BuildInfo; at: At }) {
-  const main = p.build.built.filter((b) => b.goal === p.build.goal)
-  const sum = t('{v1} 個產物', { v1: main.length })
-  const goals = [...new Set(p.build.built.map((b) => b.goal))].filter((g) => g !== p.build.goal)
-  const copies = p.build.install.filter((i) => !i.link)
+function buildPart(build: BuildInfo): PartMd {
+  const main = build.built.filter((b) => b.goal === build.goal)
+  const goals = [...new Set(build.built.map((b) => b.goal))].filter((g) => g !== build.goal)
+  const copies = build.install.filter((i) => !i.link)
   const links = new Map<string, string[]>()
-  for (const i of p.build.install.filter((x) => x.link)) {
+  for (const i of build.install.filter((x) => x.link)) {
     const k = `${dir(i.to)}\u0000${dir(i.what[0])}`
     links.set(k, [...(links.get(k) ?? []), base(i.to)])
   }
-  return (
-    <Part id="ov-build" title={t('建置產物')} summary={sum}>
-      <p className="small muted">{t('取自 Makefile（make -n 的結果）。make {v1} 建置 {v2} 個產物：', { v1: p.build.goal, v2: main.length })}</p>
-      <DL items={main.map((b, i) => ({
-        label: b.name,
-        value: <span>
-          {t(KIND[b.kind])}
-          {b.kind === 'generated' ? t('，由 {v1} 產生', { v1: b.files.join(t('、')) }) : b.files.length ? t('，由 {v1} 的 {v2} 個原始檔（.c）編成', { v1: b.comps.join(t('、')), v2: b.files.length }) : ''}
-          {b.uses.length ? t('，連同 {v1}', { v1: b.uses.map(base).join(t('、')) }) : ''}
-          {b.libs.length ? t('；連結 {v1}', { v1: b.libs.map((l) => '-l' + l).join(' ') }) : ''}
-          {b.exports.length ? <>{t('；匯出的符號由 ')}{p.at(`exp${i}`, b.exports[0], 1)}{t(' 決定')}</> : null}
-        </span>,
-      }))} />
-      {goals.length ? <DL items={goals.map((g) => {
-        const bs = p.build.built.filter((b) => b.goal === g)
-        const named = (b: BuildInfo['built'][number]) => (main.some((m) => m.name === b.name) ? t('{v1}（另一個版本，{v2}）', { v1: b.name, v2: b.path }) : b.name)
-        return { label: `make ${g}`, value: t('另外建置 {v1} 個：{v2}', { v1: bs.length, v2: bs.map(named).join(t('、')) }) }
-      })} /> : null}
-      {p.build.install.length ? (
-        <>
-          <h4 className="small">{t('make install 安裝的檔案')}</h4>
-          <DL items={[
-            ...copies.map((c) => ({ label: c.to, value: c.what.map(base).join(t('、')) })),
-            ...[...links].map(([k, names]) => ({ label: k.split('\u0000')[0], value: t('{v1}（符號連結，指向 {v2}）', { v1: names.join(t('、')), v2: k.split('\u0000')[1] }) })),
-          ]} />
-          <p className="small muted">{t('路徑為以 Makefile 預設設定執行 make -n install 的結果。')}</p>
-        </>
-      ) : null}
-    </Part>
-  )
+  const what = (b: BuildInfo['built'][number]) => t(KIND[b.kind])
+    + (b.kind === 'generated' ? t('，由 {v1} 產生', { v1: b.files.join(t('、')) }) : b.files.length ? t('，由 {v1} 的 {v2} 個原始檔（.c）編成', { v1: b.comps.join(t('、')), v2: b.files.length }) : '')
+    + (b.uses.length ? t('，連同 {v1}', { v1: b.uses.map(base).join(t('、')) }) : '')
+    + (b.libs.length ? t('；連結 {v1}', { v1: b.libs.map((l) => '-l' + l).join(' ') }) : '')
+    + (b.exports.length ? t('；匯出的符號由 ') + loc(b.exports[0], 1) + t(' 決定') : '')
+  const named = (b: BuildInfo['built'][number]) => (main.some((m) => m.name === b.name) ? t('{v1}（另一個版本，{v2}）', { v1: b.name, v2: b.path }) : b.name)
+  return {
+    id: 'ov-build', title: t('建置產物'), summary: t('{v1} 個產物', { v1: main.length }),
+    md: [
+      note(t('取自 Makefile（make -n 的結果）。make {v1} 建置 {v2} 個產物：', { v1: build.goal, v2: main.length })),
+      main.map((b) => `- **${esc(b.name)}**：${what(b)}`).join('\n'),
+      goals.map((g) => ((bs) => `- **make ${esc(g)}**：${t('另外建置 {v1} 個：{v2}', { v1: bs.length, v2: bs.map(named).join(t('、')) })}`)(build.built.filter((b) => b.goal === g))).join('\n'),
+      build.install.length ? [`### ${t('make install 安裝的檔案')}`,
+        [...copies.map((c) => `- ${code(c.to)}：${c.what.map(base).join(t('、'))}`),
+          ...[...links].map(([k, names]) => `- ${code(k.split('\u0000')[0])}：${t('{v1}（符號連結，指向 {v2}）', { v1: names.join(t('、')), v2: k.split('\u0000')[1] })}`)].join('\n'),
+        note(t('路徑為以 Makefile 預設設定執行 make -n install 的結果。'))].join('\n\n') : '',
+    ].filter(Boolean).join('\n\n'),
+  }
 }
 
 /** Where the code creates or writes files, and the file names when the code spells them out. */
-function Writes(p: { writes: FileWrite[]; at: At; fn: (id: string) => ReactNode; none: string }) {
-  const sum = t('{v1} 處', { v1: p.writes.length })
-  return (
-    <Part id="ov-writes" title={t('寫出的檔案')} summary={sum} >
-      {p.writes.length ? <DL items={p.writes.map((w, i) => ({
-        label: w.name ?? w.format ?? (w.param ? t('參數 {v1}', { v1: w.param }) : w.expr ?? t('（執行時決定）')),
-        value: <span>
-          {/* a shared memory object is a file too: it stays in /dev/shm until someone calls shm_unlink */}
-          {w.call === 'shm_open' ? t('POSIX shared memory 物件，位於 /dev/shm，須呼叫 shm_unlink 才會刪除；') : null}
-          {w.name ? null : w.format ? t('檔名在執行時依這個格式組成；') : w.param && w.via?.length ? t('檔名由呼叫者傳入，各呼叫處的檔名列於下方；') : w.param ? t('檔名在執行時由這個參數傳入；') : w.expr ? t('檔名在執行時取自這個運算式；') : t('檔名在執行時決定；')}
-          {p.fn(w.fid)}{w.call === 'shm_open' ? t(' 以 shm_open（O_CREAT）建立：')
-            : /^(write_text|write_bytes)$/.test(w.call) ? t(' 以 {v1} 寫入：', { v1: w.call })
-            : /(replace|rename)$/i.test(w.call) ? t(' 以 {v1} 換成這個檔案：', { v1: w.call })
-            : /(copy\w*|move|copyFile\w*)$/.test(w.call) ? t(' 以 {v1} 寫到這裡：', { v1: w.call })
-            : /^(os\.Create|os\.WriteFile|ioutil\.WriteFile)$|^fs/.test(w.call) ? t(' 以 {v1} 寫入：', { v1: w.call })
-            : t(' 以 {v1} 開啟：', { v1: w.call })}{p.at(`w${i}`, w.f, w.l)}
-          {/* the names the callers pass in: _atomic_json(STATE_DIR / 'controller.json', …) */}
-          {w.via?.length ? <span className="entry-list">{w.via.map((v, j) => (
-            <span key={j} className="entry-row indent"><UI.InlineCode>{v.name}</UI.InlineCode>{' '}{p.fn(v.fid)}{' '}{p.at(`w${i}-${j}`, v.f, v.l)}</span>))}</span> : null}
-        </span>,
-      }))} /> : <p className="small muted">{p.none ? t('沒有寫入檔案的地方（{v1}）。', { v1: p.none }) : t('本專案的語言沒有寫入檔案的檢查。')}</p>}
-    </Part>
-  )
+function writesPart(ix: Index, writes: FileWrite[], none: string): PartMd {
+  const how = (w: FileWrite) => w.call === 'shm_open' ? t('以 shm_open（O_CREAT）建立')
+    : /^(write_text|write_bytes)$/.test(w.call) ? t('以 {v1} 寫入', { v1: w.call })
+    : /(replace|rename)$/i.test(w.call) ? t('以 {v1} 換成這個檔案', { v1: w.call })
+    : /(copy\w*|move|copyFile\w*)$/.test(w.call) ? t('以 {v1} 寫到這裡', { v1: w.call })
+    : /^(os\.Create|os\.WriteFile|ioutil\.WriteFile)$|^fs/.test(w.call) ? t('以 {v1} 寫入', { v1: w.call })
+    : t('以 {v1} 開啟', { v1: w.call })
+  const name = (w: FileWrite) => w.name ? code(w.name) : w.format ? code(w.format) : w.param ? t('參數 {v1}', { v1: w.param }) : w.expr ? code(w.expr) : t('（執行時決定）')
+  // where the name comes from when the code does not spell it out
+  const said = (w: FileWrite) => [w.call === 'shm_open' ? t('POSIX shared memory 物件，位於 /dev/shm，須呼叫 shm_unlink 才會刪除') : '',
+    w.name ? '' : w.format ? t('檔名在執行時依這個格式組成') : w.param && w.via?.length ? t('檔名由呼叫者傳入') : w.param ? t('檔名在執行時由這個參數傳入') : w.expr ? t('檔名在執行時取自這個運算式') : t('檔名在執行時決定')].filter(Boolean).join(t('；'))
+  return {
+    id: 'ov-writes', title: t('寫出的檔案'), summary: t('{v1} 處', { v1: writes.length }),
+    md: writes.length ? writes.map((w) => `- **${name(w)}**：${fnLink(ix, w.fid)} ${how(w)}，${loc(w.f, w.l)}`
+      + (said(w) ? BR + said(w) : '')
+      // the names the callers pass in: _atomic_json(STATE_DIR / 'controller.json', …)
+      + (w.via?.length ? w.via.map((v) => `\n  - ${code(v.name)} ${fnLink(ix, v.fid)} ${loc(v.f, v.l)}`).join('') : '')).join('\n')
+      : note(none ? t('沒有寫入檔案的地方（{v1}）。', { v1: none }) : t('本專案的語言沒有寫入檔案的檢查。')),
+  }
 }
 
 function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; onBack: () => void }) {
@@ -1009,7 +905,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
           <>
             {comp?.doc ? <h3 className="small">{t('誰使用 {v1}', { v1: p.comp })}</h3> : null}
             {/* which of its functions each user calls shows which way data goes */}
-            <DL items={[...uses].sort(([a], [b]) => a.localeCompare(b)).map(([c, es]) => {
+            <UI.DetailList items={[...uses].sort(([a], [b]) => a.localeCompare(b)).map(([c, es]) => {
               const names = [...new Set(es.map((e) => p.ix.funcs[e.d].name))].sort()
               return { label: c, value: <span>{names.slice(0, 8).map((n, i) => <span key={n}>{i ? t('、') : ''}<UI.InlineCode>{n}</UI.InlineCode></span>)}{names.length > 8 ? t(' 等 {v1} 個', { v1: names.length }) : ''}</span> }
             }).concat(readers.map((l) => ({ label: l.a, value: <span>{t('Python 工具讀取 {v1}（推測，非呼叫）', { v1: list(l.names ?? []) })}</span> })))} />
