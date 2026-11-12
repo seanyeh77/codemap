@@ -129,7 +129,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               // the file name and every line; the full path is the cell's description
               render: (r: Row) => <span className="locs">{r.lines.map((l) => (
                 <UI.InlineCode key={l} href={`#${r.f}:${l}`} onClick={(e) => { e.preventDefault(); p.onSel(r.fid, { f: r.f, l }) }}>{`${r.f.split('/').pop()}:${l}`}</UI.InlineCode>))}</span> },
-            { key: 'depth', label: t('距離'), numeric: true, unit: t('層'), width: 72, grow: 0.5, hidden: true },
+            { key: 'depth', label: t('距離'), numeric: true, unit: t('層'), width: 72, grow: 0.5 },
           ]}
           rows={rows}
           filters={[{ key: 'comp' as const, label: t('元件'), options: comps.map((c) => ({ value: c, label: c })) },
