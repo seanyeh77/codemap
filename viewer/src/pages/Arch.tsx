@@ -604,11 +604,22 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           common.size ? note(t('每個指令最後都會呼叫 {v1}。', { v1: [...common].map((id) => p.ix.funcs[id]?.name ?? id).join(t('、')) })) : '',
           x.args?.length && x.cmds.length ? note(t('所有指令共用的參數：{v1}', { v1: x.args.map(argText).join(' ') })) : '',
         ].filter(Boolean)
-        // an argument with many allowed values: its list apart, closed
+        // an argument with allowed values: where the list is written and where each value is handled, closed
         const lists = [...x.cmds.flatMap((c) => (c.args ?? []).map((a) => [c, a] as const)), ...(x.args ?? []).map((a) => [null, a] as const)]
-          .filter(([, a]) => (a.choices?.length ?? 0) > FEW_CHOICES)
-          .map(([c, a]) => details(t('{v1}{v2} 可用的值（{v3} 個{v4}）', { v1: c ? c.name + ' ' : '', v2: a.name, v3: a.choices!.length, v4: a.choices_from ? t('，定義於 {v1}', { v1: a.choices_from }) : '' }),
-            a.choices!.map((v) => code(v)).join(t('、'))))
+          .filter(([, a]) => a.choices?.length && ((a.choices.length > FEW_CHOICES) || Object.keys(a.handled ?? {}).length))
+          .map(([c, a]) => details(t('{v1}{v2} 的值（{v3} 個）', { v1: c ? c.name + ' ' : '', v2: a.name, v3: a.choices!.length }), [
+            a.choices_from ? (a.choices_at ? t('清單是 {v1}，寫在 {v2}。', { v1: code(a.choices_from), v2: loc(x.f, a.choices_at) }) : t('清單是 {v1}。', { v1: code(a.choices_from) }))
+              : t('清單寫在 add_argument 的 choices，{v1}。', { v1: loc(x.f, c?.l ?? x.l) }),
+            ...((hs) => {
+              const fns = [...new Set(a.choices!.map((v) => hs[v]?.[0]).filter((id): id is string => !!id && !!p.ix.funcs[id]))]
+              const at = (v: string) => (hs[v] && p.ix.funcs[hs[v][0]] ? loc(p.ix.funcs[hs[v][0]].file, hs[v][1], true) : t('（未找到）'))
+              // one function handles every value: named once, the table keeps the value and its line
+              return fns.length === 1 && a.choices!.every((v) => hs[v])
+                ? [t('全部在 {v1} 處理。', { v1: fnLinkMod(p.ix, fns[0]) }), mdTable([t('值'), t('位置')], a.choices!.map((v) => [code(v, true), at(v)]))]
+                : [mdTable([t('值'), t('處理的函式'), t('位置')], a.choices!.map((v) => [code(v, true), hs[v] && p.ix.funcs[hs[v][0]] ? fnLinkMod(p.ix, hs[v][0]) : '', at(v)]))]
+            })(a.handled ?? {}),
+            Object.keys(a.handled ?? {}).length ? note(t('處理位置：從這個指令執行的函式往下三層呼叫，第一個寫出這個值的地方。')) : '',
+          ].filter(Boolean).join('\n\n')))
         return [`### ${t('命令列：{v1}', { v1: code(x.prog) })}`, head, table, ...shared, ...lists].filter(Boolean).join('\n\n')
       }),
       // functions a framework calls by itself: routes, tests, event handlers, grouped by framework and kind

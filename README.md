@@ -190,7 +190,10 @@ lists its commands as a person types them (`python3 harness/lab3.py status
 function each runs: the one named in `set_defaults(func=...)`, or the calls in
 the branch that tests the subparsers' `dest` (`if args.command == "status":`,
 `match args.command:`). When all but one command have a branch, the code after
-the last branch runs the remaining one. The panel of such a function shows the
+the last branch runs the remaining one. For an argument with a fixed set of
+values (`choices=SCENARIOS`) it shows where the list is written and, for each
+value, the first place that names it in the command's functions and three levels
+of their calls (`if name == "link-down":`). The panel of such a function shows the
 command that runs it. Commands made in a loop (`add_parser(name)` with a
 variable) have no name codemap can read and are left out.
 

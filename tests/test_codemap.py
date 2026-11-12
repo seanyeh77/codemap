@@ -333,6 +333,7 @@ class Cli(unittest.TestCase):
         self.assertEqual((cmds["check"]["run"], cmds["check"]["at"]), (["tool.py:run_case", "tool.py:emit"], [17, 17]))
         self.assertEqual(cmds["status"]["args"], [dict(name="--json", opt=True, action="store_true")])
         self.assertEqual(cmds["check"]["args"][0]["choices"], ["a", "b", "c", "d", "e", "f"])
+        self.assertEqual(cmds["check"]["args"][0]["choices_at"], 10)              # where CASES is written
 
     def test_set_defaults_with_a_reused_variable(self):
         text = (

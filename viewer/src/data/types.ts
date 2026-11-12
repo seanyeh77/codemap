@@ -276,7 +276,7 @@ export interface Meta {
 
 /** The selected function, and the edge it was reached through (a call site or a rule's evidence line). */
 // reveal: a file:line was clicked for this selection (a new number each click); the panel scrolls that line into view
-export interface CliArg { name: string; opt: boolean; choices?: string[]; choices_from?: string; default?: string; help?: string; action?: string; nargs?: string; metavar?: string; required?: boolean }
+export interface CliArg { name: string; opt: boolean; choices?: string[]; choices_from?: string; choices_at?: number; handled?: Record<string, [string, number]>; default?: string; help?: string; action?: string; nargs?: string; metavar?: string; required?: boolean }
 export interface CliCommand { name: string; l: number; help?: string; args?: CliArg[]; run: string[]; at?: [number, number] }
 export interface CliProgram { f: string; l: number; prog: string; help?: string; dispatch?: string; main?: string; args?: CliArg[]; cmds: CliCommand[] }
 

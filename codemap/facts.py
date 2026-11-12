@@ -1468,6 +1468,53 @@ def _cli_prog(root, file, tree):
     return None
 
 
+_STR_CACHE = {}
+
+
+def _strings(root, file):
+    """{text: [line]} of the string constants in a Python file."""
+    import ast
+    key = (str(root), file)
+    if key not in _STR_CACHE:
+        found = {}
+        try:
+            for n in ast.walk(ast.parse(lines_text(Path(root) / file))):
+                if isinstance(n, ast.Constant) and isinstance(n.value, str) and len(n.value) < 80:
+                    found.setdefault(n.value, []).append(n.lineno)
+        except (SyntaxError, ValueError, OSError):
+            pass
+        _STR_CACHE[key] = found
+    return _STR_CACHE[key]
+
+
+def _handled_at(root, funcs, calls, start, values, skip):
+    """{value: [fid, line]}: where an allowed value of an argument is used, the first function from start, down
+    its calls three levels, that names it (if name == "link-down":, {"bgp4": ...}), not the list it comes from."""
+    out, level, seen = {}, list(start), set(start)
+    for _ in range(4):
+        for fid in level:
+            f = funcs.get(fid)
+            if not f or f.get("lang") != "python":
+                continue
+            consts = _strings(root, f["file"])
+            for v in values:
+                if v in out:
+                    continue
+                at = [ln for ln in consts.get(v, []) if f["line"] <= ln <= (f.get("end") or f["line"]) and (f["file"], ln) != skip]
+                if at:
+                    out[v] = [fid, at[0]]
+        if len(out) == len(values):
+            break
+        nxt = []
+        for fid in level:
+            for e in calls.get(fid, []):
+                if e["d"] not in seen:
+                    seen.add(e["d"])
+                    nxt.append(e["d"])
+        level = nxt
+    return out
+
+
 def py_cli(root, funcs, edges):
     """[{f, l, prog, dispatch, args, cmds: [{name, l, help, args, run: [fid], at: [from, to]}]}]: the
     commands an argparse program takes (python3 harness/lab3.py status --json) and the functions each runs.
@@ -1555,6 +1602,7 @@ def py_cli(root, funcs, edges):
                             if isinstance(m, ast.Assign) and any(isinstance(t, ast.Name) and t.id == ch.id for t in m.targets) \
                                     and isinstance(m.value, (ast.List, ast.Tuple)) and all(isinstance(lit(x), str) for x in m.value.elts):
                                 a["choices"] = [lit(x) for x in m.value.elts]
+                                a["choices_at"] = m.lineno
                 for k in ("default", "help", "action", "nargs", "metavar"):
                     v = kw(n, k)
                     if v is not None and lit(v) is not None:
@@ -1631,6 +1679,10 @@ def py_cli(root, funcs, edges):
                 c["args"] = args[p]
             if not c.get("help"):
                 c.pop("help", None)
+        for c in cmds.values():
+            for a in c.get("args", []):
+                if a.get("choices") and c["run"]:
+                    a["handled"] = _handled_at(root, funcs, calls, c["run"], a["choices"], (file, a.get("choices_at")))
         entry = dict(f=file, l=(root_p or (min((c["l"] for c in cmds.values()), default=1),))[0], prog=_cli_prog(root, file, tree) or "python3 " + file,
                      cmds=sorted(cmds.values(), key=lambda c: c["l"]))
         if root_p and root_p[1]:
