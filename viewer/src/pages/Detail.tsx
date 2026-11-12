@@ -5,6 +5,7 @@ import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
 import { noun, t } from '../i18n'
 import { entryText, type Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
+import { commandsOf, usage } from '../data/cli'
 import { inferred, type Edge, type Sel } from '../data/types'
 import { vscodeURL } from '../prefs'
 import { CodeAt, LineLink } from './CodeAt'
@@ -134,6 +135,12 @@ export function Detail(p: Props) {
         ...(f.types_incomplete ? [{ label: t('分析限制'), value: <span className="muted">{(f.lang === 'go' ? t('此檔案的型別檢查不完整（缺少 module 或需要較新的 Go），可能漏掉部分呼叫。')
           : t('此檔案的型別檢查不完整（常見原因是未安裝 node_modules），可能漏掉部分呼叫。'))}</span> }] : []),
         ...(f.scope === 'test' ? [{ label: t('範圍'), value: t('測試程式碼') }] : []),
+        // a command typed on the command line runs it (python3 harness/lab3.py status)
+        ...((cs) => cs.length ? [{ label: t('命令列'), value: <span className="entry-list">{cs.map(({ p: x, c }) => (
+          <span key={x.f + c.name}><UI.InlineCode>{usage(x, c)}</UI.InlineCode> {link(c.at && x.dispatch ? p.ix.funcs[x.dispatch].file : x.f, c.at && x.dispatch ? c.at[0] : c.l)}</span>))}</span> }] : [])(commandsOf(p.ix.g, p.sel.id)),
+        // the function that reads the command line: the commands it hands on
+        ...((xs) => xs.length ? [{ label: t('讀取命令列'), value: <span className="entry-list">{xs.map((x) => (
+          <span key={x.f}><UI.InlineCode>{x.prog}</UI.InlineCode>{x.cmds.length ? t('：{v1} 個指令（{v2}），見概觀的「進入與結束」', { v1: x.cmds.length, v2: x.cmds.map((c) => c.name).join(t('、')) }) : null}</span>))}</span> }] : [])((p.ix.g.cli ?? []).filter((x) => x.dispatch === p.sel.id || x.main === p.sel.id)),
         ...(f.entry ? [{ label: t('由框架呼叫'), value: <span>{t('{v1}：{v2}', { v1: f.entry.framework, v2: entryText(f.entry) })}</span> }] : []),
         // two rows, each number right after its own word: 「1 個 caller · 0 個 callee」 was read as caller · 0
         { label: t('被誰呼叫'),

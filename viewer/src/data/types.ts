@@ -205,6 +205,9 @@ export interface Graph {
   build?: BuildInfo | null
   /** Calls that create or write a file. */
   writes?: FileWrite[]
+  /** argparse programs: how to start each, its commands (python3 harness/lab3.py status --json) and the
+   *  functions each command runs. Older graphs lack it. */
+  cli?: CliProgram[]
   /** Python: functions started in the background (hub.spawn, threading.Thread, asyncio.create_task) */
   spawns?: { fid: string; f: string; l: number; call: string; target: string }[]
   /** test functions taken out of the graph while the tests setting is off (filled in by the viewer) */
@@ -273,6 +276,10 @@ export interface Meta {
 
 /** The selected function, and the edge it was reached through (a call site or a rule's evidence line). */
 // reveal: a file:line was clicked for this selection (a new number each click); the panel scrolls that line into view
+export interface CliArg { name: string; opt: boolean; choices?: string[]; choices_from?: string; default?: string; help?: string; action?: string; nargs?: string; metavar?: string; required?: boolean }
+export interface CliCommand { name: string; l: number; help?: string; args?: CliArg[]; run: string[]; at?: [number, number] }
+export interface CliProgram { f: string; l: number; prog: string; help?: string; dispatch?: string; main?: string; args?: CliArg[]; cmds: CliCommand[] }
+
 export interface Sel { id: string; edge: Pick<Edge, 'f' | 'l'> & Partial<Edge> | null; key: string | null; reveal?: number }
 
 export interface SourceLines {

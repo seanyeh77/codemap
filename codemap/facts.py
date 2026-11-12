@@ -1443,3 +1443,206 @@ def py_write_targets(root, funcs, edges, writes):
                 bare = lambda t: t[1:-1] if t.startswith("{") and t.endswith("}") and t.count("{") == 1 else t
                 w["via"] = [dict(fid=v["fid"], f=v["f"], l=v["l"], name=bare(v["cmd"])) for v in via[:20]]
     return writes
+
+
+def _cli_prog(root, file, tree):
+    """How a person starts the program in file: a pyproject [project.scripts] name, python3 -m for a
+    package's __main__.py, python3 <file> for a file with `if __name__ == "__main__"`; None otherwise."""
+    import ast
+    mod = file[:-3].replace("/", ".")
+    for pp in (Path(root) / "pyproject.toml",):
+        try:
+            import tomllib
+            scripts = tomllib.loads(pp.read_text(encoding="utf-8")).get("project", {}).get("scripts", {})
+        except (OSError, ValueError, ImportError):
+            scripts = {}
+        for name, target in scripts.items():
+            m = str(target).split(":")[0]
+            if mod == m or mod.endswith("." + m) or mod.split(".", 1)[-1] == m:
+                return name
+    if file.endswith("/__main__.py"):
+        return "python3 -m " + file[: -len("/__main__.py")].replace("/", ".")
+    for n in tree.body:
+        if isinstance(n, ast.If) and "__name__" in ast.unparse(n.test) and "__main__" in ast.unparse(n.test):
+            return "python3 " + file
+    return None
+
+
+def py_cli(root, funcs, edges):
+    """[{f, l, prog, dispatch, args, cmds: [{name, l, help, args, run: [fid], at: [from, to]}]}]: the
+    commands an argparse program takes (python3 harness/lab3.py status --json) and the functions each runs.
+    A command's function is its set_defaults(func=...), or the calls inside the branch that tests the
+    subparsers' dest (if args.command == "status": / match args.command: case "status":). When every
+    command but one has a branch, the code after the last branch runs the remaining one."""
+    import ast
+    by_file = {}
+    for fid, f in funcs.items():
+        if f.get("lang") == "python" and f.get("scope") != "test":
+            by_file.setdefault(f["file"], []).append((fid, f))
+    calls = {}
+    for e in edges:
+        if e.get("k") == "call" and e.get("s") in funcs and e.get("d") in funcs:
+            calls.setdefault(e["s"], []).append(e)
+    lit = lambda x: x.value if isinstance(x, ast.Constant) else None
+    kw = lambda call, k: next((a.value for a in call.keywords if a.arg == k), None)
+    out = []
+    for file, fs in sorted(by_file.items()):
+        text = lines_text(Path(root) / file)
+        if "argparse" not in text and "ArgumentParser" not in text:
+            continue
+        try:
+            tree = ast.parse(text)
+        except (SyntaxError, ValueError):
+            continue
+        parsers, subs, cmds, root_p = {}, {}, {}, None      # var -> command path; subparsers var -> (dest, path)
+        args = {}                                            # command path ('' for the root) -> [arg]
+        funcs_named = {f["name"].rsplit(".", 1)[-1]: fid for fid, f in fs}
+
+        def handler(v):
+            """A set_defaults value that names a function, or a lambda calling one."""
+            if isinstance(v, ast.Lambda):
+                v = next((x.func for x in ast.walk(v.body) if isinstance(x, ast.Call)), None)
+            return funcs_named.get(ast.unparse(v).rsplit(".", 1)[-1]) if isinstance(v, (ast.Name, ast.Attribute)) else None
+
+        def add_parser(call, var=None):
+            dest, parent = subs.get(ast.unparse(call.func.value), (None, ""))
+            name = lit(call.args[0])
+            if not isinstance(name, str):
+                if var:
+                    parsers[var] = None            # add_parser(d) in a loop: a command codemap cannot name
+                return
+            path = (parent + " " + name).strip()
+            if var:
+                parsers[var] = path
+            cmds.setdefault(path, dict(name=path, l=call.lineno, dest=dest, help=lit(kw(call, "help")) or lit(kw(call, "description")), run=[]))
+
+        # in source order, so a variable reused for each subparser (s = sub.add_parser(...)) means the latest one
+        steps = sorted((x for x in ast.walk(tree) if isinstance(x, (ast.Assign, ast.Call))),
+                       key=lambda x: (x.lineno, x.col_offset, isinstance(x, ast.Call)))
+        done = set()
+        for n in steps:
+            if isinstance(n, ast.Assign):
+                if len(n.targets) != 1 or not isinstance(n.targets[0], ast.Name) or not isinstance(n.value, ast.Call):
+                    continue
+                var, call, fn = n.targets[0].id, n.value, ast.unparse(n.value.func)
+                if fn.endswith("ArgumentParser"):
+                    parsers[var] = ""
+                    root_p = root_p or (n.lineno, lit(kw(call, "description")))
+                elif fn.endswith(".add_subparsers") and isinstance(call.func, ast.Attribute):
+                    subs[var] = (lit(kw(call, "dest")), parsers.get(ast.unparse(call.func.value)) or "")
+                elif fn.endswith(".add_parser") and isinstance(call.func, ast.Attribute) and call.args \
+                        and ast.unparse(call.func.value) in subs:
+                    add_parser(call, var)
+                    done.add(id(call))
+                continue
+            if not isinstance(n.func, ast.Attribute) or id(n) in done:
+                continue
+            owner, what = ast.unparse(n.func.value), n.func.attr
+            if what == "add_parser" and n.args and owner in subs:
+                add_parser(n)
+            elif what == "add_argument" and parsers.get(owner) is not None and n.args:
+                names = [lit(a) for a in n.args if isinstance(lit(a), str)]
+                if not names:
+                    continue
+                a = dict(name=max(names, key=len), opt=names[0].startswith("-"))
+                ch = kw(n, "choices")
+                if isinstance(ch, (ast.Tuple, ast.List)) and all(isinstance(lit(x), (str, int)) for x in ch.elts):
+                    a["choices"] = [str(lit(x)) for x in ch.elts]
+                elif ch is not None:
+                    a["choices_from"] = ast.unparse(ch)          # choices=CASES: named, the list is in the code
+                    if isinstance(ch, ast.Name):
+                        for m in ast.walk(tree):
+                            if isinstance(m, ast.Assign) and any(isinstance(t, ast.Name) and t.id == ch.id for t in m.targets) \
+                                    and isinstance(m.value, (ast.List, ast.Tuple)) and all(isinstance(lit(x), str) for x in m.value.elts):
+                                a["choices"] = [lit(x) for x in m.value.elts]
+                for k in ("default", "help", "action", "nargs", "metavar"):
+                    v = kw(n, k)
+                    if v is not None and lit(v) is not None:
+                        a[k] = str(lit(v))
+                if lit(kw(n, "required")) is True:
+                    a["required"] = True
+                args.setdefault(parsers[owner], []).append(a)
+            elif what == "set_defaults" and parsers.get(owner) in cmds:
+                for k in n.keywords:
+                    fid = handler(k.value)
+                    if fid and fid not in cmds[parsers[owner]]["run"]:
+                        cmds[parsers[owner]]["run"].append(fid)
+        if not cmds and not args:
+            continue
+        # branches that test the dest: if args.command == "x" / in ("x", "y") / match args.command
+        dests = {c["dest"] for c in cmds.values() if c["dest"]}
+        names_of = lambda test: ([lit(test.comparators[0])] if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq) and lit(test.comparators[0]) else
+                                 [lit(x) for x in test.comparators[0].elts] if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.In) and isinstance(test.comparators[0], (ast.Tuple, ast.List, ast.Set)) else [])
+        tests_dest = lambda test: isinstance(test, ast.Compare) and isinstance(test.left, ast.Attribute) and test.left.attr in dests
+        # each block that tests the dest gives {name: lines}; the one naming the most commands is the
+        # dispatch (an `if args.command == "check":` inside an except only reports the error)
+        found = []
+        for blk in ast.walk(tree):
+            for field in ("body", "orelse", "finalbody"):
+                body = getattr(blk, field, None)
+                if not isinstance(body, list):
+                    continue
+                br, last, where = {}, None, None
+                for i, st in enumerate(body):
+                    if isinstance(st, ast.If) and tests_dest(st.test):
+                        chain = st
+                        while chain is not None:
+                            for nm in names_of(chain.test):
+                                br.setdefault(nm, (chain.body[0].lineno, chain.body[-1].end_lineno))
+                            nxt = chain.orelse
+                            if len(nxt) == 1 and isinstance(nxt[0], ast.If) and tests_dest(nxt[0].test):
+                                chain = nxt[0]
+                            else:
+                                if nxt:
+                                    br.setdefault("", (nxt[0].lineno, nxt[-1].end_lineno))   # the else: the rest
+                                chain = None
+                        last, where = i, where or st.lineno
+                    elif isinstance(st, ast.Match) and isinstance(st.subject, ast.Attribute) and st.subject.attr in dests:
+                        for case in st.cases:
+                            for nm in [lit(p.value) for p in ast.walk(case.pattern) if isinstance(p, ast.MatchValue)]:
+                                if nm:
+                                    br.setdefault(nm, (case.body[0].lineno, case.body[-1].end_lineno))
+                        where = where or st.lineno
+                if last is not None and last + 1 < len(body) and "" not in br:
+                    br[""] = (body[last + 1].lineno, body[-1].end_lineno)
+                if br:
+                    found.append((len([k for k in br if k]), -where, br, where))
+        branches, dispatch = {}, None
+        if found:
+            _, _, branches, where = max(found, key=lambda x: (x[0], x[1]))
+            dispatch = _innermost(fs, where)
+        rest = [p for p in cmds if p.split(" ")[-1] not in branches and not cmds[p]["run"]]
+        for p, c in cmds.items():
+            at = branches.get(p.split(" ")[-1]) or (branches.get("") if rest == [p] else None)
+            if at and dispatch:
+                c["at"] = list(at)
+                seen = []
+                for e in sorted(calls.get(dispatch, []), key=lambda e: e["l"]):
+                    if at[0] <= e["l"] <= at[1] and e["d"] not in seen:
+                        seen.append(e["d"])
+                c["run"] = c["run"] or seen
+        # what every command calls (an emit() that prints the result) goes after what tells them apart
+        many = [c for c in cmds.values() if c["run"]]
+        common = set.intersection(*(set(c["run"]) for c in many)) if len(many) > 1 else set()
+        for p, c in cmds.items():
+            c["run"] = [x for x in c["run"] if x not in common] + [x for x in c["run"] if x in common]
+            c.pop("dest", None)
+            if args.get(p):
+                c["args"] = args[p]
+            if not c.get("help"):
+                c.pop("help", None)
+        entry = dict(f=file, l=(root_p or (min((c["l"] for c in cmds.values()), default=1),))[0], prog=_cli_prog(root, file, tree) or "python3 " + file,
+                     cmds=sorted(cmds.values(), key=lambda c: c["l"]))
+        if root_p and root_p[1]:
+            entry["help"] = root_p[1]
+        if dispatch:
+            entry["dispatch"] = dispatch
+        # the function that reads the command line, for a program without subcommands (or with set_defaults)
+        reader = next((_innermost(fs, x.lineno) for x in ast.walk(tree) if isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)
+                       and x.func.attr in ("parse_args", "parse_known_args")), None)
+        if reader and reader != dispatch:
+            entry["main"] = reader
+        if args.get(""):
+            entry["args"] = args[""]
+        out.append(entry)
+    return out

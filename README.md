@@ -184,6 +184,16 @@ document the code names), each with its first heading and sentence. Under
 named semaphores and FIFOs made with `O_CREAT`, who removes them, and the calls
 that end the program in the components that make them.
 
+For a Python program that reads its command line with `argparse`, 「進入與結束」
+lists its commands as a person types them (`python3 harness/lab3.py status
+[--json]`, or the `[project.scripts]` name from `pyproject.toml`) and the
+function each runs: the one named in `set_defaults(func=...)`, or the calls in
+the branch that tests the subparsers' `dest` (`if args.command == "status":`,
+`match args.command:`). When all but one command have a branch, the code after
+the last branch runs the remaining one. The panel of such a function shows the
+command that runs it. Commands made in a loop (`add_parser(name)` with a
+variable) have no name codemap can read and are left out.
+
 `codemap serve` listens on localhost. From a laptop, forward the port
 (`ssh -L 7300:localhost:7300 HOST`); VS Code Remote-SSH does this by itself.
 The viewer shows the architecture, call trees (with a predict-then-reveal

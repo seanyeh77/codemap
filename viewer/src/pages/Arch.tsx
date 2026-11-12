@@ -5,6 +5,7 @@ import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
 import { entryText, push, type Index } from '../data/graph'
 import { fileGraph, fileView, roleOf, type Role } from '../data/files'
+import { FEW_CHOICES, argText, commonRuns, usage } from '../data/cli'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
 
@@ -428,6 +429,12 @@ const firstSentence = (t: string) => ((m) => (m ? m[0] : t))(t.match(/^[\s\S]*?[
 
 /** A function as a Markdown link to the flow page; a name the index does not have stays code. */
 const fnLink = (ix: Index, id: string) => (ix.funcs[id] ? `[${esc(ix.funcs[id].name)}](fn:${encodeURIComponent(id)})` : code(id))
+/** A module-level Python function with its module in front (runtime.deploy), where a bare name reads like something else. */
+const fnLinkMod = (ix: Index, id: string) => {
+  const f = ix.funcs[id]
+  if (!f || f.lang !== 'python' || f.name.includes('.')) return fnLink(ix, id)
+  return `[${esc(f.file.split('/').pop()!.replace(/\.py$/, '') + '.' + f.name)}](fn:${encodeURIComponent(id)})`
+}
 const loc = (f: string, l: number, inTable = false) => code(`${f}:${l}`, inTable)
 
 /** The project's documents: the top-level ones and those the code points to first, each with its
@@ -520,6 +527,8 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     for (const f of all) if (!g.comps.some((c) => c.id === f.comp)) m.set(f.comp, [...(m.get(f.comp) ?? []), f])
     return [...m].sort(([a], [b]) => a.localeCompare(b))
   }, [p.ix, g])
+  // argparse programs and their commands (python3 harness/lab3.py status --json)
+  const clis = cRepo ? [] : (g.cli ?? [])
   const spawns = (g.spawns ?? []).filter((x) => p.ix.funcs[x.target] && p.ix.funcs[x.fid]?.scope !== 'test')
   const reads = cRepo ? [] : (g.reads ?? []).filter((x) => prod(x.fid))
   const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
@@ -532,7 +541,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const spacesAll = [...new Set((g.commands ?? []).filter((c) => prod(c.fid)).flatMap((c) => [c.cmd, ...(c.via ?? []).map((v) => v.cmd)]).map(netns).filter((x) => x && !/^\{[^}]*\}$/.test(x)))]
   const sums = {
     comps: t('{v1} 個元件、{v2} 個函式', { v1: g.comps.length, v2: Object.values(p.ix.funcs).filter((f) => f.scope !== 'test' && f.kind !== 'module').length }),
-    entry: join([mains.length && t('程式入口 {v1} 個', { v1: mains.length }), fwEntries.size && t('框架呼叫 {v1} 個', { v1: [...fwEntries.values()].flat().length }),
+    entry: join([mains.length && t('程式入口 {v1} 個', { v1: mains.length }), clis.length && t('命令列指令 {v1} 個', { v1: clis.reduce((n, x) => n + Math.max(1, x.cmds.length), 0) }), fwEntries.size && t('框架呼叫 {v1} 個', { v1: [...fwEntries.values()].flat().length }),
       spawns.length && t('背景工作 {v1} 個', { v1: spawns.length }), apis.size && t('外部進入點 {v1} 個', { v1: apis.size }), lifecycle.length && t('自動執行 {v1} 個', { v1: lifecycle.length })]),
     cmds: join([t('{v1} 個指令', { v1: (g.commands ?? []).filter((c) => prod(c.fid)).length }), spacesAll.length && t('{v1} 個 network namespace', { v1: spacesAll.length }),
       ((n) => n && t('{v1} 個沒有逾時', { v1: n }))((g.commands ?? []).filter((c) => prod(c.fid) && !c.timeout).length)]),
@@ -570,7 +579,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   if (g.docs?.length) parts.push(docsPart(g.docs))
 
   // 進入與結束: where control comes in from outside the repository, and what runs on its own
-  if (lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length) {
+  if (lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length || clis.length) {
     const simple = [
       ...spawns.map((x) => `- **${t('背景工作')}**：${fnL(x.target)}${t('（由 {v1} 以 {v2} 啟動，', { v1: esc(p.ix.funcs[x.fid]?.name ?? x.fid), v2: x.call })}${loc(x.f, x.l)}${t('）')}`),
       ...mains.map((id) => `- **${t('程式入口')}**：${fnLoc(id)}${p.ix.callerInfo(id).sure ? t('（由 {v1} 呼叫）', { v1: esc(list(p.ix.callerInfo(id).names.slice(0, 2))) }) : ''}`),
@@ -580,6 +589,28 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
           && lifecycle.find((x) => x.k === 'constructor' && p.ix.funcs[x.d].comp === p.ix.funcs[e.d].comp) === e ? BR + t('{v1} 有多個 constructor，同一程式庫中的執行順序沒有保證。', { v1: p.ix.funcs[e.d].comp }) : '')),
     ]
     const groups = [
+      // the commands a person types: each with its arguments and the functions it runs
+      ...clis.map((x) => {
+        const common = commonRuns(x)
+        const by = x.dispatch ?? x.main
+        const head = [x.help ? esc(x.help) : '',
+          (by ? t('由 {v1} 讀取命令列{v2}；', { v1: fnL(by), v2: x.dispatch ? t('並依指令名稱分派') : '' }) : '') + t('參數定義在 {v1}。', { v1: loc(x.f, x.l) })].filter(Boolean).join('\n\n')
+        const table = x.cmds.length ? mdTable([t('指令'), t('執行'), t('位置')], x.cmds.map((c) => [
+          code(usage(x, c), true),
+          c.run.filter((id) => !common.has(id) && p.ix.funcs[id]).map((id) => fnLinkMod(p.ix, id)).join(t('、')) || (common.size ? '' : t('（未找到）')),
+          c.at && x.dispatch ? loc(p.ix.funcs[x.dispatch].file, c.at[0], true) : loc(x.f, c.l, true),
+        ])) : `- ${code(usage(x))}`
+        const shared = [
+          common.size ? note(t('每個指令最後都會呼叫 {v1}。', { v1: [...common].map((id) => p.ix.funcs[id]?.name ?? id).join(t('、')) })) : '',
+          x.args?.length && x.cmds.length ? note(t('所有指令共用的參數：{v1}', { v1: x.args.map(argText).join(' ') })) : '',
+        ].filter(Boolean)
+        // an argument with many allowed values: its list apart, closed
+        const lists = [...x.cmds.flatMap((c) => (c.args ?? []).map((a) => [c, a] as const)), ...(x.args ?? []).map((a) => [null, a] as const)]
+          .filter(([, a]) => (a.choices?.length ?? 0) > FEW_CHOICES)
+          .map(([c, a]) => details(t('{v1}{v2} 可用的值（{v3} 個{v4}）', { v1: c ? c.name + ' ' : '', v2: a.name, v3: a.choices!.length, v4: a.choices_from ? t('，定義於 {v1}', { v1: a.choices_from }) : '' }),
+            a.choices!.map((v) => code(v)).join(t('、'))))
+        return [`### ${t('命令列：{v1}', { v1: code(x.prog) })}`, head, table, ...shared, ...lists].filter(Boolean).join('\n\n')
+      }),
       // functions a framework calls by itself: routes, tests, event handlers, grouped by framework and kind
       ...[...fwEntries].map(([, ids]) => {
         const e0 = p.ix.funcs[ids[0]].entry!

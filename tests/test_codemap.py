@@ -283,6 +283,82 @@ class Fixture(unittest.TestCase):
         self.assertEqual(view.source(self.root, "src/lib/lib.c", 1, 2)["start"], 1)
 
 
+class Cli(unittest.TestCase):
+    """argparse programs: each command, its arguments and the functions it runs (facts.py_cli)."""
+
+    def run_cli(self, files, funcs, calls):
+        from codemap import facts
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in files.items():
+                (Path(d) / name).write_text(text)
+            fs = {k: dict(name=k.split(":")[1], file=k.split(":")[0], line=v[0], end=v[1], lang="python") for k, v in funcs.items()}
+            return facts.py_cli(d, fs, [dict(s=a, d=b, f=a.split(":")[0], l=line, k="call") for a, b, line in calls])
+
+    def test_branches_on_the_dest(self):
+        text = (
+            "import argparse\n"                                              # 1
+            "def parser():\n"                                                # 2
+            "    root = argparse.ArgumentParser(description='Tool')\n"       # 3
+            "    sub = root.add_subparsers(dest='command', required=True)\n" # 4
+            "    s = sub.add_parser('status')\n"                             # 5
+            "    s.add_argument('--json', action='store_true')\n"            # 6
+            "    c = sub.add_parser('check')\n"                              # 7
+            "    c.add_argument('case', choices=CASES)\n"                    # 8
+            "    return root\n"                                              # 9
+            "CASES = ['a', 'b', 'c', 'd', 'e', 'f']\n"                       # 10
+            "def main():\n"                                                  # 11
+            "    args = parser().parse_args()\n"                             # 12
+            "    try:\n"                                                     # 13
+            "        if args.command == 'status':\n"                         # 14
+            "            emit(status())\n"                                   # 15
+            "            return 0\n"                                         # 16
+            "        emit(run_case(args.case))\n"                            # 17
+            "    except ValueError:\n"                                       # 18
+            "        if args.command == 'check':\n"                          # 19
+            "            emit(None)\n"                                       # 20
+            "def emit(v): pass\n"                                            # 21
+            "def status(): pass\n"                                           # 22
+            "def run_case(c): pass\n"                                        # 23
+            "if __name__ == '__main__':\n    main()\n")
+        out = self.run_cli({"tool.py": text},
+                           {"tool.py:parser": (2, 9), "tool.py:main": (11, 20), "tool.py:emit": (21, 21), "tool.py:status": (22, 22), "tool.py:run_case": (23, 23)},
+                           [("tool.py:main", "tool.py:parser", 12), ("tool.py:main", "tool.py:emit", 15), ("tool.py:main", "tool.py:status", 15),
+                            ("tool.py:main", "tool.py:emit", 17), ("tool.py:main", "tool.py:run_case", 17), ("tool.py:main", "tool.py:emit", 20)])
+        self.assertEqual(len(out), 1)
+        p = out[0]
+        self.assertEqual((p["prog"], p["help"], p["dispatch"]), ("python3 tool.py", "Tool", "tool.py:main"))
+        cmds = {c["name"]: c for c in p["cmds"]}
+        # emit, which both commands call, goes last; check is the code after the status branch, not the except
+        self.assertEqual(cmds["status"]["run"], ["tool.py:status", "tool.py:emit"])
+        self.assertEqual((cmds["check"]["run"], cmds["check"]["at"]), (["tool.py:run_case", "tool.py:emit"], [17, 17]))
+        self.assertEqual(cmds["status"]["args"], [dict(name="--json", opt=True, action="store_true")])
+        self.assertEqual(cmds["check"]["args"][0]["choices"], ["a", "b", "c", "d", "e", "f"])
+
+    def test_set_defaults_with_a_reused_variable(self):
+        text = (
+            "import argparse\n"
+            "def cmd_a(args): pass\n"
+            "def cmd_b(args): pass\n"
+            "def main():\n"
+            "    ap = argparse.ArgumentParser()\n"
+            "    ap.add_argument('-C')\n"
+            "    sub = ap.add_subparsers(dest='cmd')\n"
+            "    s = sub.add_parser('a')\n"
+            "    s.add_argument('--fast', action='store_true')\n"
+            "    s.set_defaults(fn=cmd_a)\n"
+            "    s = sub.add_parser('b')\n"
+            "    s.add_argument('name')\n"
+            "    s.set_defaults(fn=lambda a: cmd_b(a))\n"
+            "    args = ap.parse_args()\n"
+            "    args.fn(args)\n")
+        out = self.run_cli({"cli.py": text}, {"cli.py:cmd_a": (2, 2), "cli.py:cmd_b": (3, 3), "cli.py:main": (4, 15)}, [])
+        p = out[0]
+        self.assertEqual((p["prog"], p["main"], p["args"][0]["name"]), ("python3 cli.py", "cli.py:main", "-C"))
+        cmds = {c["name"]: c for c in p["cmds"]}
+        self.assertEqual((cmds["a"]["run"], cmds["b"]["run"]), (["cli.py:cmd_a"], ["cli.py:cmd_b"]))
+        self.assertEqual(([x["name"] for x in cmds["a"]["args"]], [x["name"] for x in cmds["b"]["args"]]), (["--fast"], ["name"]))
+
+
 class Server(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -339,6 +339,8 @@ def build(root, index, config=None):
                        for k, v in config.get("phases", {}).items() if isinstance(v, list)},
                build=built, writes=facts.py_write_targets(root, funcs, [dict(s=e["src"], d=e["dst"], f=e["file"], l=e["line"], k=e["kind"]) for e in index.get("edges", []) if e.get("file")], facts.writes(root, funcs)), reads=facts.py_reads(root, funcs), spawns=facts.py_spawns(root, funcs, [dict(s=e["src"], d=e["dst"], f=e["file"], l=e["line"], k=e["kind"]) for e in index.get("edges", []) if e.get("file") and e.get("kind") == "ref"]), commands=facts.py_commands(root, funcs, [dict(s=e["src"], d=e["dst"], f=e["file"], l=e["line"], k=e["kind"])
                                                                                         for e in index.get("edges", []) if e.get("file")]),
+               # argparse programs: their commands and the functions each runs
+               cli=facts.py_cli(root, funcs, [dict(s=e["src"], d=e["dst"], f=e["file"], l=e["line"], k=e["kind"]) for e in index.get("edges", []) if e.get("file")]),
                worth=facts.worth_checking(root, funcs, edges, readable, syms),
                # which files the project lets people change: .codemap/rules.json "roles", path or folder -> editable or protected
                roles={k: v for k, v in config.get("roles", {}).items() if v in ("editable", "protected")},
