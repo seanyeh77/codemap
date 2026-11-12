@@ -94,7 +94,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .split-body > .split { flex: 1; min-width: 0; min-height: 0; }
 .split:not(.is-stacked) { height: 100%; }
 .split:not(.is-stacked) > .ui-split-a, .split:not(.is-stacked) > .ui-split-b { display: flex; min-height: 0; }
-.split .ui-split-a > *, .split .ui-split-b > * { flex: 1 1 auto; min-width: 0; }
+.split .ui-split-a > *, .split .ui-split-b > *,
+.split .ui-split-b > .ov-group > * { flex: 1 1 auto; min-width: 0; }
 .split .detail { width: auto; }
 /* stacked by its own width (a narrow window with the sidebar open): the page scrolls as one */
 .split-body:has(.is-stacked) { overflow: auto; }

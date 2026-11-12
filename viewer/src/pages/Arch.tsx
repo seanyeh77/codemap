@@ -57,16 +57,17 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
     try { localStorage.setItem(key, v) } catch { /* storage off */ }
     p.onSel(''); p.onEdge('')
   }
+  // 依元件／依檔案 sits on the diagram's own row, left of 圖／清單
+  const tabs = view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('依元件') }, { id: 'file', label: t('依檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null
   return (
     <UI.Card className="pane fit">
-      {view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('依元件') }, { id: 'file', label: t('依檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null}
-      {shown === 'file' ? <FileArch {...p} /> : <CompArch {...p} />}
+      {shown === 'file' ? <FileArch {...p} toolbar={tabs} /> : <CompArch {...p} toolbar={tabs} />}
     </UI.Card>
   )
 }
 
 /** One box per production file, with the calls between files; each box says whether the project lets people change it. */
-function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
+function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void ; toolbar?: ReactNode }) {
   const fg = useMemo(() => fileGraph(p.ix), [p.ix])
   const labels = useMemo(() => fileLabels([...fg.files.keys()]), [fg])
   // the mark is the box's tag, never cut off on a narrow box (受保護 in the warning colors, with a lock)
@@ -78,12 +79,12 @@ function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
     <>
     <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
       selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('檔案'), edges: t('關係') }}
-      label={t('檔案和它們之間的呼叫')} nodeWidth={232} resizable heightKey={`codemap:graph:${p.ix.g.repo}:files`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" />
+      label={t('檔案和它們之間的呼叫')} nodeWidth={232} resizable heightKey={`codemap:graph:${p.ix.g.repo}:files`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" toolbar={p.toolbar} />
     </>
   )
 }
 
-function CompArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void }) {
+function CompArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge: string; onEdge: (id: string) => void ; toolbar?: ReactNode }) {
   const g = p.ix.g
   const entries = useMemo(() => entryGroups(p.ix), [p.ix])
   const starts = useMemo(() => (entries.length ? launchers(p.ix) : []), [p.ix, entries])
@@ -106,7 +107,7 @@ function CompArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
     <>
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('元件'), edges: t('關係') }}
-        externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')}
+        externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')} toolbar={p.toolbar}
         // a handle under the diagram stretches it (the layers apart) or shortens it (it scrolls); kept per repository
         resizable heightKey={`codemap:graph:${g.repo}:comps`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
         inferredText={t('函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。')}
