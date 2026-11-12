@@ -10,6 +10,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .detail { width: 440px; flex: 0 0 440px; display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; overflow: auto; }
 /* the card is also a flex column with its own gap: the head's margin would double the space under the title */
 .ui-card.detail > .ui-card-head { margin-bottom: 0; }
+/* the card scrolls as a whole: its parts keep their height (a code view, overflow hidden, was squeezed to 0 px) */
+.ui-card.detail > * { flex-shrink: 0; }
 .body.below .detail { width: auto; flex: 0 0 46%; }
 .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .row.nowrap { flex-wrap: nowrap; white-space: nowrap; gap: var(--space-2); }
