@@ -74,7 +74,8 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
           <UI.Button icon="magnifying-glass" onClick={p.openSearch}>{t('更換函式')}</UI.Button>
         </div>
         {rows.length ? (
-          <div>
+          // the summary takes the card's whole width, so the call lines below are not wrapped at the text's own width
+          <div className="impact-sum">
             {p.ix.funcs[p.start]
               ? <UI.CodeText as="p" text={t('修改 `{name}` 影響 {v1} 個函式，跨 {v2} 個元件。', { name, v1: rows.length, v2: comps.length })} />
               : <UI.CodeText as="p" text={t('有 {v1} 個函式呼叫 `{name}`（repo 外的函式）。連同其呼叫者共 {v2} 個，跨 {v3} 個元件。', { name, v1: rows.filter((r) => r.kind === 'direct').length, v2: rows.length, v3: comps.length })} />}
@@ -92,7 +93,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               [p.start, ...rows.map((r) => r.id)].reduce((sum, id) => sum + (p.ix.g.hidden_callers?.[id] ?? 0), 0))}
             {sites.length && p.ix.funcs[p.start] ? <div>
               <p className="small">{t('直接呼叫的寫法（修改參數時須一併修改）：')}</p>
-              <UI.DetailList items={sites.map(({ r, l }, i) => ({
+              <UI.DetailList labelWidth="auto" items={sites.map(({ r, l }, i) => ({
                 label: `${r.f.split('/').pop()}:${l}`,
                 value: <span>{siteText[i]?.data ? <UI.InlineCode>{String(siteText[i].data).trim()}</UI.InlineCode> : <span className="muted">{t('讀取中')}</span>}<span className="muted">{t('（{v1}）', { v1: r.name })}</span></span>,
               }))} />
