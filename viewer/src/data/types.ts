@@ -272,7 +272,8 @@ export interface Meta {
 }
 
 /** The selected function, and the edge it was reached through (a call site or a rule's evidence line). */
-export interface Sel { id: string; edge: Pick<Edge, 'f' | 'l'> & Partial<Edge> | null; key: string | null }
+// reveal: a file:line was clicked for this selection (a new number each click); the panel scrolls that line into view
+export interface Sel { id: string; edge: Pick<Edge, 'f' | 'l'> & Partial<Edge> | null; key: string | null; reveal?: number }
 
 export interface SourceLines {
   file: string

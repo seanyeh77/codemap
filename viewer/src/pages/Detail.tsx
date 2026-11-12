@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { UI } from '../ui'
 import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
 import { noun, t } from '../i18n'
@@ -41,6 +41,14 @@ export function Detail(p: Props) {
   const [wholeKey, setWhole] = useState<string | null>(null)
   const whole = wholeKey === selKey
   const file = useFileSource(whole && f ? f.file : null, p.isLive, p.sourceId)
+  // a file:line clicked elsewhere (the impact table): once the code is shown, bring that line into view; the card
+  // scrolls, so centring it inside the code box alone left it below the window
+  const revealed = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (!p.sel.reveal || revealed.current === p.sel.reveal || !src.data) return
+    revealed.current = p.sel.reveal
+    requestAnimationFrame(() => code.current?.focusTarget())
+  }, [p.sel.reveal, src.data])
   if (!f) {
     if (!e) return <UI.Card className="detail"><p className="muted">{t('選擇函式以查看原始碼。')}</p></UI.Card>
     const name = p.ix.nameOf(p.sel.id, e)

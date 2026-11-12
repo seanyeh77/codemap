@@ -56,7 +56,8 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   // the direct calls as written: which arguments each caller passes is what a change of parameters breaks
   const sites = rows.filter((r) => r.kind === 'direct').flatMap((r) => r.lines.map((l) => ({ r, l }))).slice(0, 12)
   const siteText = useQueries({ queries: sites.map(({ r, l }) => ({
-    queryKey: ['line', p.sourceId, r.f, l],
+    // its own key: 'line' holds the panel's lines around a place ({ file, start, lines }), not one line's text
+    queryKey: ['line-text', p.sourceId, r.f, l],
     staleTime: 30_000,
     queryFn: async () => {
       const f = p.ix.funcs[r.fid]
