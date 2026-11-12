@@ -859,4 +859,6 @@ export const EN: Record<string, string> = {
   "處理的函式": "Handled in",
   "處理位置：從這個指令執行的函式往下三層呼叫，第一個寫出這個值的地方。": "Handled in: the first place that names the value, in the functions the command runs and three levels of their calls.",
   "全部在 {v1} 處理。": "All are handled in {v1}.",
+  "第 {v1} 行在": "Line {v1} is in",
+  "這一行呼叫": "This line calls",
 }

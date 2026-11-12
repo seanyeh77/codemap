@@ -42,7 +42,24 @@ function sections(ix: Index, file: string) {
   return Object.values(ix.funcs).filter((f) => f.file === file).sort((a, b) => a.line - b.line).map((f) => ({ line: f.line, label: f.name }))
 }
 
-export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: boolean; sourceId: string; onClose: () => void }) {
+/** The asked line of a file: the function it is in and the repository functions it calls, each opening its flow page
+ *  (the code itself has no links). */
+function LineCalls(p: { ix: Index; f: string; l: number; onFunc: (id: string) => void }) {
+  const inFn = Object.entries(p.ix.funcs).filter(([, f]) => f.file === p.f && f.line <= p.l && p.l <= (f.end ?? f.line) && f.kind !== 'module')
+    .sort(([, a], [, b]) => b.line - a.line)[0]
+  const called = [...new Set(p.ix.g.edges.filter((e) => e.f === p.f && e.l === p.l && p.ix.funcs[e.d] && e.d !== inFn?.[0]).map((e) => e.d))]
+  if (!inFn && !called.length) return null
+  // a module-level Python function with its module in front, as the code writes it (runtime.deploy)
+  const name = (id: string) => { const f = p.ix.funcs[id]; return f.lang === 'python' && !f.name.includes('.') && f.file !== p.f ? f.file.split('/').pop()!.replace(/\.py$/, '') + '.' + f.name : f.name }
+  const fn = (id: string) => <UI.InlineCode key={id} href={'#' + id} onClick={(e) => { e.preventDefault(); p.onFunc(id) }}>{name(id)}</UI.InlineCode>
+  const loc = (id: string) => <span className="muted small"> {p.ix.funcs[id].file}:{p.ix.funcs[id].line}</span>
+  return <UI.DetailList items={[
+    ...(inFn ? [{ label: t('第 {v1} 行在', { v1: p.l }), value: <span>{fn(inFn[0])}{loc(inFn[0])}</span> }] : []),
+    ...(called.length ? [{ label: t('這一行呼叫'), value: <span className="entry-list">{called.map((id) => <span key={id}>{fn(id)}{loc(id)}</span>)}</span> }] : []),
+  ]} />
+}
+
+export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: boolean; sourceId: string; onClose: () => void; onFunc: (id: string) => void }) {
   const src = useFileSource(p.at.f, p.isLive, p.sourceId)
   const view = useRef<UI.CodeViewHandle>(null)
   const refs = useCodeRefs(p.ix)
@@ -72,8 +89,8 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
         : <>{md ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
           {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
             onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
-          : <UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
-            sections={sections(p.ix, p.at.f)} />}
+          : <>{p.at.l > 1 ? <LineCalls ix={p.ix} f={p.at.f} l={p.at.l} onFunc={p.onFunc} /> : null}<UI.CodeView {...refs} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
+            sections={sections(p.ix, p.at.f)} /></>}
           {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
     </UI.Card>
     </div>

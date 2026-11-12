@@ -474,7 +474,7 @@ function Shell(p: ShellProps) {
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={(id, at) => pick(id, at, null, !!at)} openSearch={() => setSearchOpen(true)} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
     : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
-  const side = fileAt && fileAt.view === view ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} />
+  const side = fileAt && fileAt.view === view ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} />
     : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
