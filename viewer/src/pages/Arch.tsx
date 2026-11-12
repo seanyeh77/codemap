@@ -695,12 +695,16 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const copy = () => navigator.clipboard.writeText(all).then(() => { setCopied(true); UI.announce(t('已複製概觀的 Markdown')); setTimeout(() => setCopied(false), 2000) },
     () => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')))
   return (
-    <UI.Card className="detail fit overview" title={t('概觀')} actions={<UI.Button icon={copied ? 'check' : 'copy'} onClick={() => { void copy() }}>{copied ? t('已複製') : t('複製成 Markdown')}</UI.Button>}>
-      <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
-      <div data-tour="arch"><RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}><UI.SectionGroup>
-        {parts.map((x) => <Part key={x.id} {...x} />)}
-      </UI.SectionGroup></MdLinksCtx.Provider></RepoKey.Provider></div>
-    </UI.Card>
+    // the 全部展開／全部收合 toggle sits in the card's title row next to the copy icon, so the group wraps the card
+    <UI.SectionGroup bar={false} className="ov-group">
+      <UI.Card className="detail fit overview" title={t('概觀')}
+        actions={<><UI.SectionGroupToggle /><UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} /></>}>
+        <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
+        <div data-tour="arch"><RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>
+          {parts.map((x) => <Part key={x.id} {...x} />)}
+        </MdLinksCtx.Provider></RepoKey.Provider></div>
+      </UI.Card>
+    </UI.SectionGroup>
   )
 
 }

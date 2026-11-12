@@ -68,6 +68,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .pane.fit, .detail.fit { align-self: flex-start; max-height: 100%; }
 .body.below .fit { align-self: stretch; }
 @media (max-width: 959px) { .pane.fit, .detail.fit { align-self: stretch; max-height: none; } }
+/* the overview's SectionGroup wraps its card: the wrapper takes no box, so the card stays a flex item of the row */
+.ov-group { display: contents; }
 .edge-code { display: flex; flex-direction: column; gap: var(--space-3); align-items: flex-start; }
 .edge-code > :first-child { align-self: stretch; }
 .stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
