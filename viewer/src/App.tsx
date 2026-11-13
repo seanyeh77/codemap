@@ -1,3 +1,4 @@
+import { OpenFunc } from './components/CallLinks'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from './ui'
@@ -489,7 +490,7 @@ function Shell(p: ShellProps) {
 
   const openFile = (f: string, l: number) => setFileAt({ f, l, view })
   return (
-    <OpenFile.Provider value={openFile}>
+    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={goFlow}>
     <div className="app">
       <a className="ui-skip" href="#main" onClick={(e) => { e.preventDefault(); UI.focusMain() }}>{t('跳到主要內容')}</a>
       <a className="ui-skip" href="#nav" onClick={(e) => { e.preventDefault(); (document.querySelector<HTMLElement>('.mobile-only:not([hidden]) [role=tab][aria-selected=true], nav [aria-current=page]') ?? document.querySelector<HTMLElement>('nav a, nav button'))?.focus() }}>{t('跳到導覽')}</a>
@@ -559,7 +560,7 @@ function Shell(p: ShellProps) {
         </div>
       </main>
     </div>
-    </OpenFile.Provider>
+    </OpenFunc.Provider></OpenFile.Provider>
   )
 }
 

@@ -861,4 +861,9 @@ export const EN: Record<string, string> = {
   "全部在 {v1} 處理。": "All are handled in {v1}.",
   "第 {v1} 行在": "Line {v1} is in",
   "這一行呼叫": "This line calls",
+  "{v1}：{v2} 個可能的目標": "{v1}: {v2} possible targets",
+  "{v1}，定義在 {v2}": "{v1}, defined at {v2}",
+  "定義在 {v1}": "Defined at {v1}",
+  "修改 `{v1}` 影響的函式（{v2} 個）": "Functions affected by changing `{v1}` ({v2})",
+  "{v1} 層": "{v1} levels",
 }

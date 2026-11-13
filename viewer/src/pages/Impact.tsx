@@ -112,7 +112,16 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
         )}
       </UI.Card>
       {rows.length ? (
-        <UI.DataTable resetKey={`${p.sourceId}:${p.start}`} label={t('受影響的函式')} pageSize={10} urlSync={false} search={{ placeholder: t('篩選函式') }}
+        <UI.DataTable resetKey={`${p.sourceId}:${p.start}`} label={t('受影響的函式')} widthKey={`codemap:impact:${p.sourceId}`}
+          // copied for a PR or an AI: full paths with every line, plain names (fn: links mean nothing outside codemap)
+          copyText={(rs: Row[]) => {
+            const cell = (s: string) => s.replace(/\|/g, '\\|')
+            return [t('修改 `{v1}` 影響的函式（{v2} 個）', { v1: p.ix.funcs[p.start]?.name ?? p.start, v2: rs.length }), '',
+              `| ${t('函式')} | ${t('關係')} | ${t('位置')} | ${t('距離')} |`, '| --- | --- | --- | ---: |',
+              ...rs.map((r) => `| \`${cell(r.name)}\` | ${cell(r.how)} | ${r.lines.map((l) => `\`${r.f}:${l}\``).join(t('、'))} | ${t('{v1} 層', { v1: r.depth })} |`)].join('\n')
+          }}
+          onCopyError={() => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。'))}
+          pageSize={10} urlSync={false} search={{ placeholder: t('篩選函式') }}
           summary={{ key: 'kind', items: (['direct', 'state', 'indirect'] as const).filter((k) => k !== 'state' || vars.length).map((k) => ({ value: k, label: t(KIND_LABEL[k]) })), unit: countUnit('個', 'function', 'functions') }}
           columns={[
             { key: 'name', label: t('函式'), width: 160, grow: 2, mobile: 'title', searchText: (r: Row) => r.name + ' ' + r.source,

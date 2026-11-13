@@ -6,6 +6,7 @@ import { noun, t } from '../i18n'
 import { entryText, type Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
 import { commandsOf, usage } from '../data/cli'
+import { useCallLinks } from '../components/CallLinks'
 import { inferred, type Edge, type Sel } from '../data/types'
 import { vscodeURL } from '../prefs'
 import { CodeAt, LineLink } from './CodeAt'
@@ -42,6 +43,8 @@ export function Detail(p: Props) {
   const [wholeKey, setWhole] = useState<string | null>(null)
   const whole = wholeKey === selKey
   const file = useFileSource(whole && f ? f.file : null, p.isLive, p.sourceId)
+  const fileCalls = useCallLinks(p.ix, file.data?.file, 1, file.data?.lines)
+  const srcCalls = useCallLinks(p.ix, src.data?.file, src.data?.start ?? 1, src.data?.lines)
   // a file:line clicked elsewhere (the impact table): once the code is shown, bring that line into view; the card
   // scrolls, so centring it inside the code box alone left it below the window
   const revealed = useRef<number | undefined>(undefined)
@@ -189,12 +192,12 @@ export function Detail(p: Props) {
       {whole ? (
         file.isPending ? <UI.Skeleton width="80%" height={16} />
           : file.error || !file.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{file.error ? (file.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
-          : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" {...refs} languageLabel={langLabel(file.data.file)} /><DocRefs ix={p.ix} lines={file.data.lines} /></>
+          : <><UI.CodeView file={file.data.file} code={file.data.lines.join('\n')} start={1} target={focus} maxHeight="60vh" {...refs} {...fileCalls} languageLabel={langLabel(file.data.file)} /><DocRefs ix={p.ix} lines={file.data.lines} /></>
       ) : at ? <CodeAt ix={p.ix} at={at} isLive={p.isLive} sourceId={p.sourceId} maxHeight="60vh" focus />
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
         : !src.data ? <p className="small muted">{t('匯出快照時無法讀取此檔案。請在 build 環境重新執行 codemap export。')}</p>
-        : <UI.CodeView {...refs} ref={code} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
+        : <UI.CodeView {...refs} {...srcCalls} ref={code} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={mark?.key === selKey ? mark.l : focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}
 
