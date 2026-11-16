@@ -5,6 +5,7 @@ import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
 import { entryText, push, type Index } from '../data/graph'
 import { fileGraph, fileView, roleOf, type Role } from '../data/files'
+import { KIND_LABEL, oneLine as descLine, useDescOrder } from '../data/describe'
 import { FEW_CHOICES, argText, commonRuns, usage } from '../data/cli'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
@@ -355,6 +356,7 @@ export function CompDetail(p: { ix: Index; comp: string; isLive: boolean; source
 
 /** A file's box: what it is for, whether people may change it, which files it calls and is called by, and its functions. */
 function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; onComp: (id: string) => void }) {
+  const descOrder = useDescOrder()
   const fg = useMemo(() => fileGraph(p.ix), [p.ix])
   const ids = useMemo(() => (p.ix.byFile().get(p.file) ?? []).filter((id) => p.ix.funcs[id].scope !== 'test'), [p.ix, p.file])
   const doc = p.ix.g.files?.[p.file]
@@ -380,7 +382,13 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
       </UI.Card>
       <div className="tree-panel grow-panel">
         <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；點選函式會到流程頁', { v1: ids.length })} height="100%"
-          label={t('{v1} 的函式', { v1: base(p.file) })} items={ids.map((id) => ({ id, name: p.ix.funcs[id].name, meta: `${base(p.ix.funcs[id].file)}:${p.ix.funcs[id].line} · ${p.ix.callerText(id)}` }))}
+          label={t('{v1} 的函式', { v1: base(p.file) })} items={ids.map((id) => {
+            // what it does when someone wrote it (the author, or an AI); otherwise who calls it, by name
+            const d = descLine(p.ix, id, descOrder)
+            const at = `${base(p.ix.funcs[id].file)}:${p.ix.funcs[id].line}`
+            // the description first: a long one is cut at the end of the line, where the place is the least loss
+            return { id, name: p.ix.funcs[id].name, meta: d && d.kind !== 'facts' ? `${t(KIND_LABEL[d.kind])}：${d.text} · ${at}` : `${at} · ${p.ix.callerText(id)}` }
+          })}
           onSelect={(n) => { if (p.ix.funcs[n.id]) p.onPick(n.id) }} />
       </div>
     </div>
