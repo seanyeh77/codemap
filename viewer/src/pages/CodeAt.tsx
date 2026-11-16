@@ -3,6 +3,7 @@ import { UI } from '../ui'
 import { DocRefs, OpenFile, langLabel, useCodeRefs } from '../components/DocRefs'
 import { t } from '../i18n'
 import { useCallLinks } from '../components/CallLinks'
+import { KIND_LABEL, oneLine, useDescOrder } from '../data/describe'
 import type { Index } from '../data/graph'
 import { useFileSource, useLineSource } from '../data/hooks'
 import { vscodeURL } from '../prefs'
@@ -42,6 +43,29 @@ export function CodeAt(p: { ix: Index; at: { f: string; l: number }; isLive: boo
 /** Where each function of a file starts: [ and ] in the whole-file view go from one to the next. */
 function sections(ix: Index, file: string) {
   return Object.values(ix.funcs).filter((f) => f.file === file).sort((a, b) => a.line - b.line).map((f) => ({ line: f.line, label: f.name }))
+}
+
+/** Every function in a file with one line on what it does, so a file can be read before its code; a name
+ *  jumps to that function in the code below. */
+function FileOutline(p: { ix: Index; f: string; onLine: (l: number) => void }) {
+  const order = useDescOrder()
+  const fs = Object.entries(p.ix.funcs).filter(([, f]) => f.file === p.f && f.kind !== 'module').sort(([, a], [, b]) => a.line - b.line)
+  if (!fs.length) return null
+  return (
+    <UI.Section title={t('這個檔案的函式')} summary={t('{v1} 個', { v1: fs.length })} defaultOpen storageKey="codemap:file-outline" level={3}>
+      <ul className="file-outline">
+        {fs.map(([id, f]) => {
+          const d = oneLine(p.ix, id, order)
+          return (
+            <li key={id}>
+              <button type="button" className="linklike mono" onClick={() => p.onLine(f.line)}>{f.name}</button>
+              <span className="small muted"> :{f.line}</span>
+              {d ? <span className={'block small desc-' + d.kind}>{d.kind === 'facts' ? null : <><UI.Tag>{t(KIND_LABEL[d.kind])}</UI.Tag> </>}{d.text}</span> : null}
+            </li>)
+        })}
+      </ul>
+    </UI.Section>
+  )
 }
 
 /** The asked line of a file: the function it is in and the repository functions it calls, each opening its flow page
@@ -92,7 +116,7 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
         : <>{md ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
           {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
             onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
-          : <>{p.at.l > 1 ? <LineCalls ix={p.ix} f={p.at.f} l={p.at.l} onFunc={p.onFunc} /> : null}<UI.CodeView {...refs} {...calls} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
+          : <><FileOutline ix={p.ix} f={p.at.f} onLine={(l) => open(p.at.f, l)} />{p.at.l > 1 ? <LineCalls ix={p.ix} f={p.at.f} l={p.at.l} onFunc={p.onFunc} /> : null}<UI.CodeView {...refs} {...calls} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
             sections={sections(p.ix, p.at.f)} /></>}
           {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
     </UI.Card>

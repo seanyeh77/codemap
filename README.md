@@ -184,6 +184,14 @@ document the code names), each with its first heading and sentence. Under
 named semaphores and FIFOs made with `O_CREAT`, who removes them, and the calls
 that end the program in the components that make them.
 
+Every function carries what is known about what it does, in up to three kinds:
+the author's line (its docstring, or the comment right above the definition, cut
+to the first sentence), a summary of facts codemap knows (the command that runs
+it, the commands it runs, the files it reads and writes, who calls it), and an
+AI's description once that exists. The panel lists every kind with where it
+comes from; a file's list of functions and a link's card show one line, the
+first kind there is in the order chosen in Settings.
+
 For a Python program that reads its command line with `argparse`, 「進入與結束」
 lists its commands as a person types them (`python3 harness/lab3.py status
 [--json]`, or the `[project.scripts]` name from `pyproject.toml`) and the

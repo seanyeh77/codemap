@@ -283,6 +283,39 @@ class Fixture(unittest.TestCase):
         self.assertEqual(view.source(self.root, "src/lib/lib.c", 1, 2)["start"], 1)
 
 
+class FuncDoc(unittest.TestCase):
+    """docs.func_doc: the author's one line about a function."""
+
+    def test_docstring_comment_and_decorators(self):
+        from codemap import docs
+        text = (
+            "def a():\n"                                   # 1
+            "    \"\"\"Sync the routes. Then more.\"\"\"\n"      # 2
+            "\n"                                           # 3
+            "# 把路由表同步到交換器。之後再清掉。\n"        # 4
+            "@decorator\n"                                 # 5
+            "def b():\n"                                   # 6
+            "    pass\n"                                   # 7
+            "\n"                                           # 8
+            "def c():\n"                                   # 9
+            "    pass\n")
+        c = (
+            "// Opens the ring.\n"                         # 1
+            "// It maps the shared memory.\n"              # 2
+            "int open_ring(void) {\n"                      # 3
+            "}\n"
+            "#include <x.h>\n"                             # 5
+            "int g(void) { return 0; }\n")                 # 6
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "m.py").write_text(text)
+            (Path(d) / "r.c").write_text(c)
+            self.assertEqual(docs.func_doc(d, "m.py", 1, "python"), "Sync the routes.")
+            self.assertEqual(docs.func_doc(d, "m.py", 6, "python"), "把路由表同步到交換器。")
+            self.assertIsNone(docs.func_doc(d, "m.py", 9, "python"))
+            self.assertEqual(docs.func_doc(d, "r.c", 3, "c"), "Opens the ring.")
+            self.assertIsNone(docs.func_doc(d, "r.c", 6, "c"))
+
+
 class Cli(unittest.TestCase):
     """argparse programs: each command, its arguments and the functions it runs (facts.py_cli)."""
 

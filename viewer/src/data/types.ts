@@ -26,6 +26,10 @@ export interface Func {
   scope?: 'test'
   /** Go: its package did not type-check fully; calls inside may be missing */
   types_incomplete?: boolean
+  /** The author's one line about it: the docstring, or the comment right above the definition */
+  doc?: string
+  /** An AI's description in each language, from `codemap describe`, and what `codemap check` found */
+  ai?: { text: Record<string, string>; state?: 'ok' | 'stale' | 'wrong' }
 }
 
 /** How an edge is known: the first three are calls written in the code, the last two are inferred. */

@@ -1,3 +1,4 @@
+import { ORDERS, setDescOrder, useDescOrder, type DescOrder } from '../data/describe'
 import { useRef, useState } from 'react'
 import { UI } from '../ui'
 import { dateTime, noun, setLang, t } from '../i18n'
@@ -45,6 +46,14 @@ function cacheText(c: { replayed: number; rebuilt: number; why: Record<string, n
 const BACKEND: Record<string, string> = { typescript: 'TypeScript / JavaScript' }
 const LANG: Record<string, string> = { python: 'Python', java: 'Java', go: 'Go', typescript: 'TypeScript', javascript: 'JavaScript', html: 'HTML', css: 'CSS', cpp: 'C++' }
 
+// the four orders of the descriptions: [label, what it means]
+const ORDER_LABEL: Record<DescOrder, [string, string]> = {
+  'ai-author-facts': ['AI 說明優先', 'AI 說明 → 程式註解 → 事實摘要'],
+  'author-ai-facts': ['程式註解優先', '程式註解 → AI 說明 → 事實摘要'],
+  'author-facts': ['不使用 AI 說明', '程式註解 → 事實摘要'],
+  'facts': ['只看事實摘要', '由誰執行、執行什麼指令、讀寫哪些檔案、被誰呼叫'],
+}
+
 export function Settings(p: Props) {
   const pr = usePrefs()
   const [toast, setToast] = useState('')
@@ -59,6 +68,7 @@ export function Settings(p: Props) {
     clearTimeout(timer.current)
     timer.current = setTimeout(() => setToast(''), 3000)
   }
+  const descOrder = useDescOrder()
   const radios = <K extends keyof Prefs>(label: string, k: K, opts: [Prefs[K] & string, string][]) => (
     <UI.RadioGroup label={label} value={pr[k] as string} onChange={(v) => save(k, v as Prefs[K])} options={opts.map(([value, l]) => ({ value, label: l }))} />
   )
@@ -147,6 +157,10 @@ export function Settings(p: Props) {
           <span className="grow"><span className="block">{t('包含測試程式碼')}</span><span className="small muted block">{t('在流程、影響範圍與搜尋中列出測試檔的 {v1} 個函式，及測試對正式程式碼的呼叫。架構圖只畫正式程式碼，型別推論也不採用測試放入的替身。', { v1: g.stats.tests })}</span></span>
           <UI.Switch label={t('包含測試程式碼')} checked={pr.tests} onChange={(v) => save('tests', v)} />
         </label> : null}
+      </UI.SettingsSection>
+      <UI.SettingsSection title={t('函式說明')} description={t('在檔案的函式清單、連結的預覽與流程樹，每個函式只顯示一行，依這個順序取第一種有的說明。右側面板列出全部。')}>
+        <UI.RadioGroup label={t('說明的順序')} value={descOrder} onChange={(v) => setDescOrder(v as DescOrder)}
+          options={ORDERS.map((o) => ({ value: o.id, label: <span><span className="block">{t(ORDER_LABEL[o.id][0])}</span><span className="small muted block">{t(ORDER_LABEL[o.id][1])}</span></span> }))} />
       </UI.SettingsSection>
       <UI.SettingsSection title={t('版面')}>{radios(t('原始碼面板'), 'panel', [['right', t('右側')], ['below', t('下方')]])}</UI.SettingsSection>
     </>

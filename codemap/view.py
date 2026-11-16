@@ -208,6 +208,9 @@ def build(root, index, config=None):
         api = arch.external((n.get("declared") or "").rsplit(":", 1)[0])
         if api:
             funcs[nid]["api"] = api.removeprefix("external ")
+        # what the author wrote about it: the docstring, or the comment above the definition
+        if doc := docs.func_doc(root, n["file"], n["line"], n.get("lang", "c")):
+            funcs[nid]["doc"] = doc
         if end:
             top = min(n.get("top") or n["line"], docs.lead_line(root, n["file"], n["line"]))   # the comment, attributes and decorators above it
             if top < n["line"]:

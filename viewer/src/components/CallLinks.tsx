@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo } from 'react'
 import * as UI from '@seanyeh77/ui'
 import type { Index } from '../data/graph'
 import { t } from '../i18n'
+import { oneLine, useDescOrder } from '../data/describe'
 
 /** Opens a function's flow page; App provides it. */
 export const OpenFunc = createContext<(id: string) => void>(() => {})
@@ -59,6 +60,7 @@ export function callLinks(ix: Index, file: string, start: number, lines: string[
 /** The props that make the calls in a CodeView links: open the function, and a card with where it is defined. */
 export function useCallLinks(ix: Index, file: string | undefined, start: number, lines: string[] | undefined) {
   const open = useContext(OpenFunc)
+  const order = useDescOrder()
   const links = useMemo(() => (file && lines ? callLinks(ix, file, start, lines) : []), [ix, file, start, lines])
   if (!links.length) return {}
   return {
@@ -77,6 +79,7 @@ export function useCallLinks(ix: Index, file: string | undefined, start: number,
             return (
               <div key={id}>
                 <UI.InlineCode href={'#' + id} onClick={(e) => { e.preventDefault(); open(id) }}>{f.name}</UI.InlineCode>
+                {((d) => d ? <div className="small">{d.text}</div> : null)(oneLine(ix, id, order))}
                 <div className="small muted">{t('定義在 {v1}', { v1: `${f.file}:${f.line}` })}{f.comp ? ` · ${f.comp}` : ''}</div>
               </div>
             )

@@ -119,3 +119,12 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .level-tabs { flex-shrink: 0; }
 /* a Markdown file's preview scrolls inside the panel like its source does */
 .md-preview { max-height: 70vh; overflow: auto; padding-top: var(--space-3); }
+
+/* a function's descriptions in the panel: one per kind, each with the tag saying where it comes from */
+.desc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.desc { line-height: 1.6; }
+.desc .ui-tag { margin-right: var(--space-1); }
+.desc-facts { color: var(--ink-muted); }
+.call-preview { display: grid; gap: var(--space-2); max-width: 420px; }
+.file-outline { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-2); max-height: 40vh; overflow: auto; }
+.file-outline .mono { font-family: var(--font-mono); }

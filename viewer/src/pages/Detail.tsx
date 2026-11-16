@@ -7,6 +7,7 @@ import { entryText, type Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
 import { commandsOf, usage } from '../data/cli'
 import { useCallLinks } from '../components/CallLinks'
+import { KIND_LABEL, descriptions, useDescOrder } from '../data/describe'
 import { inferred, type Edge, type Sel } from '../data/types'
 import { vscodeURL } from '../prefs'
 import { CodeAt, LineLink } from './CodeAt'
@@ -43,6 +44,7 @@ export function Detail(p: Props) {
   const [wholeKey, setWhole] = useState<string | null>(null)
   const whole = wholeKey === selKey
   const file = useFileSource(whole && f ? f.file : null, p.isLive, p.sourceId)
+  const descOrder = useDescOrder()
   const fileCalls = useCallLinks(p.ix, file.data?.file, 1, file.data?.lines)
   const srcCalls = useCallLinks(p.ix, src.data?.file, src.data?.start ?? 1, src.data?.lines)
   // a file:line clicked elsewhere (the impact table): once the code is shown, bring that line into view; the card
@@ -129,6 +131,13 @@ export function Detail(p: Props) {
         el?.scrollIntoView({ block: 'nearest' })
         el?.focus({ focusVisible: true } as FocusOptions)
       }}>{t('跳到呼叫流程樹')}</button></p> : null}
+      {/* what it does: every kind there is, in the reader's order, each marked with where it comes from */}
+      <ul className="desc-list" aria-label={t('函式說明')}>
+        {descriptions(p.ix, p.sel.id, descOrder).map((d) => (
+          <li key={d.kind} className={'desc desc-' + d.kind}>
+            <UI.Tag>{t(KIND_LABEL[d.kind])}</UI.Tag> <span>{d.text}</span>{d.lang ? <span className="small muted">{' '}({d.lang === 'en' ? 'English' : '中文'})</span> : null}
+          </li>))}
+      </ul>
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
         { label: t('元件'), value: f.comp },

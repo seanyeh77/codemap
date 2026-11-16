@@ -121,3 +121,68 @@ def atomics(root, file, start, end):
             if op not in out:
                 out.append(op)
     return out
+
+
+_PY_DOCS = {}
+
+
+def _py_docstrings(root, file):
+    """{def line: docstring} of the functions and classes in a Python file."""
+    import ast
+    key = (str(root), file)
+    if key not in _PY_DOCS:
+        found = {}
+        try:
+            for n in ast.walk(ast.parse("\n".join(lines(Path(root) / file)))):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    d = ast.get_docstring(n)
+                    if d:
+                        found[n.lineno] = d
+                        for dec in n.decorator_list:             # the node's line is the def, a decorator can come first
+                            found.setdefault(dec.lineno, d)
+        except (SyntaxError, ValueError):
+            pass
+        _PY_DOCS[key] = found
+    return _PY_DOCS[key]
+
+
+_MARK = re.compile(r"^\s*(?:///?|/\*\*?|\*/?|#+|--|;+|%)\s?")
+
+
+def first_sentence(text, limit=240):
+    """The first sentence of a comment or docstring: up to the first blank line, then up to '. ' or '。'."""
+    para = []
+    for ln in text.strip().splitlines():
+        if not ln.strip():
+            if para:
+                break
+            continue
+        para.append(ln.strip())
+    s = " ".join(para)
+    m = re.search(r"(?<=[.!?])\s+(?=[A-Z`(\"'])|(?<=[。！？])", s)
+    s = s[: m.start()] if m else s
+    return s if len(s) <= limit else s[: limit - 1].rstrip() + "…"
+
+
+def func_doc(root, file, line, lang):
+    """The author's one-line description of a function: a Python docstring, else the comment directly above the
+    definition (no blank line between); None when neither is there. Attributes and decorators are skipped."""
+    if lang == "python":
+        d = _py_docstrings(root, file).get(line)
+        if d:
+            return first_sentence(d)
+    src = lines(Path(root) / file)
+    k, block = line - 1, []
+    while k > 0 and src[k - 1].strip():
+        t = src[k - 1].strip()
+        if t.startswith(("@", "#[", "[[", "[")) and not t.startswith(("#", "//")) or t.startswith("#[") or t.startswith("@"):
+            k -= 1                                     # @decorator, #[attr], [[nodiscard]]: not the comment
+            continue
+        if not _MARK.match(src[k - 1]) or t.startswith(("#include", "#define", "#if", "#endif", "#pragma", "#!")):
+            break
+        block.insert(0, _MARK.sub("", src[k - 1]).rstrip(" */").rstrip())
+        k -= 1
+    text = "\n".join(block).strip()
+    if not text or re.fullmatch(r"[-=*#/ ]+", text):
+        return None
+    return first_sentence(text)
