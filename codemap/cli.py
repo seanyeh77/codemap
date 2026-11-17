@@ -365,13 +365,13 @@ def cmd_describe(a):
             else f"{len(ids)} item{'s' * (len(ids) != 1)}")
     print(f"round {level} of 4, {describe_items.LEVELS[level]}: {what}: {len(texts)} prompt{'s' * (len(texts) != 1)}, "
           f"{rel(names[0])}" + (f" ... {names[-1].name}" if len(names) > 1 else ""))
-    # beside the prompts, the whole job for an AI agent: tell it 「照 .codemap/prompts/AGENT.md 做」
-    (folder / "AGENT.md").write_text(agent_text(), encoding="utf-8")
     print("give each to an AI, save its answer as answer-NN.json beside it, then:")
     print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
     if level < 4:
         print("then run codemap describe again for the next round")
-    print(f"or have an AI agent (Claude Code) do every round: tell it to follow {rel(folder)}/AGENT.md")
+    # the whole job for an AI agent (Claude Code), on screen to copy: it does every round by itself
+    print("\nor give an AI agent (Claude Code, in this repository) the instruction below; it does every round:\n")
+    print(agent_text())
 
 
 def cmd_relations(a):
