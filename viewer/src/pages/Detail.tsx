@@ -133,11 +133,14 @@ export function Detail(p: Props) {
         el?.focus({ focusVisible: true } as FocusOptions)
       }}>{t('跳到呼叫流程樹')}</button></p> : null}
       {/* what it does: every kind there is, in the reader's order, each marked with where it comes from */}
-      <ul className="desc-list" aria-label={t('函式說明')}>
+      <ul className="desc-list" aria-label={t('函式說明')} data-tour="desc">
         {descriptions(p.ix, p.sel.id, descOrder).map((d) => (
           <li key={d.kind} className={'desc desc-' + d.kind}>
             <DescText d={d} tag full />
           </li>))}
+        {/* nobody said what it does: how to have it said, once, under the facts */}
+        {!descriptions(p.ix, p.sel.id, descOrder).some((d) => d.kind !== 'facts' && d.state !== 'wrong')
+          ? <li className="small muted">{t('這個函式沒有註解或 AI 說明。在 repo 裡執行 codemap describe {v1} --missing，請 AI 補上。', { v1: f.file })}</li> : null}
       </ul>
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },

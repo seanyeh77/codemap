@@ -6,6 +6,30 @@ Java and HTML/CSS (and the others, when their analyzer cannot run) through
 tree-sitter. It never runs the program, so it works on code that takes too long
 to run, and on code that is half rewritten.
 
+## Quick start
+
+```sh
+uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
+cd your-repository
+codemap index                 # 1. read the code; run again after it changes
+codemap describe FILE --missing -o prompt.md
+                              # 2. optional: a prompt for an AI to say what each function does (below)
+codemap serve                 # 3. open http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)
+codemap export --html         #    or one HTML file with the map, to open anywhere
+```
+
+Descriptions come before serve and export: the map shows the ones there are, and
+a snapshot keeps only what exists when it is written. Kept while serve runs, they
+appear after 重新載入索引.
+
+In the map: 架構 shows the components and how they call each other, 流程 the
+calls down or up from a function, 影響範圍 what a change reaches, 檢查筆記
+whether notes still match the code. Click any function for what it does: its
+author's comment, an AI's description, or the facts codemap knows. The **?** in the top bar
+walks through the pages; `codemap` alone lists every command.
+
+## How it works
+
 The map has four layers:
 
 1. **Calls.** Each language is read by a backend, and every backend writes the

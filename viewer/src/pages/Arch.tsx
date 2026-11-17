@@ -355,6 +355,17 @@ export function CompDetail(p: { ix: Index; comp: string; isLive: boolean; source
 }
 
 /** A file's box: what it is for, whether people may change it, which files it calls and is called by, and its functions. */
+/** How many functions say what they do (an author's comment, an AI's description), and how to have the rest said. */
+function DescCoverage(p: { ix: Index }) {
+  const fs = Object.values(p.ix.funcs).filter((f) => f.kind !== 'module' && !f.comp.endsWith('(tests)'))
+  if (!fs.length) return null
+  const doc = fs.filter((f) => f.doc).length
+  const ai = fs.filter((f) => f.ai && f.ai.state !== 'wrong').length
+  const none = fs.filter((f) => !f.doc && !(f.ai && f.ai.state !== 'wrong')).length
+  return <p className="small muted">{t('函式說明：{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。', { v1: fs.length, v2: doc, v3: ai })}
+    {none ? ' ' + t('其餘 {v1} 個可以用 codemap describe 請 AI 補上。', { v1: none }) : ''}</p>
+}
+
 function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; onComp: (id: string) => void }) {
   const descOrder = useDescOrder()
   const fg = useMemo(() => fileGraph(p.ix), [p.ix])
@@ -751,6 +762,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
       <UI.Card className="detail fit overview" title={t('概觀')}
         actions={<><UI.SectionGroupToggle /><UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} /></>}>
         <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
+        <DescCoverage ix={p.ix} />
         <div data-tour="arch"><RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>
           {parts.map((x) => <Part key={x.id} {...x} />)}
         </MdLinksCtx.Provider></RepoKey.Provider></div>

@@ -1,9 +1,17 @@
 """codemap: a static map of a codebase for people and AI.
 
+Start here, in the repository:
+  codemap index                      1. read the code (again after it changes)
+  codemap describe FILE -o prompt.md 2. optional: have an AI say what each function does (codemap describe -h)
+  codemap serve                      3. open the map in a browser: http://127.0.0.1:7300/
+  codemap export --html                 or one HTML file with the map, to open anywhere
+
+Every command:
   codemap index [--scope DIR ...]   Layer 1 and 2: build .codemap/index.json
   codemap callers NAME               who calls NAME (compiler and rule edges)
   codemap callees NAME               what NAME calls
-  codemap where NAME                 definition of NAME
+  codemap where NAME                 definition of NAME, and what it does
+  codemap describe [FILE ...]        AI descriptions: write the prompt, --apply the answer, --status
   codemap relations [NAME]           rule edges: pointers, env, exec, build, cross-language
   codemap arch                       write the Architecture section of CODEMAP.md and a diagram
   codemap check [FILE ...]           validate file:line references and call claims
@@ -149,6 +157,22 @@ def cmd_index(a):
     for u in idx["units"]:
         if u["status"] == "failed":
             print(f'failed: {u["file"]}\n  {u["error"].splitlines()[-1] if u["error"] else ""}')
+    next_steps(root, idx)
+
+
+def next_steps(root, idx):
+    """What to do with the index just built: open it, take it along, and how many functions say what they do."""
+    funcs = [(nid, n) for nid, n in idx["nodes"].items()
+             if n.get("defined") and n.get("line") and n.get("kind") not in ("module", "file") and n.get("scope") != "test"]
+    ai = describe.load(root)
+    told = sum(1 for nid, n in funcs if nid in ai or docs.func_doc(root, n["file"], n["line"], n.get("lang", "c")))
+    print("\nnext:")
+    # descriptions first: the map shows them, and a snapshot keeps only what is there when it is written
+    if funcs and told < len(funcs):
+        print(f"  codemap describe FILE         {len(funcs) - told} of {len(funcs)} functions have no comment or description: "
+              "have an AI write them (optional)")
+    print("  codemap serve                 open the map: http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)")
+    print("  codemap export --html         or one HTML file with the map, to open anywhere")
 
 
 def cmd_edges(a, direction):
@@ -303,7 +327,7 @@ def cmd_viewer(a):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="codemap", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-C", dest="root", default=".", help="repository root (default: current directory)")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")
     s = sub.add_parser("index")
     s.add_argument("--scope", nargs="*", help="only translation units under these directories")
     s.add_argument("-j", "--jobs", type=int)
@@ -349,6 +373,9 @@ def main(argv=None):
     s.add_argument("-o", "--output", default="codemap-viewer")
     s.set_defaults(fn=cmd_viewer)
     a = ap.parse_args(argv)
+    if not a.cmd:                                     # `codemap` alone: how to start, not an error
+        print(__doc__)
+        return
     a.fn(a)
 
 

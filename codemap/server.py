@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 from urllib.parse import quote
 
-from . import rules, view
+from . import describe, rules, view
 from .source import forget_files
 
 ASSETS = Path(__file__).parent / "viewer_dist"
@@ -42,13 +42,15 @@ def create_app(root, notes=None, allowed_hosts=None):
     lock = threading.Lock()
 
     def index():
-        """The index and the viewer graph, rebuilt when index.json changes."""
+        """The index and the viewer graph, rebuilt when index.json or the AI descriptions change."""
         if not index_path.exists():
             raise HTTPException(404, f"找不到 {index_path}，請先執行 codemap index。")
         with lock:
             mtime = index_path.stat().st_mtime
+            d = describe.path(root)
+            desc = d.stat().st_mtime if d.exists() else 0       # codemap describe --apply while serving
             c = state["cache"]
-            if c is None or c["mtime"] != mtime:
+            if c is None or c["mtime"] != mtime or c.get("desc") != desc:
                 forget_files()
                 idx = json.loads(index_path.read_text(encoding="utf-8"))
                 g = view.build(root, idx, rules.load_config(root))
@@ -58,7 +60,7 @@ def create_app(root, notes=None, allowed_hosts=None):
                     if root.resolve() in rel.parents:
                         files.add(str(rel.relative_to(root.resolve())))
                 g = dict(g, readable=sorted(set(g.get("readable", ())) | files))     # the notes show in the search too
-                c = state["cache"] = dict(mtime=mtime, index=idx, graph=g, files=files)
+                c = state["cache"] = dict(mtime=mtime, desc=desc, index=idx, graph=g, files=files)
             return c
 
     app = FastAPI(title="codemap", version="0.2.0", docs_url="/api/docs", openapi_url="/api/openapi.json")

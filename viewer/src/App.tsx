@@ -33,8 +33,8 @@ const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> 
 }
 const nav = (id: View) => ({ id, label: t(PAGES[id].title), icon: PAGES[id].icon })
 // the tour shows the flow tree and the check page, so it moves between pages and returns afterwards
-const TOUR_VIEWS: (View | null)[] = ['arch', null, 'flow', 'impact', 'check']
-const TOUR_TARGETS = ['arch', 'search', 'tree', 'impact', 'notes']
+const TOUR_VIEWS: (View | null)[] = ['arch', null, 'flow', 'flow', 'impact', 'check']
+const TOUR_TARGETS = ['arch', 'search', 'tree', 'desc', 'impact', 'notes']
 // phones have no Ctrl K: the tour points at the search button instead
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 
@@ -554,6 +554,7 @@ function Shell(p: ShellProps) {
           { target: 'arch', title: t('架構圖'), text: t('方塊為元件，線為元件之間的關係。點選概觀的段落名稱可跳到該段。') },
           { target: 'search', title: t('搜尋'), text: COARSE ? t('點選畫面上方的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
           { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則：…）」的關係由括號中的規則推得，點選標籤可查看依據。') },
+          { target: 'desc', title: t('函式說明'), text: t('右側面板說明函式的作用：作者的註解、AI 的說明，或 codemap 知道的事實。沒有說明的函式可以用 codemap describe 請 AI 補上；說明的順序在設定裡改。') },
           { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
           { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
         ]} />
