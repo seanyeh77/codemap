@@ -1,12 +1,10 @@
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { UI } from '../ui'
-import { DocRefs, OpenFile, langLabel, useCodeRefs } from '../components/DocRefs'
+import { DocRefs, langLabel, useCodeRefs } from '../components/DocRefs'
 import { t } from '../i18n'
 import { useCallLinks } from '../components/CallLinks'
-import { oneLine, useDescOrder } from '../data/describe'
-import { DescText } from '../components/DescText'
 import type { Index } from '../data/graph'
-import { useFileSource, useLineSource } from '../data/hooks'
+import { useLineSource } from '../data/hooks'
 import { vscodeURL } from '../prefs'
 
 /** 「用 VS Code 開啟」, only once an editor is chosen in settings. */
@@ -38,89 +36,4 @@ export function CodeAt(p: { ix: Index; at: { f: string; l: number }; isLive: boo
   if (!src.data) return <p className="small muted">{p.isLive ? t('這一行不在已索引的檔案中，無法顯示。') : t('快照只含函式的原始碼，這一行不在任何函式中。請在 build 環境執行 codemap serve 查看。')}</p>
   return <><UI.CodeView {...refs} {...calls} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} fileHref={vscodeURL(p.at.f, p.at.l, p.ix.g.root, p.ix.g.host) ?? undefined}
     code={src.data.lines.join('\n')} start={src.data.start} target={p.at.l} maxHeight={p.maxHeight ?? '40vh'} /><DocRefs ix={p.ix} lines={src.data.lines} /></>
-}
-
-/** A whole file opened from the search (a header, the Makefile, where a macro is defined), its line marked. */
-/** Where each function of a file starts: [ and ] in the whole-file view go from one to the next. */
-function sections(ix: Index, file: string) {
-  return Object.values(ix.funcs).filter((f) => f.file === file).sort((a, b) => a.line - b.line).map((f) => ({ line: f.line, label: f.name }))
-}
-
-/** Every function in a file with one line on what it does, so a file can be read before its code; a name
- *  jumps to that function in the code below. */
-function FileOutline(p: { ix: Index; f: string; onLine: (l: number) => void }) {
-  const order = useDescOrder()
-  const fs = Object.entries(p.ix.funcs).filter(([, f]) => f.file === p.f && f.kind !== 'module').sort(([, a], [, b]) => a.line - b.line)
-  if (!fs.length) return null
-  return (
-    <UI.Section title={t('這個檔案的函式')} summary={t('{v1} 個', { v1: fs.length })} defaultOpen storageKey="codemap:file-outline" level={3}>
-      <ul className="file-outline">
-        {fs.map(([id, f]) => {
-          const d = oneLine(p.ix, id, order)
-          return (
-            <li key={id}>
-              <button type="button" className="linklike mono" onClick={() => p.onLine(f.line)}>{f.name}</button>
-              <span className="small muted"> :{f.line}</span>
-              {d ? <span className="block small"><DescText d={d} tag /></span> : null}
-            </li>)
-        })}
-      </ul>
-    </UI.Section>
-  )
-}
-
-/** The asked line of a file: the function it is in and the repository functions it calls, each opening its flow page
- *  (the code itself has no links). */
-function LineCalls(p: { ix: Index; f: string; l: number; onFunc: (id: string) => void }) {
-  const inFn = Object.entries(p.ix.funcs).filter(([, f]) => f.file === p.f && f.line <= p.l && p.l <= (f.end ?? f.line) && f.kind !== 'module')
-    .sort(([, a], [, b]) => b.line - a.line)[0]
-  const called = [...new Set(p.ix.g.edges.filter((e) => e.f === p.f && e.l === p.l && p.ix.funcs[e.d] && e.d !== inFn?.[0]).map((e) => e.d))]
-  if (!inFn && !called.length) return null
-  // a module-level Python function with its module in front, as the code writes it (runtime.deploy)
-  const name = (id: string) => { const f = p.ix.funcs[id]; return f.lang === 'python' && !f.name.includes('.') && f.file !== p.f ? f.file.split('/').pop()!.replace(/\.py$/, '') + '.' + f.name : f.name }
-  const fn = (id: string) => <UI.InlineCode key={id} href={'#' + id} onClick={(e) => { e.preventDefault(); p.onFunc(id) }}>{name(id)}</UI.InlineCode>
-  const loc = (id: string) => <span className="muted small"> {p.ix.funcs[id].file}:{p.ix.funcs[id].line}</span>
-  return <UI.DetailList items={[
-    ...(inFn ? [{ label: t('第 {v1} 行在', { v1: p.l }), value: <span>{fn(inFn[0])}{loc(inFn[0])}</span> }] : []),
-    ...(called.length ? [{ label: t('這一行呼叫'), value: <span className="entry-list">{called.map((id) => <span key={id}>{fn(id)}{loc(id)}</span>)}</span> }] : []),
-  ]} />
-}
-
-export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: boolean; sourceId: string; onClose: () => void; onFunc: (id: string) => void }) {
-  const src = useFileSource(p.at.f, p.isLive, p.sourceId)
-  const view = useRef<UI.CodeViewHandle>(null)
-  const refs = useCodeRefs(p.ix)
-  const calls = useCallLinks(p.ix, src.data?.file, 1, src.data?.lines)
-  const open = useContext(OpenFile)
-  // a Markdown file opens as its preview, unless a line in it was asked for: the preview has no line numbers
-  const md = /\.(md|markdown)$/i.test(p.at.f)
-  const [mode, setMode] = useState<'preview' | 'source'>(p.at.l > 1 ? 'source' : 'preview')
-  const [was, setWas] = useState(p.at)
-  if (was.f !== p.at.f || was.l !== p.at.l) { setWas(p.at); setMode(p.at.l > 1 ? 'source' : 'preview') }     // another file or line asked for
-  const shown = md ? mode : 'source'
-  // a link in the document to another file of the project opens it here; a web address opens in a new tab
-  const local = (href: string) => {
-    if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return null
-    const parts = [...p.at.f.split('/').slice(0, -1), ...href.split('#')[0].split('/')]
-    const out: string[] = []
-    for (const x of parts) { if (x === '..') out.pop(); else if (x && x !== '.') out.push(x) }
-    return out.join('/')
-  }
-  useEffect(() => { if (src.data && shown === 'source') view.current?.focusTarget() }, [src.data, p.at.l, shown])
-  return (
-    // Escape inside the file closes it, back to where it was opened from (the panel had no keyboard way out)
-    <div className="file-wrap" onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); p.onClose() } }}>
-    <UI.Card className="detail" title={p.at.f.split('/').pop()} actions={<UI.Button onClick={p.onClose}>{t('關閉檔案')}</UI.Button>}>
-      {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
-        : src.isPending ? <UI.Skeleton width="80%" height={16} />
-        : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
-        : <>{md ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
-          {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
-            onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
-          : <><FileOutline ix={p.ix} f={p.at.f} onLine={(l) => open(p.at.f, l)} />{p.at.l > 1 ? <LineCalls ix={p.ix} f={p.at.f} l={p.at.l} onFunc={p.onFunc} /> : null}<UI.CodeView {...refs} {...calls} languageLabel={langLabel(src.data.file)} ref={view} file={src.data.file} code={src.data.lines.join('\n')} start={1} target={p.at.l > 1 ? p.at.l : undefined} maxHeight="70vh"
-            sections={sections(p.ix, p.at.f)} /></>}
-          {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
-    </UI.Card>
-    </div>
-  )
 }

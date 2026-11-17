@@ -129,15 +129,42 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .desc .ui-tag { margin-right: var(--space-1); }
 .desc-facts { color: var(--ink-muted); }
 .call-preview { display: grid; gap: var(--space-2); max-width: 420px; }
-.file-outline { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-2); max-height: 40vh; overflow: auto; }
-.file-outline .mono { font-family: var(--font-mono); }
 .desc-code { font-family: var(--font-mono); font-size: 0.92em; }
 /* an AI's description the code has moved on from, or contradicts: shown, but not as sure as the rest */
 .desc-stale, .desc-wrong { opacity: 0.7; }
 .desc-wrong-note { color: var(--danger-text); }
 
-/* the open file in a side panel: the wrapper (it catches Escape) takes the panel's height and passes it on, so the
-   card is as tall as the panel and scrolls inside it. Without it the card grew to its content (1900 px for a long
-   file) in a panel that clips, and the code and what follows could not be reached. */
-.file-wrap { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.file-wrap > .ui-card { flex: 1 1 auto; min-height: 0; width: auto; }
+
+/* reading a file: the whole page, one topic to a column (contents, the function being read, the code) */
+.reader-body { padding-top: var(--space-4); }
+.reader { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.reader-head { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+.reader-file { margin: 0; font-size: var(--text-h4, 20px); white-space: nowrap; }
+.reader-about { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); }
+.reader-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px minmax(300px, 34%) minmax(0, 1fr); gap: var(--space-4); }
+.reader-toc, .reader-now, .reader-code { min-height: 0; overflow: auto; background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm, 0 1px 2px rgb(0 0 0 / 0.06)); padding: var(--space-4); }
+.reader-label { margin: 0 0 var(--space-2); font-size: 13px; color: var(--ink-muted); }
+.reader-toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.reader-toc-item { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 4px var(--space-2); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-toc-item:hover { background: var(--surface-sub); }
+.reader-toc-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.reader-toc-item.is-on { background: var(--accent-soft); color: var(--accent-text); }
+.reader-now { display: flex; flex-direction: column; gap: var(--space-3); }
+.reader-now-head { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.reader-now-head h3 { margin: 0; font-size: var(--text-h4, 20px); word-break: break-all; }
+.reader-now-head > :last-child { margin-left: auto; }
+.reader-desc { margin: 0; }
+.reader-code { display: flex; flex-direction: column; gap: var(--space-3); padding: 0; background: transparent; box-shadow: none; overflow: hidden; }
+.reader-code > .ui-cv { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.reader-code > .ui-cv > .ui-cv-body { flex: 1 1 auto; min-height: 0; }
+.reader-code > .md-preview { max-height: none; flex: 1; min-height: 0; }
+@media (max-width: 959px) {
+  .reader-cols { grid-template-columns: minmax(0, 1fr); }
+  .reader-toc { max-height: 30vh; }
+  .reader-code > .ui-cv > .ui-cv-body { max-height: 70vh; }
+  .reader-head { flex-wrap: wrap; }
+}
+
+.reader-toc-item.is-member { padding-left: var(--space-5); }
+.reader-refs { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.reader-refs li { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }

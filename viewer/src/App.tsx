@@ -19,7 +19,7 @@ import { Impact } from './pages/Impact'
 import { Check } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
-import { FileView } from './pages/CodeAt'
+import { FileReader } from './pages/Reader'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
@@ -479,8 +479,11 @@ function Shell(p: ShellProps) {
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={(id, at) => pick(id, at, null, !!at)} openSearch={() => setSearchOpen(true)} />
     : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
     : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
-  const side = fileAt && fileAt.view === view ? <FileView ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} />
-    : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
+  // an open file takes the whole page to be read (FileReader); going back returns to the page it was opened on
+  const reading = fileAt && fileAt.view === view && view !== 'settings'
+    ? <FileReader ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} backLabel={t('回到{v1}', { v1: t(PAGES[view].title) })}
+      onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} /> : null
+  const side = view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
     <div className="alert-wrap">
@@ -544,6 +547,7 @@ function Shell(p: ShellProps) {
               backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
               onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()}
               openAt={(f, l) => select({ id: `t:${f}:${l}`, label: `${f}:${l}`, target: { type: 'file', f, l } })} />
+          : reading ? <div className="body reader-body">{reading}</div>
           : side && pr.panel !== 'below'
             // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
