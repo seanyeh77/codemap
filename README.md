@@ -239,6 +239,11 @@ codemap describe                       # the next round, until it says everythin
 codemap describe --status              # each round: up to date, stale, wrong, missing
 ```
 
+To have an AI agent (Claude Code, in this repository) do every round by itself,
+`codemap describe --agent` prints one instruction to give it: run describe,
+answer each prompt, apply, fix what was not kept, and go on until everything is
+described.
+
 With no file named it takes the whole project (not its tests: `--tests`), only
 what has no up-to-date description (all of it: `--rewrite`), about 30 functions
 or items to a prompt (`--batch N`). `--level N` writes round N even if one below

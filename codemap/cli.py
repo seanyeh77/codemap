@@ -285,6 +285,21 @@ def cmd_describe(a):
             print(f"next: codemap describe ({len(keys)} to describe in round {lv}: {describe_items.LEVELS[lv]})" if lv
                   else "everything is described")
         sys.exit(1 if bad_total else 0)
+    if a.agent:                                      # one instruction for an AI agent to do every round
+        r = describe.report(root, idx)
+        total = len([n for f in describe.project_files(idx, a.tests) for n in describe.funcs_in(idx, f)])
+        lines = [f"round 1, functions: {len(r['ok'])} of {total} described"]
+        ri, missing = describe_items.report(root, idx, g())
+        for lv in (2, 3, 4):
+            keys = [k for k in ri["ok"] if describe_items.KIND_LEVEL.get(describe_items.kind(k)) == lv]
+            lines.append(f"round {lv}, {describe_items.LEVELS[lv]}: {len(keys)} up to date, {missing[lv]} without one")
+        text = describe.agent_prompt(lines, a.by if a.by != "ai" else "<你的模型名稱>")
+        if a.output:
+            Path(a.output).write_text(text, encoding="utf-8")
+            print(f"wrote the instruction to {a.output}: give it to an AI agent (Claude Code) in this repository")
+        else:
+            print(text)
+        return
     if a.status:
         r = describe.report(root, idx)
         for st in ("stale", "wrong"):
@@ -351,6 +366,7 @@ def cmd_describe(a):
     print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
     if level < 4:
         print("then run codemap describe again for the next round")
+    print("or let an AI agent (Claude Code) do every round: codemap describe --agent, and give it what that prints")
 
 
 def cmd_relations(a):
@@ -489,6 +505,7 @@ def main(argv=None):
     s.add_argument("--apply", metavar="ANSWER", nargs="+", help="keep the AI's JSON answers (- for standard input)")
     s.add_argument("--by", default="ai", help="who wrote the answer, kept with it (e.g. claude-opus-5-5)")
     s.add_argument("--status", action="store_true", help="how many are up to date, stale or wrong")
+    s.add_argument("--agent", action="store_true", help="print one instruction for an AI agent (Claude Code) to write every round itself")
     s.set_defaults(fn=cmd_describe)
     s = sub.add_parser("relations")
     s.add_argument("name", nargs="?")
