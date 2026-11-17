@@ -7,6 +7,7 @@ version reports them as not available yet."""
 
 import base64
 import json
+import os
 import socket
 import threading
 from pathlib import Path
@@ -137,13 +138,31 @@ def serve(root, host="127.0.0.1", port=7300, notes=None):
     wildcard = host in ("0.0.0.0", "::")
     bracketed = f"[{host}]" if ":" in host else host     # an IPv6 address in a Host header or URL
     hosts = ["*"] if wildcard else ["localhost", "127.0.0.1", "[::1]", socket.gethostname(), bracketed]
+    # a port already taken: say which one to use instead, not uvicorn's traceback
+    try:
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as s:
+            s.bind((host, port))
+    except OSError:
+        free = next((p for p in range(port + 1, port + 50) if _free(host, p)), None)
+        raise SystemExit(f"codemap: port {port} is in use (another codemap serve?)"
+                         + (f"; try codemap serve --port {free}" if free else ""))
     app = create_app(root, notes, hosts)
     shown = socket.gethostname() if wildcard else bracketed
-    print(f"codemap viewer for {Path(root).resolve().name}: http://{shown}:{port}/")
-    if host in ("127.0.0.1", "localhost"):
-        print(f"from your laptop: ssh -L {port}:localhost:{port} {socket.gethostname()}  "
-              "(VS Code Remote-SSH forwards the port by itself)")
+    print(f"codemap: the map of {Path(root).resolve().name} is at http://{shown}:{port}/")
+    if host in ("127.0.0.1", "localhost") and os.environ.get("SSH_CONNECTION"):
+        print(f"  from your computer: ssh -L {port}:localhost:{port} {socket.gethostname()}  "
+              "(VS Code Remote-SSH forwards it by itself)")
+    print("  after codemap index or describe, press 重新載入索引 (Reload index) in the page; Ctrl-C stops")
     uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+def _free(host, port):
+    try:
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as s:
+            s.bind((host, port))
+        return True
+    except OSError:
+        return False
 
 
 def standalone_html(data):

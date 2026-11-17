@@ -103,10 +103,9 @@ COMPILE_TIMEOUT = 300   # seconds for one file
 
 
 def progress(text):
-    """One status line on a terminal, rewritten in place; nothing when output is redirected."""
-    if sys.stderr.isatty():
-        sys.stderr.write(f"\r\033[K{text}" if text else "\r\033[K")
-        sys.stderr.flush()
+    """What the running step is doing (the unit being compiled): shown dim after its seconds on a terminal."""
+    from .term import ui
+    ui().detail(text)
 
 
 def compile_unit(unit, root, cache, cc=None):

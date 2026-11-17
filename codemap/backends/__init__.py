@@ -66,43 +66,74 @@ def build(root, scope=None, jobs=None, cc=None, config=None):
     from .. import scope as scope_mod
     root = Path(root).resolve()
     parts = []
+    from ..term import ui
+    LABEL = {"gcc": "C/C++ through GCC", "python": "Python", "go": "Go", "typescript": "TypeScript/JavaScript"}
     for name, files in plan(root, config):
         if scope:
             files = [f for f in files if any(f.startswith(s.rstrip("/") + "/") for s in scope)]
-        if name == "gcc":
-            from .. import layer1
-            part = layer1.build(root, scope, jobs, cc)
-            for n in part["nodes"].values():
-                if n.get("defined"):
-                    n.setdefault("lang", "cpp" if Path(n.get("file") or "").suffix in (".cc", ".cpp", ".cxx", ".hpp", ".hh") else "c")
-            part["stats"]["files"] = len(files)
-            part["stats"]["languages"] = {"c": len(files)}
-        elif name == "python":
-            from . import python
-            part = python.build(root, files, scope_mod.test_files(files, config))
-        elif name == "go":
-            from . import go, syntax
-            part = go.build(root, files, scope_mod.test_files(files, config))
-            if part is None:                      # no Go toolchain, or the helper failed
-                part = syntax.build(root, files)
-                part["stats"]["fallback"] = "tree-sitter"
-                name = "syntax-go"
-        elif name == "typescript":
-            from . import syntax, ts
-            part = ts.build(root, files, scope_mod.test_files(files, config))
-            if part is None:                      # no Node, no TypeScript, or the helper failed
-                part = syntax.build(root, [f for f in files if not syntax.is_dts(f)])
-                part["stats"]["fallback"] = "tree-sitter"
-                name = "syntax-typescript"
-        else:
-            from . import syntax
-            missing = sorted({syntax.EXT[Path(f).suffix] for f in files if syntax.language(syntax.EXT[Path(f).suffix]) is None})
-            if missing:
-                sys.stderr.write("codemap: no tree-sitter grammar for " + ", ".join(missing)
-                                 + "; install codemap again to get them (uv tool install codemap)\n")
-            part = syntax.build(root, files, others=[p for _, p in parts])
+        with ui().step(f"{LABEL.get(name, 'tree-sitter')} ({len(files)} file{'s' * (len(files) != 1)})") as st:
+            name, part = _one(root, name, files, scope, jobs, cc, config, parts)
+            st.done(_result(name, part), "warn" if _trouble(part) else "ok")
         parts.append((name, part))
     from .. import scope
     idx = schema.merge(parts)
     scope.mark(idx["nodes"], config)
     return idx
+
+
+def _one(root, name, files, scope, jobs, cc, config, parts):
+    """Read one language's files: (backend name, part); the name changes when a fallback reads them."""
+    from .. import scope as scope_mod
+    if name == "gcc":
+        from .. import layer1
+        part = layer1.build(root, scope, jobs, cc)
+        for n in part["nodes"].values():
+            if n.get("defined"):
+                n.setdefault("lang", "cpp" if Path(n.get("file") or "").suffix in (".cc", ".cpp", ".cxx", ".hpp", ".hh") else "c")
+        part["stats"]["files"] = len(files)
+        part["stats"]["languages"] = {"c": len(files)}
+    elif name == "python":
+        from . import python
+        part = python.build(root, files, scope_mod.test_files(files, config))
+    elif name == "go":
+        from . import go, syntax
+        part = go.build(root, files, scope_mod.test_files(files, config))
+        if part is None:                      # no Go toolchain, or the helper failed
+            part = syntax.build(root, files)
+            part["stats"]["fallback"] = "tree-sitter"
+            name = "syntax-go"
+    elif name == "typescript":
+        from . import syntax, ts
+        part = ts.build(root, files, scope_mod.test_files(files, config))
+        if part is None:                      # no Node, no TypeScript, or the helper failed
+            part = syntax.build(root, [f for f in files if not syntax.is_dts(f)])
+            part["stats"]["fallback"] = "tree-sitter"
+            name = "syntax-typescript"
+    else:
+        from . import syntax
+        missing = sorted({syntax.EXT[Path(f).suffix] for f in files if syntax.language(syntax.EXT[Path(f).suffix]) is None})
+        if missing:
+            from ..term import ui
+            ui().say("no tree-sitter grammar for " + ", ".join(missing) + "; install codemap again to get them "
+                     "(uv tool install --reinstall codemap)", "warn")
+        part = syntax.build(root, files, others=[p for _, p in parts])
+    return name, part
+
+
+def _result(name, part):
+    """The few numbers worth seeing on screen once a language is read; the rest goes to the log."""
+    st = part.get("stats", {})
+    defs = len([n for n in part.get("nodes", {}).values() if n.get("defined") and n.get("kind") != "site"])
+    if name == "gcc":
+        bits = [f'{st.get("units", 0)} units: {st.get("compiled", 0)} compiled', f'{st.get("cached", 0)} cached']
+        if st.get("failed"):
+            bits.append(f'{st["failed"]} failed')
+        return f"{defs} functions ({', '.join(bits)})"
+    if "fallback" in st:
+        return f"{defs} definitions, read by tree-sitter (no {'Go toolchain' if name == 'syntax-go' else 'Node or TypeScript'})"
+    return f"{defs} definitions"
+
+
+def _trouble(part):
+    st = part.get("stats", {})
+    return bool(st.get("failed") or st.get("fallback") or part.get("errors"))

@@ -21,6 +21,12 @@ Descriptions come before serve and export: the map shows the ones there are, and
 a snapshot keeps only what exists when it is written. Kept while serve runs, they
 appear after 重新載入索引.
 
+On a terminal `codemap index` shows one line per step (each language, the rules,
+the index written) with a spinner, its seconds and what it is reading, then a
+summary; every number and message goes to `.codemap/index.log` (`-v` prints them
+too). Piped, in CI or with `CODEMAP_PLAIN=1` it prints plain `==> step` lines;
+`NO_COLOR` turns colours off.
+
 In the map: 架構 shows the components and how they call each other, 流程 the
 calls down or up from a function, 影響範圍 what a change reaches, 檢查筆記
 whether notes still match the code. Click any function for what it does: its

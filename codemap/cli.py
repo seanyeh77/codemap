@@ -28,7 +28,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import arch, backends, check, describe, describe_items, docs, frameworks, layer1, rules, view
+from . import arch, backends, check, describe, describe_items, docs, term, frameworks, layer1, rules, view
 
 INDEX = Path(".codemap") / "index.json"
 CALLISH = ("call", "indirect_candidate", "indirect_saved", "fnptr_assign", "constructor", "destructor")
@@ -96,68 +96,112 @@ def cmd_index(a):
     if not backends.plan(root, cfg):
         sys.exit(f"codemap: nothing to read in {root}: no compile_commands.json and no source file in a language "
                  f"codemap reads ({', '.join(backends_langs())})")
-    idx = backends.build(root, scope, a.jobs, cc, cfg)
-    layer1.progress("applying rules (env, exec, function pointers, LD_PRELOAD)")
-    idx = rules.run(root, idx, cfg)
-    layer1.progress("applying framework adapters")
-    idx = frameworks.run(root, idx, cfg)
-    layer1.progress("")
-    idx["root"] = str(root)
-    idx["scope"] = scope
-    idx["cc"] = cc                             # None: the gcc or g++ each unit names
-    (root / INDEX).parent.mkdir(parents=True, exist_ok=True)
-    tmp = (root / INDEX).with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(idx, indent=1), encoding="utf-8")
-    os.replace(tmp, root / INDEX)              # a running `codemap serve` never reads half a file
+    ui = term.ui()
+    idx = backends.build(root, scope, a.jobs, cc, cfg)                  # one step per language
+    with ui.step("Rules and framework adapters") as st:
+        ui.detail("env, exec, function pointers, LD_PRELOAD")
+        idx = rules.run(root, idx, cfg)
+        ui.detail("framework adapters")
+        idx = frameworks.run(root, idx, cfg)
+        rel = idx["stats"].get("rule_edges", {})
+        fw = idx["stats"].get("framework_edges", {})
+        n = sum(rel.values()) + sum(fw.values())
+        st.done(f"{n} relation{'s' * (n != 1)} (each kind in the log)" if n else "nothing found")
+    with ui.step(f"Write {INDEX}"):
+        idx["root"] = str(root)
+        idx["scope"] = scope
+        idx["cc"] = cc                             # None: the gcc or g++ each unit names
+        (root / INDEX).parent.mkdir(parents=True, exist_ok=True)
+        tmp = (root / INDEX).with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(idx, indent=1), encoding="utf-8")
+        os.replace(tmp, root / INDEX)              # a running `codemap serve` never reads half a file
+    # every number and message to the log; on screen, what it adds up to and what needs looking at
+    details = index_details(root, idx, t)
+    log = root / ".codemap" / "index.log"
+    log.write_text("\n".join(details) + "\n", encoding="utf-8")
+    if a.verbose:
+        print("\n".join(details))
+    print()
+    for ln in index_summary(idx, time.time() - t).splitlines():
+        print(term.fit(ln))
+    failed = [u for u in idx["units"] if u["status"] == "failed"]
+    if failed:
+        ui.say(f"{len(failed)} unit{'s' * (len(failed) != 1)} did not compile (their calls are missing): "
+               + ", ".join(u["file"] for u in failed[:3]) + (" ..." if len(failed) > 3 else ""), "warn")
+    msgs = sum(len(b.get("errors", [])) for b in idx["backends"].values() if isinstance(b, dict))
+    if msgs:
+        ui.say(f"{msgs} message{'s' * (msgs != 1)} from the analyzers (the calls around them are still mapped)", "warn")
+    print(f"details: {log.relative_to(Path.cwd()) if log.is_relative_to(Path.cwd()) else log}"
+          + ("" if a.verbose else "  (or codemap index -v)"))
+    next_steps(root, idx)
+
+
+def index_summary(idx, secs):
+    """One line: how many functions and calls, and how sure the calls are."""
+    nodes = [n for n in idx["nodes"].values() if n.get("defined") and n.get("kind") != "site" and n.get("line")]
+    res = {}
+    for b in idx["backends"].values():
+        for k, v in (b.get("resolution") or {}).items() if isinstance(b, dict) else []:
+            res[k] = res.get(k, 0) + v
+    calls = sum(1 for e in idx["edges"] if e.get("kind") in CALLISH)
+    sure = [f"{res[k]} {k}" for k in ("exact", "inferred", "ambiguous") if res.get(k)]
+    tests = sum(1 for n in nodes if n.get("scope") == "test")
+    head = f"{len(nodes)} functions" + (f" ({tests} in tests)" if tests else "") + f", {calls} calls, in {secs:.1f} s"
+    how = ", ".join(sure) + (f"; {res['unresolved']} not resolved (left out, never guessed)" if res.get("unresolved") else "")
+    return head + (f"\n  calls: {how}" if how else "")
+
+
+def index_details(root, idx, t):
+    """Every number of the run, as the log keeps them."""
+    out = []
+    p = out.append
     st = idx["stats"]
     if "gcc" in idx["backends"]:
-        print(f'{st["units"]} units ({st["compiled"]} compiled, {st["cached"]} cached, {st["failed"]} failed) '
-              f'in {time.time() - t:.2f} s')
+        p(f'{st["units"]} units ({st["compiled"]} compiled, {st["cached"]} cached, {st["failed"]} failed)')
         gb = idx["backends"]["gcc"]
-        print(f'{gb["nodes"]} functions, {gb["edges"]} compiler edges, {st["indirect"]} indirect '
-              f'({st.get("indirect_unresolved", "?")} unresolved), {st["compiler_inserted"]} compiler-inserted calls dropped')
+        p(f'{gb["nodes"]} functions, {gb["edges"]} compiler edges, {st["indirect"]} indirect '
+          f'({st.get("indirect_unresolved", "?")} unresolved), {st["compiler_inserted"]} compiler-inserted calls dropped')
     for lang in ("python", "go", "typescript"):
         if lang not in idx["backends"]:
             continue
         px = idx["backends"][lang]
         r = px["resolution"]
-        print(f'{lang}: {px["files"]} files, {px["nodes"]} definitions, calls {r.get("exact", 0)} exact, '
-              f'{r.get("inferred", 0)} inferred, {r.get("ambiguous", 0)} ambiguous, {r.get("unresolved", 0)} unresolved'
-              + (f' ({r.get("builtin", 0)} on built-in types not counted)' if lang == "python" else "")
-              + (f', {px["refs"]} functions handed on as values' if px.get("refs") else ""))
-        errs = px.get("errors", [])
-        if errs:
+        p(f'{lang}: {px["files"]} files, {px["nodes"]} definitions, calls {r.get("exact", 0)} exact, '
+          f'{r.get("inferred", 0)} inferred, {r.get("ambiguous", 0)} ambiguous, {r.get("unresolved", 0)} unresolved'
+          + (f' ({r.get("builtin", 0)} on built-in types not counted)' if lang == "python" else "")
+          + (f', {px["refs"]} functions handed on as values' if px.get("refs") else ""))
+        for e in px.get("errors", []):
             # a package the type checker could not fully read (a module not downloaded, a newer Go):
             # the calls around it are still mapped
-            print(f"  {len(errs)} messages from the {'parser' if lang == 'python' else 'type checker'}, first: "
-                  + "; ".join(e.replace(str(root) + "/", "") for e in errs[:3]))
+            p(f"  {'parser' if lang == 'python' else 'type checker'}: " + e.replace(str(root) + "/", ""))
     if "syntax-go" in idx["backends"]:
-        print(f'go: {idx["backends"]["syntax-go"]["files"]} files read by tree-sitter (no Go toolchain)')
+        p(f'go: {idx["backends"]["syntax-go"]["files"]} files read by tree-sitter (no Go toolchain)')
     if "syntax-typescript" in idx["backends"]:
-        print(f'typescript: {idx["backends"]["syntax-typescript"]["files"]} files read by tree-sitter (no Node or no TypeScript)')
+        p(f'typescript: {idx["backends"]["syntax-typescript"]["files"]} files read by tree-sitter (no Node or no TypeScript)')
     if "typescript" in idx["backends"]:
         tb = idx["backends"]["typescript"]
         c = tb.get("cache")
         if c:
-            print(f'  program cache: {c["replayed"]} replayed, {c["rebuilt"]} rebuilt'
-                  + (" (" + ", ".join(f"{k}: {v}" for k, v in sorted(c["why"].items())) + ")" if c["why"] else "")
-                  + f'; {c["entries"]} entries, {c["mb"]} MB' + (f', {c["removed"]} removed' if c["removed"] else ""))
-        print(f'  TypeScript {tb.get("typescript")} from {tb.get("typescript_from")}, {tb.get("programs")} programs'
-              + ('; modules not found: ' + ", ".join(tb["placeholders"][:8]) + (" ..." if len(tb["placeholders"]) > 8 else "")
-                 if tb.get("placeholders") else ""))
+            p(f'  program cache: {c["replayed"]} replayed, {c["rebuilt"]} rebuilt'
+              + (" (" + ", ".join(f"{k}: {v}" for k, v in sorted(c["why"].items())) + ")" if c["why"] else "")
+              + f'; {c["entries"]} entries, {c["mb"]} MB' + (f', {c["removed"]} removed' if c["removed"] else ""))
+        p(f'  TypeScript {tb.get("typescript")} from {tb.get("typescript_from")}, {tb.get("programs")} programs'
+          + ('; modules not found: ' + ", ".join(tb["placeholders"]) if tb.get("placeholders") else ""))
     if "syntax" in idx["backends"]:
         sx = idx["backends"]["syntax"]
-        print(f'tree-sitter: {sx["files"]} files ({", ".join(f"{k} {v}" for k, v in sorted(sx["languages"].items()))}), '
-              f'{sx["nodes"]} definitions, {sx["edges"]} calls matched by name in {time.time() - t:.2f} s')
-        for err in sx.get("errors", [])[:5]:
-            print(f"  could not read {err}")
+        p(f'tree-sitter: {sx["files"]} files ({", ".join(f"{k} {v}" for k, v in sorted(sx["languages"].items()))}), '
+          f'{sx["nodes"]} definitions, {sx["edges"]} calls matched by name')
+        for err in sx.get("errors", []):
+            p(f"  could not read {err}")
     if st.get("framework_edges"):
-        print("framework adapters: " + ", ".join(f"{k} {v}" for k, v in st["framework_edges"].items()))
-    print("rule edges: " + ", ".join(f"{k} {v}" for k, v in st.get("rule_edges", {}).items()))
+        p("framework adapters: " + ", ".join(f"{k} {v}" for k, v in st["framework_edges"].items()))
+    p("rule edges: " + ", ".join(f"{k} {v}" for k, v in st.get("rule_edges", {}).items()))
     for u in idx["units"]:
         if u["status"] == "failed":
-            print(f'failed: {u["file"]}\n  {u["error"].splitlines()[-1] if u["error"] else ""}')
-    next_steps(root, idx)
+            p(f'failed: {u["file"]}')
+            p("  " + "\n  ".join((u["error"] or "").splitlines()[-20:]))
+    p(f"in {time.time() - t:.2f} s")
+    return out
 
 
 def next_steps(root, idx):
@@ -168,10 +212,12 @@ def next_steps(root, idx):
     print("\nnext:")
     # descriptions first: the map shows them, and a snapshot keeps only what is there when it is written
     if funcs and told < len(funcs):
-        print(f"  codemap describe              {len(funcs) - told} of {len(funcs)} functions have no comment or description: "
-              "have an AI write them (optional)")
-    print("  codemap serve                 open the map: http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)")
-    print("  codemap export --html         or one HTML file with the map, to open anywhere")
+        print(term.fit(f"  codemap describe        optional: {len(funcs) - told} of {len(funcs)} functions say nothing about what they do"))
+    print(term.fit("  codemap serve           open the map at http://127.0.0.1:7300/"))
+    if os.environ.get("SSH_CONNECTION"):                # on a remote machine: how to reach it from the laptop
+        host = os.uname().nodename
+        print(term.fit(f"                          from your computer: ssh -L 7300:localhost:7300 {host}"))
+    print(term.fit("  codemap export --html   or one HTML file with the map, to open anywhere"))
 
 
 def cmd_edges(a, direction):
@@ -206,7 +252,12 @@ def cmd_describe(a):
     root = Path(a.root).resolve()
     idx = load(root)
     graph = {}
-    g = lambda: graph.setdefault("g", view.build(root, idx, rules.load_config(root)))   # built only when needed
+
+    def g():                                          # built only when needed, once
+        if "g" not in graph:
+            with term.ui().step("Read the index and the code"):
+                graph["g"] = view.build(root, idx, rules.load_config(root))
+        return graph["g"]
     if a.apply:
         bad_total = 0
         for ans in a.apply:                          # several answers: one per prompt
@@ -378,15 +429,24 @@ def cmd_export(a):
     from . import server
     root = Path(a.root).resolve()
     missing_notes(root, a.notes)
-    data = view.snapshot(root, load(root), rules.load_config(root), a.notes)
+    ui = term.ui()
+    with ui.step("Read the index and the code") as st:
+        data = view.snapshot(root, load(root), rules.load_config(root), a.notes)
+        st.done(f'{data["stats"]["funcs"]} functions, {len(data["edges"])} relations')
     out = Path(a.output or view.snapshot_name(data, ".html" if a.html else ".codemap"))
-    if a.html:
-        out.write_text(server.standalone_html(data), encoding="utf-8")
-    else:
-        view.write_snapshot(out, data)
-    dirty = f', {len(data["dirty"])} uncommitted files not in the commit' if data["dirty"] else ""
-    print(f'wrote {out} ({out.stat().st_size / 1024:.0f} KB): {data["stats"]["funcs"]} functions, '
-          f'{len(data["edges"])} edges{dirty}')
+    with ui.step(f"Write {out}") as st:
+        if a.html:
+            out.write_text(server.standalone_html(data), encoding="utf-8")
+        else:
+            view.write_snapshot(out, data)
+        size = out.stat().st_size
+        st.done(f"{size / 1024 / 1024:.1f} MB" if size >= 1024 * 1024 else f"{size / 1024:.0f} KB")
+    if data["dirty"]:
+        ui.say(f'{len(data["dirty"])} uncommitted file{"s" * (len(data["dirty"]) != 1)}: the snapshot shows them as they are now, '
+               "not as in the commit it names", "warn")
+    print()
+    print(term.fit(f"open {out} in a browser: no install, no network" if a.html else
+                   f"open it at https://seanyeh77.github.io/codemap/ (pick the file), or with codemap viewer"))
 
 
 def cmd_viewer(a):
@@ -407,6 +467,7 @@ def main(argv=None):
     s.add_argument("--scope", nargs="*", help="only translation units under these directories")
     s.add_argument("-j", "--jobs", type=int)
     s.add_argument("--cc", help="GCC to compile with (default: gcc, or the database's compiler if it is GCC)")
+    s.add_argument("-v", "--verbose", action="store_true", help="print every number and message, not only the summary")
     s.set_defaults(fn=cmd_index)
     for d in ("callers", "callees"):
         s = sub.add_parser(d)
@@ -455,7 +516,12 @@ def main(argv=None):
     if not a.cmd:                                     # `codemap` alone: how to start, not an error
         print(__doc__)
         return
-    a.fn(a)
+    try:
+        a.fn(a)
+    except KeyboardInterrupt:                         # Ctrl-C: the cursor back, one line, the usual status
+        term.ui()._restore()
+        sys.stderr.write("\ncodemap: stopped\n")
+        sys.exit(130)
 
 
 if __name__ == "__main__":
