@@ -109,7 +109,7 @@ export function FileView(p: { ix: Index; at: { f: string; l: number }; isLive: b
   useEffect(() => { if (src.data && shown === 'source') view.current?.focusTarget() }, [src.data, p.at.l, shown])
   return (
     // Escape inside the file closes it, back to where it was opened from (the panel had no keyboard way out)
-    <div onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); p.onClose() } }}>
+    <div className="file-wrap" onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); p.onClose() } }}>
     <UI.Card className="detail" title={p.at.f.split('/').pop()} actions={<UI.Button onClick={p.onClose}>{t('關閉檔案')}</UI.Button>}>
       {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
         : src.isPending ? <UI.Skeleton width="80%" height={16} />

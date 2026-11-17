@@ -135,3 +135,9 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* an AI's description the code has moved on from, or contradicts: shown, but not as sure as the rest */
 .desc-stale, .desc-wrong { opacity: 0.7; }
 .desc-wrong-note { color: var(--danger-text); }
+
+/* the open file in a side panel: the wrapper (it catches Escape) takes the panel's height and passes it on, so the
+   card is as tall as the panel and scrolls inside it. Without it the card grew to its content (1900 px for a long
+   file) in a panel that clips, and the code and what follows could not be reached. */
+.file-wrap { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.file-wrap > .ui-card { flex: 1 1 auto; min-height: 0; width: auto; }
