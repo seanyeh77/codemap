@@ -285,7 +285,7 @@ def cmd_describe(a):
             print(f"next: codemap describe ({len(keys)} to describe in round {lv}: {describe_items.LEVELS[lv]})" if lv
                   else "everything is described")
         sys.exit(1 if bad_total else 0)
-    if a.agent:                                      # one instruction for an AI agent to do every round
+    def agent_text():
         r = describe.report(root, idx)
         total = len([n for f in describe.project_files(idx, a.tests) for n in describe.funcs_in(idx, f)])
         lines = [f"round 1, functions: {len(r['ok'])} of {total} described"]
@@ -293,7 +293,10 @@ def cmd_describe(a):
         for lv in (2, 3, 4):
             keys = [k for k in ri["ok"] if describe_items.KIND_LEVEL.get(describe_items.kind(k)) == lv]
             lines.append(f"round {lv}, {describe_items.LEVELS[lv]}: {len(keys)} up to date, {missing[lv]} without one")
-        text = describe.agent_prompt(lines, a.by if a.by != "ai" else "<你的模型名稱>")
+        return describe.agent_prompt(lines, a.by if a.by != "ai" else "<你的模型名稱>")
+
+    if a.agent:                                      # the instruction alone, to paste or pipe
+        text = agent_text()
         if a.output:
             Path(a.output).write_text(text, encoding="utf-8")
             print(f"wrote the instruction to {a.output}: give it to an AI agent (Claude Code) in this repository")
@@ -362,11 +365,13 @@ def cmd_describe(a):
             else f"{len(ids)} item{'s' * (len(ids) != 1)}")
     print(f"round {level} of 4, {describe_items.LEVELS[level]}: {what}: {len(texts)} prompt{'s' * (len(texts) != 1)}, "
           f"{rel(names[0])}" + (f" ... {names[-1].name}" if len(names) > 1 else ""))
+    # beside the prompts, the whole job for an AI agent: tell it 「照 .codemap/prompts/AGENT.md 做」
+    (folder / "AGENT.md").write_text(agent_text(), encoding="utf-8")
     print("give each to an AI, save its answer as answer-NN.json beside it, then:")
     print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
     if level < 4:
         print("then run codemap describe again for the next round")
-    print("or let an AI agent (Claude Code) do every round: codemap describe --agent, and give it what that prints")
+    print(f"or have an AI agent (Claude Code) do every round: tell it to follow {rel(folder)}/AGENT.md")
 
 
 def cmd_relations(a):
