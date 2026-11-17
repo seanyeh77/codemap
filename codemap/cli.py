@@ -295,14 +295,6 @@ def cmd_describe(a):
             lines.append(f"round {lv}, {describe_items.LEVELS[lv]}: {len(keys)} up to date, {missing[lv]} without one")
         return describe.agent_prompt(lines, a.by if a.by != "ai" else "<你的模型名稱>")
 
-    if a.agent:                                      # the instruction alone, to paste or pipe
-        text = agent_text()
-        if a.output:
-            Path(a.output).write_text(text, encoding="utf-8")
-            print(f"wrote the instruction to {a.output}: give it to an AI agent (Claude Code) in this repository")
-        else:
-            print(text)
-        return
     if a.status:
         r = describe.report(root, idx)
         for st in ("stale", "wrong"):
@@ -510,7 +502,6 @@ def main(argv=None):
     s.add_argument("--apply", metavar="ANSWER", nargs="+", help="keep the AI's JSON answers (- for standard input)")
     s.add_argument("--by", default="ai", help="who wrote the answer, kept with it (e.g. claude-opus-5-5)")
     s.add_argument("--status", action="store_true", help="how many are up to date, stale or wrong")
-    s.add_argument("--agent", action="store_true", help="print one instruction for an AI agent (Claude Code) to write every round itself")
     s.set_defaults(fn=cmd_describe)
     s = sub.add_parser("relations")
     s.add_argument("name", nargs="?")
