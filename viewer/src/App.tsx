@@ -145,7 +145,14 @@ function Shell(p: ShellProps) {
   // a file opened in the side panel belongs to the page it was opened on, not to every page after it. It is in the
   // address (o=path:line), so opening a file or going to another line is a step back can return from
   const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(() => fileOf(init.o, init.view ?? 'arch'))
-  const [collapsed, setCollapsed] = useState(false)
+  // the sidebar's width, kept in this browser: one choice for the pages, one for reading a file (narrow by default,
+  // so the code has the room)
+  const [navWide, setNavWide] = useState(() => { try { return JSON.parse(localStorage.getItem('codemap:nav') ?? '{}') as { page?: boolean; read?: boolean } } catch { return {} } })
+  const setNav = (k: 'page' | 'read', collapsedNow: boolean) => setNavWide((w) => {
+    const n = { ...w, [k]: collapsedNow }
+    try { localStorage.setItem('codemap:nav', JSON.stringify(n)) } catch { /* private window: for this visit only */ }
+    return n
+  })
   // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
   const [chosenComp, setSelComp] = useState(init.c ?? '')
   const [selEdge, setSelEdge] = useState(init.e ?? '')        // a line of the architecture diagram; '' when a box or nothing is selected
@@ -391,6 +398,10 @@ function Shell(p: ShellProps) {
   }
   const goImpact = (id: string) => { setFileAt(null); setStart(id); setSel({ id, edge: null, key: null }); setView('impact'); moved('impact') }
   // the impact page starts from the function the reader has open, not from where the flow began
+  // the name at the top of the sidebar goes home: the architecture overview, nothing chosen, no file open
+  const goHome = () => { setFileAt(null); setSelComp(''); setSelEdge(''); setView('arch'); requestAnimationFrame(() => UI.focusMain()) }
+  const brand = (full: boolean) => <a className="brand-home" href="#arch" aria-label={t('回到首頁：架構概觀')} title={t('回到首頁：架構概觀')}
+    onClick={(e) => { e.preventDefault(); goHome(); setNavOpen(false) }}><span className="brand-mark" />{full ? <span>codemap</span> : null}</a>
   const switchView = (v: View) => {
     if (v === 'impact' && view !== 'impact' && ix.funcs[sel.id] && sel.id !== start) goImpact(sel.id)
     else setView(v)
@@ -483,6 +494,7 @@ function Shell(p: ShellProps) {
   const reading = fileAt && fileAt.view === view && view !== 'settings'
     ? <FileReader ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} backLabel={t('回到{v1}', { v1: t(PAGES[view].title) })}
       onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} /> : null
+  const collapsed = reading ? navWide.read ?? true : navWide.page ?? false
   const side = view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
@@ -504,11 +516,11 @@ function Shell(p: ShellProps) {
       {tablet ? (
         <UI.Drawer open={navOpen} onClose={() => setNavOpen(false)} title={t('導覽')} side="left" width={280}>
           <UI.SideNav value={view} onChange={(v) => { switchView(v as View); setNavOpen(false) }}
-            brand={<><span className="brand-mark" /><span>codemap</span></>} sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
+            brand={brand(true)} sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
         </UI.Drawer>
       ) : (
-        <UI.SideNav value={view} onChange={(v) => switchView(v as View)} collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)}
-          brand={<><span className="brand-mark" />{collapsed ? null : <span>codemap</span>}</>}
+        <UI.SideNav value={view} onChange={(v) => switchView(v as View)} collapsed={collapsed} onToggle={() => setNav(reading ? 'read' : 'page', !collapsed)}
+          brand={brand(!collapsed)}
           sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
       )}
       <main className="main">

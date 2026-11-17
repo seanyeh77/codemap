@@ -924,4 +924,5 @@ export const EN: Record<string, string> = {
   "還有 {n} 個": "{n} more",
   "回到{v1}": "Back to {v1}",
   "沒有註解或 AI 說明。在 repo 執行 codemap describe 可請 AI 撰寫。": "No comment or AI description. Run codemap describe in the repository to have an AI write one.",
+  "回到首頁：架構概觀": "Home: the architecture overview",
 }
