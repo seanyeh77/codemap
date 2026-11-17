@@ -293,7 +293,7 @@ def cmd_describe(a):
         for lv in (2, 3, 4):
             keys = [k for k in ri["ok"] if describe_items.KIND_LEVEL.get(describe_items.kind(k)) == lv]
             lines.append(f"round {lv}, {describe_items.LEVELS[lv]}: {len(keys)} up to date, {missing[lv]} without one")
-        return describe.agent_prompt(lines, a.by if a.by != "ai" else "<你的模型名稱>")
+        return describe.agent_prompt(lines, a.by if a.by != "ai" else "<your model's name>")
 
     if a.status:
         r = describe.report(root, idx)

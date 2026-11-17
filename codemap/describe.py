@@ -240,24 +240,24 @@ def report(root, idx):
     return out
 
 
-AGENT = """請替這個專案寫 codemap 說明（函式、檔案、指令、元件、專案）。說明分四輪，每一輪依據上一輪的結果，所以一輪做完才做下一輪。重複下面的步驟，直到 `codemap describe` 印出 `everything is described`：
+AGENT = """Write the codemap descriptions for this project (functions, files, commands, components, the project). They come in four rounds, each resting on the one before it, so finish a round before the next. Repeat these steps until `codemap describe` prints `everything is described`:
 
-1. 在專案根目錄執行 `codemap describe`。它會在 `.codemap/prompts/` 產生 `prompt-01.md`、`prompt-02.md` 等檔案，並印出這是第幾輪。
-2. 一份一份讀 `prompt-NN.md`，照裡面的要求回答，只寫 JSON，存成同一個資料夾的 `answer-NN.json`（編號和 prompt 相同）。只根據 prompt 裡給的程式碼與資料寫，不確定的就寫你確定的部分，不要猜。
-3. 執行 `codemap describe --apply .codemap/prompts/answer-*.json --by {by}`。
-4. 如果有 `not kept`，讀它列出的原因（引用的行不在範圍內、寫成程式碼字體的名稱不在程式碼裡、名詞不在引用的那一行、閱讀路線的兩步之間沒有呼叫關係），只修正那幾筆，存成新的 answer 檔再 `--apply` 一次；修了兩次還不行就跳過。
-5. 回到第 1 步，做下一輪。
+1. In the project's root, run `codemap describe`. It writes `prompt-01.md`, `prompt-02.md` and so on in `.codemap/prompts/`, and says which round it is.
+2. Read each `prompt-NN.md` and answer it as it asks, JSON only, saved as `answer-NN.json` in the same folder (the same number as its prompt). Write only from the code and facts the prompt shows; where you are unsure, write only what you are sure of, never guess.
+3. Run `codemap describe --apply .codemap/prompts/answer-*.json --by {by}`.
+4. If some are `not kept`, read the reason given (a cited line outside what it describes, a name in code font the code does not have, a term not on its cited line, two route steps with no call between them), fix just those, save them as a new answer file and `--apply` it; skip any still not kept after two tries.
+5. Go back to step 1 for the next round.
 
-規則：
-- 不要修改專案的任何原始碼或設定，只寫 `.codemap/prompts/` 裡的 answer 檔。
-- 每一份 prompt 都要回答完整，每個 id 都要有一筆。
-- 全部完成後執行 `codemap describe --status`，回報每一輪的數字，以及跳過了哪些項目和原因。
+Rules:
+- Do not change any of the project's code or settings; write only the answer files in `.codemap/prompts/`.
+- Answer every prompt in full, one entry for every id in it.
+- When everything is done, run `codemap describe --status` and report each round's numbers, and what you skipped and why.
 
-目前的進度：
+Where the project stands now:
 {status}
 """
 
 
-def agent_prompt(status_lines, by="the model you are"):
+def agent_prompt(status_lines, by="<your model's name>"):
     """One instruction an AI agent (Claude Code, a coding assistant) can follow to write every round by itself."""
     return AGENT.format(by=by, status="\n".join("- " + s for s in status_lines))
