@@ -142,6 +142,9 @@ function Shell(p: ShellProps) {
   // #harness/routing.py:108 or #parse_fib: an address someone typed by hand opens the function there
   const init = useMemo(() => typedHash(ix), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const [view, setView] = useState<View>(init.view ?? 'arch')
+  // a file opened in the side panel belongs to the page it was opened on, not to every page after it. It is in the
+  // address (o=path:line), so opening a file or going to another line is a step back can return from
+  const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(() => fileOf(init.o, init.view ?? 'arch'))
   const [collapsed, setCollapsed] = useState(false)
   // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
   const [chosenComp, setSelComp] = useState(init.c ?? '')
@@ -299,7 +302,8 @@ function Shell(p: ShellProps) {
   // selection, and the address can be shared (a typed #check opens that page)
   // an address that names no function stays as written, so the page keeps saying so instead of turning into main's
   const asked = chosenStart && !known(alias(chosenStart) ?? '') && !p.graph.funcs[chosenStart] ? chosenStart : null
-  const here = hashOf({ view, c: selComp, e: selEdge, s: asked ?? start ?? '', f: sel.id, k: sel.key ?? '', d: dir })
+  const here = hashOf({ view, c: selComp, e: selEdge, s: asked ?? start ?? '', f: sel.id, k: sel.key ?? '', d: dir,
+    o: fileAt && fileAt.view === view ? `${fileAt.f}:${fileAt.l}` : '' })
   const placed = useRef(false)
   // what had the keyboard on each address when it was left: going back puts the keyboard there again
   const leftFrom = useRef(new Map<string, string>())
@@ -323,7 +327,7 @@ function Shell(p: ShellProps) {
     const onPop = () => {
       const h = typedHash(ix)
       if (!h.view) return
-      setFileAt(null)
+      setFileAt(fileOf(h.o, h.view))
       setView(h.view)
       setSelComp(h.c ?? ''); setSelEdge(h.e ?? '')
       if (h.s) setStart(h.s)
@@ -358,8 +362,6 @@ function Shell(p: ShellProps) {
   }, [selEdge, ix])
   // changes on the same page that a screen reader would not otherwise hear about
   useEffect(() => { if (sel.id && ix.funcs[sel.id] && (view === 'flow' || view === 'impact')) UI.announce(t('已選取 {v1}', { v1: ix.funcs[sel.id].name })) }, [sel.id, ix])
-  // a file opened from the search belongs to the page it was opened on, not to every page after it
-  const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(null)
   useEffect(() => { if (fileAt) UI.announce(t('已開啟 {v1} 第 {v2} 行', { v1: fileAt.f.split('/').pop(), v2: fileAt.l })) }, [fileAt])
   // Esc on the architecture page clears the selected box or line (dialogs handle their own Esc first)
   useEffect(() => {
@@ -683,7 +685,13 @@ const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束
 
 let lastCat = 'source'
 
-interface Loc { view: View | null; c?: string; e?: string; s?: string; f?: string; k?: string; d?: string }
+interface Loc { view: View | null; c?: string; e?: string; s?: string; f?: string; k?: string; d?: string; o?: string }
+
+/** The file open in the side panel, from the address's o=path:line. */
+function fileOf(o: string | undefined, view: View): { f: string; l: number; view: View } | null {
+  const m = o ? /^(.+):(\d+)$/.exec(o) : null
+  return m ? { f: m[1], l: +m[2], view } : null
+}
 
 /** The page and the choice on it, from the address: #arch?c=src/ibmon, #flow?s=main&k=root/x@12&d=up,
  *  #impact?s=emit&f=ibt_ring_claim. #notes is another name for the notes page. */
@@ -692,7 +700,7 @@ function parseHash(): Loc {
   const v = page === 'notes' ? 'check' : page
   const q = new URLSearchParams(query)
   const get = (k: string) => q.get(k) ?? undefined
-  return { view: Object.hasOwn(PAGES, v) ? (v as View) : null, c: get('c'), e: get('e'), s: get('s'), f: get('f'), k: get('k'), d: get('d') }
+  return { view: Object.hasOwn(PAGES, v) ? (v as View) : null, c: get('c'), e: get('e'), s: get('s'), f: get('f'), k: get('k'), d: get('d'), o: get('o') }
 }
 
 /** The address, also when typed by hand: #harness/routing.py:108 or #parse_fib opens that function's flow. */
@@ -717,6 +725,7 @@ function hashOf(l: Required<Omit<Loc, 'view'>> & { view: View }): string {
     if (l.view === 'flow' && l.k && l.k !== 'root') q.set('k', l.k)
     if (l.view === 'flow' && l.d === 'up') q.set('d', 'up')
   }
+  if (l.o) q.set('o', l.o)
   const qs = q.toString()
   return '#' + l.view + (qs ? '?' + qs : '')
 }
