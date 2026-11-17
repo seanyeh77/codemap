@@ -1,9 +1,9 @@
 /* Page layout for the codemap viewer. Values come from the design system tokens. */
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-sans); }
 #root { height: 100%; }
-.app { position: relative; display: flex; height: 100vh; height: 100dvh; overflow: hidden; }   /* relative: positioned parts of components stay inside */
+.app { position: relative; display: flex; height: 100vh; height: 100dvh; overflow: clip; }   /* relative: positioned parts of components stay inside */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.body { flex: 1; min-height: 0; display: flex; gap: var(--space-6); padding: var(--space-6); overflow: hidden; }
+.body { flex: 1; min-height: 0; display: flex; gap: var(--space-6); padding: var(--space-6); overflow: clip; }
 .body.below { flex-direction: column; }
 .pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--space-4); overflow: auto; }
 .ui-card p { margin: 0; }
@@ -44,7 +44,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .edge-group + .edge-group, p + .edge-group { margin-top: var(--space-4); }
 
 /* side panel that is a TreeList: the list scrolls inside it */
-.detail.tree-panel { overflow: hidden; }
+.detail.tree-panel { overflow: clip; }
 
 /* settings */
 .settings-wrap { flex: 1; min-height: 0; padding: var(--space-6); overflow: auto; }
@@ -76,8 +76,11 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .edge-code > :first-child { align-self: stretch; }
 .stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
 .impact-sum { align-self: stretch; min-width: 0; }
-.detail.split { overflow: hidden; }
-.detail.split > .grow-panel { flex: 1; min-height: 0; overflow: hidden; }
+/* clip, not hidden: a box with overflow hidden can still be scrolled by the page itself. Focusing a code line
+   (going to a line of a file) scrolled .detail.split down, and with no scroll bar of its own it stayed there:
+   the panel could not be scrolled back up. clip cannot be scrolled at all. */
+.detail.split { overflow: clip; }
+.detail.split > .grow-panel { flex: 1; min-height: 0; overflow: clip; }
 @media (max-width: 959px) { .detail.split > .grow-panel { flex: 0 0 60vh; } }
 .overview section { display: flex; flex-direction: column; gap: var(--space-2); }
 .overview h4 { margin: var(--space-2) 0 0; }
