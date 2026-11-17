@@ -168,3 +168,70 @@ def fit(text):
         return text
     cols = max(20, shutil.get_terminal_size((80, 24)).columns) - 1
     return text if len(text) <= cols else text[: cols - 1] + "…"
+
+
+def can_ask():
+    """A person at a terminal can answer: stdin and stderr are terminals and the plain mode is off."""
+    try:
+        return sys.stdin.isatty() and ui().live
+    except (AttributeError, ValueError):
+        return False
+
+
+def _key(fd):
+    ch = os.read(fd, 1)
+    if ch != b"\x1b":
+        return ch.decode(errors="ignore")
+    rest = os.read(fd, 2)                          # an arrow: ESC [ A / ESC [ B
+    return {b"[A": "up", b"[B": "down", b"OA": "up", b"OB": "down"}.get(rest, "esc")
+
+
+def choose(question, options, default=0):
+    """Ask one question with a list to pick from: options are (value, label). Up and down (or j / k, or the
+    number) move, Enter picks. Without a terminal it answers the default without asking. Ctrl-C stops the run."""
+    if not can_ask():
+        return options[default][0]
+    try:
+        import termios
+        import tty
+    except ImportError:                              # Windows: no raw keys here, so no question
+        return options[default][0]
+    u, out, fd = ui(), sys.stderr, sys.stdin.fileno()
+    at, n = default, len(options)
+    hint = u._paint("2", "  (↑↓ Enter)" if _utf8(out) else "  (up/down, Enter)")
+    pointer = "❯" if _utf8(out) else ">"
+
+    def draw(first):
+        if not first:
+            out.write(f"{ESC}[{n}A")
+        for i, (_, label) in enumerate(options):
+            line = f"  {pointer} {i + 1}. {label}" if i == at else f"    {i + 1}. {label}"
+            out.write(f"\r{ESC}[K" + (u._paint("36", line) if i == at else line) + "\n")
+        out.flush()
+
+    out.write(f"{question}{hint}\n{ESC}[?25l")
+    draw(True)
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            k = _key(fd)
+            if k in ("\r", "\n"):
+                break
+            if k == "\x03":
+                raise KeyboardInterrupt
+            if k in ("up", "k"):
+                at = (at - 1) % n
+            elif k in ("down", "j", "\t"):
+                at = (at + 1) % n
+            elif k.isdigit() and 1 <= int(k) <= n:
+                at = int(k) - 1
+            else:
+                continue
+            draw(False)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        out.write(f"{ESC}[{n + 1}A\r{ESC}[J{ESC}[?25h")      # the question and its list give way to one line
+        out.write(f"{question} {u._paint('36', options[at][1])}\n")
+        out.flush()
+    return options[at][0]

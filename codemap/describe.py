@@ -258,6 +258,66 @@ Where the project stands now:
 """
 
 
-def agent_prompt(status_lines, by="<your model's name>"):
+AGENT_ZH = """請替這個專案寫 codemap 說明（函式、檔案、指令、元件、專案）。說明分四輪，每一輪依據上一輪的結果，所以一輪做完才做下一輪。重複下面的步驟，直到 `codemap describe` 印出 `everything is described`：
+
+1. 在專案根目錄執行 `codemap describe`。它會在 `.codemap/prompts/` 產生 `prompt-01.md`、`prompt-02.md` 等檔案，並印出這是第幾輪。
+2. 一份一份讀 `prompt-NN.md`，照裡面的要求回答，只寫 JSON，存成同一個資料夾的 `answer-NN.json`（編號和 prompt 相同）。只根據 prompt 裡給的程式碼與資料寫，不確定的就只寫確定的部分，不要猜。
+3. 執行 `codemap describe --apply .codemap/prompts/answer-*.json --by {by}`。
+4. 如果有 `not kept`，讀它列出的原因（引用的行不在範圍內、寫成程式碼字體的名稱不在程式碼裡、名詞不在引用的那一行、閱讀路線的兩步之間沒有呼叫關係），只修正那幾筆，存成新的 answer 檔再 `--apply` 一次；修了兩次還不行就跳過。
+5. 回到第 1 步，做下一輪。
+
+規則：
+- 不要修改專案的任何原始碼或設定，只寫 `.codemap/prompts/` 裡的 answer 檔。
+- 每一份 prompt 都要回答完整，每個 id 都要有一筆。
+- 全部完成後執行 `codemap describe --status`，回報每一輪的數字，以及跳過了哪些項目和原因。
+
+目前的進度：
+{status}
+"""
+
+
+def screen_lang(asked=None):
+    """The language of what describe says on screen: --lang, else the system's (zh... is Chinese), else English."""
+    import os
+    if asked:
+        return asked
+    loc = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
+    return "zh-TW" if loc.lower().startswith("zh") else "en"
+
+
+def _settings_file():
+    import os
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return Path(base) / "codemap" / "settings.json"
+
+
+def pick_lang(asked=None):
+    """--lang, else a question on a terminal (the last answer, or the system's language, picked to start with),
+    else the last answer or the system's. The answer is kept in ~/.config/codemap/settings.json for next time."""
+    from . import term
+    f = _settings_file()
+    try:
+        saved = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        saved = {}
+    if not isinstance(saved, dict):
+        saved = {}
+    lang = asked
+    if not lang:
+        start = saved.get("lang") if saved.get("lang") in ("zh-TW", "en") else screen_lang()
+        options = [("zh-TW", "中文（繁體）"), ("en", "English")]
+        lang = term.choose("Language / 語言:", options, 0 if start == "zh-TW" else 1)
+    if (asked or term.can_ask()) and lang != saved.get("lang"):      # only an answer someone gave is kept
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps(dict(saved, lang=lang), indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            pass                                     # a read-only home: ask again next time
+    return lang
+
+
+def agent_prompt(status_lines, by=None, lang="en"):
     """One instruction an AI agent (Claude Code, a coding assistant) can follow to write every round by itself."""
-    return AGENT.format(by=by, status="\n".join("- " + s for s in status_lines))
+    zh = lang.startswith("zh")
+    by = by or ("<你的模型名稱>" if zh else "<your model's name>")
+    return (AGENT_ZH if zh else AGENT).format(by=by, status="\n".join("- " + s for s in status_lines))
