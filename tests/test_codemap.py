@@ -345,6 +345,22 @@ class Describe(unittest.TestCase):
             self.assertEqual(describe.report(d, idx)["stale"], ["m.py:run"])
 
 
+class DescribeBatches(unittest.TestCase):
+    def test_whole_project_in_batches(self):
+        from codemap import describe
+        node = lambda f, l, scope=None: dict(name=f"f{l}", file=f, line=l, end=l, defined=True, kind="function", **({"scope": scope} if scope else {}))
+        idx = {"nodes": {**{f"a.c:f{i}": node("a.c", i) for i in range(1, 26)},     # 25 in a.c
+                         **{f"b.c:f{i}": node("b.c", i) for i in range(1, 11)},     # 10 in b.c
+                         **{f"big.c:f{i}": node("big.c", i) for i in range(1, 71)},  # 70 in big.c
+                         "t_test.c:f1": node("t_test.c", 1, "test")}, "edges": []}
+        self.assertEqual(describe.project_files(idx), ["a.c", "b.c", "big.c"])            # tests left out
+        self.assertIn("t_test.c", describe.project_files(idx, tests=True))
+        ids = [nid for f in describe.project_files(idx) for nid in describe.funcs_in(idx, f)]
+        parts = describe.batches(idx, ids, 30)
+        self.assertEqual([len(x) for x in parts], [25, 10, 30, 30, 10])                   # a file stays whole unless too big
+        self.assertEqual(sum(parts, []), ids)
+
+
 class Cli(unittest.TestCase):
     """argparse programs: each command, its arguments and the functions it runs (facts.py_cli)."""
 

@@ -12,8 +12,7 @@ to run, and on code that is half rewritten.
 uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
 cd your-repository
 codemap index                 # 1. read the code; run again after it changes
-codemap describe FILE --missing -o prompt.md
-                              # 2. optional: a prompt for an AI to say what each function does (below)
+codemap describe              # 2. optional: prompts for an AI to say what each function does (below)
 codemap serve                 # 3. open http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)
 codemap export --html         #    or one HTML file with the map, to open anywhere
 ```
@@ -216,14 +215,21 @@ AI's description once that exists. The panel lists every kind with where it
 comes from; a file's list of functions and a link's card show one line, the
 first kind there is in the order chosen in Settings.
 
-codemap never calls an AI itself. To have one describe the functions of a file:
+codemap never calls an AI itself. To have one describe the functions:
 
 ```sh
-codemap describe harness/lab3.py --missing -o prompt.md   # the prompt: each function's code and neighbours
-# give prompt.md to an AI, save its JSON answer as answer.json, then
-codemap describe --apply answer.json --by claude-opus-5-5  # kept only where it matches the code
-codemap describe --status                                  # how many are up to date, stale or wrong
+codemap describe                       # prompts for every function not yet described, in .codemap/prompts/
+# give each prompt-NN.md to an AI, save its JSON answer as answer-NN.json beside it, then
+codemap describe --apply .codemap/prompts/answer-*.json --by claude-opus-5-5
+codemap describe --status              # how many are up to date, stale or wrong
 ```
+
+With no file named it takes the whole project (not its tests: `--tests`), only the
+functions without an up-to-date description (all of them: `--rewrite`), about 30
+functions to a prompt (`--batch N`) so each answer stays complete. Name files to
+take only those: `codemap describe src/client.c -o prompt.md` writes one prompt.
+After the code changes, the same `codemap describe` writes prompts for just the
+changed and the new functions.
 
 Each description is in Traditional Chinese and English, cites the lines it rests
 on, and is kept in `.codemap/descriptions.json` with a hash of the function's

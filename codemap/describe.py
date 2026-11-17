@@ -110,35 +110,72 @@ def funcs_in(idx, file):
                   key=lambda nid: idx["nodes"][nid]["line"])
 
 
-def prompt(root, idx, files, only_missing=False):
-    """The prompt for an AI: each function of the files with its code, its author's line and its neighbours, and
-    the answer's exact form. Functions already described and unchanged are left out with only_missing."""
-    have = load(root)
-    parts = []
-    count = 0
+def pending(root, idx, files, only_missing=False):
+    """The ids to describe in these files, in file order; with only_missing, not those up to date."""
+    have = load(root) if only_missing else {}
+    out = []
     for file in files:
-        ids = funcs_in(idx, file)
-        if only_missing:
-            ids = [nid for nid in ids if not (nid in have and state(root, idx, nid, have[nid]) == "ok")]
-        if not ids:
-            continue
-        parts.append(f"## {file}\n")
-        for nid in ids:
-            n = idx["nodes"][nid]
-            ins, outs = neighbours(idx, nid)
-            name = lambda x: (f'{idx["nodes"][x]["name"]} ({idx["nodes"][x]["file"]}:{idx["nodes"][x]["line"]})'
-                              if idx["nodes"][x].get("line") else f'{idx["nodes"][x]["name"]} (outside the repository)')
-            doc = docs.func_doc(root, n["file"], n["line"], n.get("lang", "c"))
-            parts.append(f'### id: {nid}\n'
-                         f'- name: {n["name"]}, {n["file"]}:{n["line"]}-{n.get("end") or n["line"]}\n'
-                         + (f'- the author wrote: {doc}\n' if doc else "")
-                         + f'- called by: {", ".join(map(name, ins)) or "nothing in the repository"}\n'
-                         + f'- calls: {", ".join(map(name, outs)) or "nothing in the repository"}\n\n'
-                         + "```\n" + "\n".join(f"{n['line'] + i}: {ln}" for i, ln in enumerate(source(root, n))) + "\n```\n")
-            count += 1
-    if not count:
+        for nid in funcs_in(idx, file):
+            if not (nid in have and state(root, idx, nid, have[nid]) == "ok"):
+                out.append(nid)
+    return out
+
+
+def project_files(idx, tests=False):
+    """Every file with a function of the repository's own, test files only with tests."""
+    return sorted({n["file"] for n in idx["nodes"].values()
+                   if n.get("defined") and n.get("line") and n.get("file") and n.get("kind") not in ("module", "file")
+                   and (tests or n.get("scope") != "test")})
+
+
+def batches(idx, ids, size=30):
+    """ids cut into prompts of about size functions; a file stays in one prompt unless it alone is bigger."""
+    out, cur = [], []
+    by_file = {}
+    for nid in ids:
+        by_file.setdefault(idx["nodes"][nid]["file"], []).append(nid)
+    for group in by_file.values():
+        while len(group) > size:                      # one big file: in pieces of size
+            if cur:
+                out.append(cur)
+                cur = []
+            out.append(group[:size])
+            group = group[size:]
+        if cur and len(cur) + len(group) > size:
+            out.append(cur)
+            cur = []
+        cur += group
+    if cur:
+        out.append(cur)
+    return out
+
+
+def prompt(root, idx, files=None, only_missing=False, ids=None):
+    """The prompt for an AI: each function with its code, its author's line and its neighbours, and the answer's
+    exact form. Give files (with only_missing, functions up to date are left out) or the ids themselves."""
+    ids = list(ids) if ids is not None else pending(root, idx, files or [], only_missing)
+    parts, last = [], None
+    for nid in ids:
+        n = idx["nodes"][nid]
+        if n["file"] != last:
+            parts.append(f'## {n["file"]}\n')
+            last = n["file"]
+        ins, outs = neighbours(idx, nid)
+        name = lambda x: (f'{idx["nodes"][x]["name"]} ({idx["nodes"][x]["file"]}:{idx["nodes"][x]["line"]})'
+                          if idx["nodes"][x].get("line") else f'{idx["nodes"][x]["name"]} (outside the repository)')
+        doc = docs.func_doc(root, n["file"], n["line"], n.get("lang", "c"))
+        parts.append(f'### id: {nid}\n'
+                     f'- name: {n["name"]}, {n["file"]}:{n["line"]}-{n.get("end") or n["line"]}\n'
+                     + (f'- the author wrote: {doc}\n' if doc else "")
+                     + f'- called by: {", ".join(map(name, ins)) or "nothing in the repository"}\n'
+                     + f'- calls: {", ".join(map(name, outs)) or "nothing in the repository"}\n\n'
+                     + "```\n" + "\n".join(f"{n['line'] + i}: {ln}" for i, ln in enumerate(source(root, n))) + "\n```\n")
+    if not ids:
         return None, 0
-    head = f"""Describe what each function below does, for a reader who opens this code for the first time.
+    return HEAD + "\n".join(parts), len(ids)
+
+
+HEAD = """Describe what each function below does, for a reader who opens this code for the first time.
 
 For every function write one sentence in Traditional Chinese (zh-TW, at most 60 characters) and one in English
 (en, at most 30 words). Say what it does and what it is for, in the terms of this program; do not repeat the
@@ -149,12 +186,11 @@ function itself or in a function it calls or is called by.
 
 Answer with JSON only, in this form (one entry per id below, ids copied exactly):
 
-{{"descriptions": [{{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}}]}}
+{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}]}
 
 Then save it to a file and run: codemap describe --apply <that file>
 
 """
-    return head + "\n".join(parts), count
 
 
 def apply(root, idx, answer, by="ai"):

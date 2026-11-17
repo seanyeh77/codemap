@@ -140,7 +140,7 @@ export function Detail(p: Props) {
           </li>))}
         {/* nobody said what it does: how to have it said, once, under the facts */}
         {!descriptions(p.ix, p.sel.id, descOrder).some((d) => d.kind !== 'facts' && d.state !== 'wrong')
-          ? <li className="small muted">{t('這個函式沒有註解或 AI 說明。在 repo 裡執行 codemap describe {v1} --missing，請 AI 補上。', { v1: f.file })}</li> : null}
+          ? <li className="small muted">{t('這個函式沒有註解或 AI 說明。在 repo 裡執行 codemap describe，請 AI 補上。')}</li> : null}
       </ul>
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },

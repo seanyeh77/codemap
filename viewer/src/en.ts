@@ -895,10 +895,10 @@ export const EN: Record<string, string> = {
   "讀取 {v1} 的命令列，分派 {v2} 個指令": "Reads the command line of {v1} and runs one of its {v2} commands",
   "讀取 {v1} 的命令列": "Reads the command line of {v1}",
   "作用": "What it does",
-  "函式在說明寫好之後改過，說明可能過時。用 codemap describe --missing 重寫。": "The function changed after this was written; it may be out of date. Rewrite it with codemap describe --missing.",
+  "函式在說明寫好之後改過，說明可能過時。執行 codemap describe 會重寫。": "The function changed after this was written; it may be out of date. codemap describe writes it again.",
   "說明提到的位置或名稱與程式碼不符，codemap check 會列出。": "It cites a place or a name the code does not have; codemap check lists them.",
   "右側面板說明函式的作用：作者的註解、AI 的說明，或 codemap 知道的事實。沒有說明的函式可以用 codemap describe 請 AI 補上；說明的順序在設定裡改。": "The panel says what a function does: its author's comment, an AI's description, or the facts codemap knows. Have an AI describe the rest with codemap describe; change the order in Settings.",
   "函式說明：{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。": "Descriptions: of {v1} functions, {v2} have a comment and {v3} an AI description.",
   "其餘 {v1} 個可以用 codemap describe 請 AI 補上。": "Have an AI describe the other {v1} with codemap describe.",
-  "這個函式沒有註解或 AI 說明。在 repo 裡執行 codemap describe {v1} --missing，請 AI 補上。": "No comment or AI description. In the repository, run codemap describe {v1} --missing to have an AI write one.",
+  "這個函式沒有註解或 AI 說明。在 repo 裡執行 codemap describe，請 AI 補上。": "No comment or AI description. Run codemap describe in the repository to have an AI write one.",
 }

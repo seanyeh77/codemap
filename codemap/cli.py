@@ -2,7 +2,7 @@
 
 Start here, in the repository:
   codemap index                      1. read the code (again after it changes)
-  codemap describe FILE -o prompt.md 2. optional: have an AI say what each function does (codemap describe -h)
+  codemap describe                   2. optional: prompts for an AI to say what each function does (codemap describe -h)
   codemap serve                      3. open the map in a browser: http://127.0.0.1:7300/
   codemap export --html                 or one HTML file with the map, to open anywhere
 
@@ -11,7 +11,7 @@ Every command:
   codemap callers NAME               who calls NAME (compiler and rule edges)
   codemap callees NAME               what NAME calls
   codemap where NAME                 definition of NAME, and what it does
-  codemap describe [FILE ...]        AI descriptions: write the prompt, --apply the answer, --status
+  codemap describe [FILE ...]        AI descriptions: prompts for what is not described, --apply the answers, --status
   codemap relations [NAME]           rule edges: pointers, env, exec, build, cross-language
   codemap arch                       write the Architecture section of CODEMAP.md and a diagram
   codemap check [FILE ...]           validate file:line references and call claims
@@ -169,7 +169,7 @@ def next_steps(root, idx):
     print("\nnext:")
     # descriptions first: the map shows them, and a snapshot keeps only what is there when it is written
     if funcs and told < len(funcs):
-        print(f"  codemap describe FILE         {len(funcs) - told} of {len(funcs)} functions have no comment or description: "
+        print(f"  codemap describe              {len(funcs) - told} of {len(funcs)} functions have no comment or description: "
               "have an AI write them (optional)")
     print("  codemap serve                 open the map: http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)")
     print("  codemap export --html         or one HTML file with the map, to open anywhere")
@@ -207,16 +207,21 @@ def cmd_describe(a):
     root = Path(a.root).resolve()
     idx = load(root)
     if a.apply:
-        text = sys.stdin.read() if a.apply == "-" else Path(a.apply).read_text(encoding="utf-8")
-        try:
-            kept, rejected = describe.apply(root, idx, text, by=a.by)
-        except ValueError as e:
-            sys.exit(f"the answer is not JSON: {e}")
-        for nid, bad in rejected.items():
-            print(f"not kept: {nid}: " + "; ".join(bad))
-        print(f"kept {len(kept)} descriptions in {describe.FILE}" + (f", {len(rejected)} not kept" if rejected else ""))
-        sys.exit(1 if rejected else 0)
-    if a.status or not a.files:
+        bad_total = 0
+        for ans in a.apply:                          # several answers: one per prompt of a project
+            text = sys.stdin.read() if ans == "-" else Path(ans).read_text(encoding="utf-8")
+            try:
+                kept, rejected = describe.apply(root, idx, text, by=a.by)
+            except ValueError as e:
+                print(f"{ans}: the answer is not JSON: {e}")
+                bad_total += 1
+                continue
+            for nid, bad in rejected.items():
+                print(f"{ans}: not kept: {nid}: " + "; ".join(bad))
+            print(f"{ans}: kept {len(kept)} descriptions" + (f", {len(rejected)} not kept" if rejected else ""))
+            bad_total += len(rejected)
+        sys.exit(1 if bad_total else 0)
+    if a.status:
         r = describe.report(root, idx)
         total = sum(1 for n in idx["nodes"].values() if n.get("defined") and n.get("kind") not in ("module", "file") and n.get("line"))
         for st in ("stale", "wrong"):
@@ -224,18 +229,46 @@ def cmd_describe(a):
                 print(f"{st}: {fmt_node(idx, nid)}")
         print(f"{len(r['ok'])} up to date, {len(r['stale'])} stale (the function changed), {len(r['wrong'])} wrong, "
               f"{total - sum(map(len, r.values()))} functions without one")
-        if not a.files:
-            print("describe a file: codemap describe FILE [--missing] > prompt.md")
         return
-    files = [str(Path(f).resolve().relative_to(root)) if Path(f).is_absolute() or (root / f).exists() is False and Path(f).exists() else f for f in a.files]
-    text, n = describe.prompt(root, idx, files, only_missing=a.missing)
-    if not n:
-        sys.exit("no functions to describe in " + ", ".join(files) + (" (all up to date)" if a.missing else ""))
-    if a.output:
-        Path(a.output).write_text(text, encoding="utf-8")
-        print(f"wrote the prompt for {n} functions to {a.output}")
+    # no file named: the whole project; up-to-date descriptions are kept unless --rewrite
+    files = describe.project_files(idx, a.tests) if not a.files else [
+        str(Path(f).resolve().relative_to(root)) if Path(f).resolve().is_relative_to(root) and not (root / f).exists() else f for f in a.files]
+    ids = describe.pending(root, idx, files, only_missing=not a.rewrite)
+    if not ids:
+        print("every function there has an up-to-date description (codemap describe --rewrite to write them again)")
+        return
+    parts = describe.batches(idx, ids, a.batch)
+    if len(parts) == 1 and a.files:
+        text, n = describe.prompt(root, idx, ids=parts[0])
+        if a.output:
+            Path(a.output).write_text(text, encoding="utf-8")
+            print(f"wrote the prompt for {n} functions to {a.output}")
+        else:
+            print(text)
+        return
+    # many functions: one prompt per batch, so each answer stays complete. -o x.md: x-01.md, x-02.md beside it;
+    # otherwise a folder (default .codemap/prompts), emptied of the last round's prompts and answers first
+    out = Path(a.output or ".codemap/prompts")
+    out = out if out.is_absolute() else Path.cwd() / out
+    if out.suffix == ".md":
+        folder, stem = out.parent, out.stem
     else:
-        print(text)
+        folder, stem = out, "prompt"
+        for old in [*folder.glob("prompt-*.md"), *folder.glob("answer-*.json")]:
+            old.unlink()                              # the last round's: their functions may be described now
+    folder.mkdir(parents=True, exist_ok=True)
+    if folder.name == "prompts" and folder.parent.name == ".codemap":
+        (folder / ".gitignore").write_text("*\n")      # scratch: not part of the repository
+    names = []
+    for i, part in enumerate(parts, 1):
+        text, _ = describe.prompt(root, idx, ids=part)
+        names.append(folder / f"{stem}-{i:02d}.md")
+        names[-1].write_text(text.replace("codemap describe --apply <that file>", f"codemap describe --apply answer-{i:02d}.json"), encoding="utf-8")
+    rel = lambda p: p.relative_to(Path.cwd()) if p.is_relative_to(Path.cwd()) else p
+    print(f"{len(ids)} functions in {len(files)} file{'s' * (len(files) != 1)}: {len(parts)} prompts, "
+          f"{rel(names[0])} ... {names[-1].name}")
+    print("give each to an AI, save its answer as answer-NN.json beside it, then:")
+    print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
 
 
 def cmd_relations(a):
@@ -278,7 +311,7 @@ def cmd_check(a):
         for nid in r["wrong"]:
             print(f"{describe.FILE}: {fmt_node(idx, nid)}: " + "; ".join(describe.problems(root, idx, nid, describe.load(root)[nid])))
         for nid in r["stale"]:
-            print(f"{describe.FILE}: {fmt_node(idx, nid)}: the function changed since it was described (codemap describe --missing)")
+            print(f"{describe.FILE}: {fmt_node(idx, nid)}: the function changed since it was described (codemap describe writes its prompt again)")
         print(f"{describe.FILE}: {len(r['ok'])} up to date, {len(r['stale'])} stale, {len(r['wrong'])} wrong")
         bad += len(r["wrong"])
     sys.exit(1 if bad else 0)
@@ -342,11 +375,13 @@ def main(argv=None):
     s = sub.add_parser("where")
     s.add_argument("name")
     s.set_defaults(fn=cmd_where)
-    s = sub.add_parser("describe", help="AI descriptions of functions: a prompt for some files, or keep the answer")
-    s.add_argument("files", nargs="*", help="files whose functions to describe (prints the prompt)")
-    s.add_argument("--missing", action="store_true", help="only functions without an up-to-date description")
-    s.add_argument("-o", "--output", help="write the prompt here")
-    s.add_argument("--apply", metavar="ANSWER", help="keep the AI's JSON answer (- for standard input)")
+    s = sub.add_parser("describe", help="AI descriptions of functions: prompts for the project (or some files), or keep the answers")
+    s.add_argument("files", nargs="*", help="only these files (default: the whole project, without its tests)")
+    s.add_argument("--tests", action="store_true", help="the test files too")
+    s.add_argument("--rewrite", action="store_true", help="also functions whose description is up to date")
+    s.add_argument("--batch", type=int, default=30, help="functions per prompt when there are many (default 30)")
+    s.add_argument("-o", "--output", help="write the prompt here; with several prompts, the folder (default .codemap/prompts)")
+    s.add_argument("--apply", metavar="ANSWER", nargs="+", help="keep the AI's JSON answers (- for standard input)")
     s.add_argument("--by", default="ai", help="who wrote the answer, kept with it (e.g. claude-opus-5-5)")
     s.add_argument("--status", action="store_true", help="how many are up to date, stale or wrong")
     s.set_defaults(fn=cmd_describe)
