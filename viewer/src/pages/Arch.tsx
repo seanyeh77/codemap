@@ -5,7 +5,9 @@ import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
 import { entryText, push, type Index } from '../data/graph'
 import { fileGraph, fileView, roleOf, type Role } from '../data/files'
-import { KIND_LABEL, oneLine as descLine, plain as plainText, useDescOrder } from '../data/describe'
+import { DescText } from '../components/DescText'
+import { KIND_LABEL, aiFirst, aiItem, usesAi, codeSpans, oneLine as descLine, plain as plainText, stepText, useDescOrder, type Desc } from '../data/describe'
+import type { CliCommand } from '../data/types'
 import { FEW_CHOICES, argText, commonRuns, usage } from '../data/cli'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
@@ -382,7 +384,13 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
       <UI.Card title={p.file} actions={<UI.Button icon="arrow-left" onClick={() => p.onComp('')}>{t('回到概觀')}</UI.Button>}>
         {role ? <p className="small"><UI.Tag>{role === 'editable' ? t('可修改') : t('受保護')}</UI.Tag>{' '}
           {byRules ? t('依據：.codemap/rules.json 的 roles') : t('依據：檔案開頭註解的第一個詞')}</p> : null}
-        {doc ? <p className="small">{short(doc.text, 400)}<br /><From doc={doc} /></p> : <p className="small muted">{t('沒有說明註解。')}</p>}
+        {/* what the file is for: its top comment and an AI's description, in the reader's order */}
+        {((a) => [
+          a && (aiFirst(descOrder) || !doc) ? <p key="ai" className="small"><DescText d={a} tag full /></p> : null,
+          doc ? <p key="doc" className="small">{short(doc.text, 400)}<br /><From doc={doc} /></p> : null,
+          a && !aiFirst(descOrder) && doc ? <p key="ai2" className="small"><DescText d={a} tag full /></p> : null,
+          !a && !doc ? <p key="none" className="small muted">{t('沒有說明註解。')}</p> : null,
+        ])(aiItem(p.ix, 'file:' + p.file, descOrder))}
         <UI.DetailList items={[
           // a controller's event handlers have no caller in the repo: the framework calls them
           ...[...new Set(ids.map((id) => p.ix.funcs[id].entry?.framework).filter(Boolean))].map((fw) => ({ label: t('由框架呼叫'),
@@ -459,6 +467,14 @@ const loc = (f: string, l: number, inTable = false) => code(`${f}:${l}`, inTable
 /** The project's documents: the top-level ones and those the code points to first, each with its
  *  title and first sentence; the rest in a closed block. The fullest explanation of a design is
  *  often a document, and nothing on the diagram leads to it. */
+/** An AI description as Markdown: its `names` in code, the rest escaped, marked as the AI's (and stale, if so). */
+function aiMd(d: Desc | null, inTable = false): string {
+  if (!d) return ''
+  const body = codeSpans(d.text).map((x) => (typeof x === 'string' ? esc(x) : code(x.code, inTable))).join('')
+  // in a table the column's header says AI once; a stale one still says so in its cell
+  return body + (d.state === 'stale' ? ' ' + t('（AI 說明，程式已改過，可能過時）') : inTable ? '' : ' ' + t('（AI 說明）'))
+}
+
 function docsPart(docs: DocSummary[]): PartMd {
   // the README and docs/*.md, then documents the code names at least twice, most named first
   const main = docs.filter((d) => d.file.split('/').length <= 2 && !/^(CODEMAP|notes)\.md$/i.test(d.file) || d.cited >= 2)
@@ -485,6 +501,8 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const openFile = useContext(OpenFile)
   const [copied, setCopied] = useState(false)
   const links = useMemo(() => ({ refs, openFile, onFn: p.onPick }), [refs, openFile, p.onPick])
+  const descOrder = useDescOrder()
+  const ai = (key: string, inTable = false) => aiMd(aiItem(p.ix, key, descOrder), inTable)
   const fname = (ref: string) => { const hit = p.ix.at(ref); return hit ? p.ix.funcs[hit.id].name : null }
   const lifecycle = g.edges.filter((e) => e.k === 'constructor' || e.k === 'destructor').filter((e) => p.ix.funcs[e.d])
   const apis = new Map<string, number>()
@@ -580,10 +598,21 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   const longList = (label: string, lines: string[]) => (lines.length > 5 ? details(label, lines.join('\n')) : `${esc(label)}\n\n${lines.join('\n')}`)
   const parts: PartMd[] = []
 
-  // 元件: what each one is for, in its own words; test code apart
+  // 這個專案: what it is for and where to start reading, when an AI has written them (codemap describe)
+  const project = ai('project')
+  const route = usesAi(descOrder) && g.described?.route && g.described.route.state !== 'wrong' ? g.described.route : null
+  if (project || route) parts.push({ id: 'ov-project', title: t('這個專案'), open: true, md: [
+    project,
+    route ? [`### ${t('閱讀路線')}`, aiMd({ kind: 'ai', text: stepText(route.text), state: route.state }),
+      (route.steps ?? []).filter((s) => p.ix.funcs[s.id]).map((s, i) => `${i + 1}. ${fnLinkMod(p.ix, s.id)} ${loc(p.ix.funcs[s.id].file, p.ix.funcs[s.id].line)}${t('：')}${esc(stepText(s))}`).join('\n')].join('\n\n') : '',
+  ].filter(Boolean).join('\n\n') })
+
+  // 元件: what each one is for, in its own words (and an AI's); test code apart
+  const compAi = (id: string) => ai('comp:' + id)
   parts.push({ id: 'ov-comps', title: t('元件'), summary: sums.comps, open: true, md: [
-    g.comps.map((c) => `- **${esc(c.id)}**：` + (c.doc
-      ? oneLine(short(c.doc.text)) + BR + (c.doc.own ? t('專案在 .codemap/rules.json 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: c.doc.file, v2: c.doc.line }))
+    g.comps.map((c) => `- **${esc(c.id)}**：` + (compAi(c.id) && (aiFirst(descOrder) || !c.doc) ? compAi(c.id) + (c.doc ? BR : '') : '') + (c.doc
+      ? oneLine(short(c.doc.text)) + BR + (c.doc.own ? t('專案在 .codemap/rules.json 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: c.doc.file, v2: c.doc.line })) + (compAi(c.id) && !aiFirst(descOrder) ? BR + compAi(c.id) : '')
+      : compAi(c.id) ? ''
       : c.file_docs?.length ? t('元件沒有整體說明，以下為各檔案的開頭註解：') + c.file_docs.map((d) => `\n  - ${code(d.file.split('/').pop()!)} ${oneLine(short(firstSentence(d.text), 90))}`).join('')
       : t('沒有說明註解。'))).join('\n'),
     testComps.length ? [`### ${t('測試與評分程式（不畫在圖上）')}`, testComps.map(([comp, fs]) => {
@@ -596,6 +625,14 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   ].filter(Boolean).join('\n\n') })
 
   if (g.docs?.length) parts.push(docsPart(g.docs))
+
+  // 名詞: the project's own words, each with where it appears, when an AI has written them
+  const terms = usesAi(descOrder) ? Object.entries(g.described ?? {}).filter(([k, d]) => k.startsWith('term:') && d.state !== 'wrong').sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' })) : []
+  if (terms.length) parts.push({ id: 'ov-terms', title: t('名詞'), summary: t('{v1} 個', { v1: terms.length }), md: [
+    mdTable([t('名詞'), t('說明'), t('出現在')], terms.map(([, d]) => [code(d.term ?? '', true), aiMd(aiItem(p.ix, 'term:' + d.term, descOrder), true),
+      (d.evidence ?? []).map((r) => { const [f, l] = [r.slice(0, r.lastIndexOf(':')), Number(r.slice(r.lastIndexOf(':') + 1))]; return loc(f, l, true) }).join(t('、'))])),
+    note(t('名詞與說明由 AI 撰寫（codemap describe），出現的位置已核對過。')),
+  ].join('\n\n') })
 
   // 進入與結束: where control comes in from outside the repository, and what runs on its own
   if (lifecycle.length || apis.size || installed.size || fwEntries.size || mains.length || spawns.length || clis.length) {
@@ -614,8 +651,11 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         const by = x.dispatch ?? x.main
         const head = [x.help ? esc(x.help) : '',
           (by ? t('由 {v1} 讀取命令列{v2}；', { v1: fnL(by), v2: x.dispatch ? t('並依指令名稱分派') : '' }) : '') + t('參數定義在 {v1}。', { v1: loc(x.f, x.l) })].filter(Boolean).join('\n\n')
-        const table = x.cmds.length ? mdTable([t('指令'), t('執行'), t('位置')], x.cmds.map((c) => [
-          code(usage(x, c), true),
+        // 用途: what each command is for, when an AI has written it
+        const purpose = (c: CliCommand) => ai(`cmd:${x.prog} ${c.name}`, true)
+        const withPurpose = x.cmds.some((c) => purpose(c))
+        const table = x.cmds.length ? mdTable([t('指令'), ...(withPurpose ? [t('用途（AI 說明）')] : []), t('執行'), t('位置')], x.cmds.map((c) => [
+          code(usage(x, c), true), ...(withPurpose ? [purpose(c)] : []),
           c.run.filter((id) => !common.has(id) && p.ix.funcs[id]).map((id) => fnLinkMod(p.ix, id)).join(t('、')) || (common.size ? '' : t('（未找到）')),
           c.at && x.dispatch ? loc(p.ix.funcs[x.dispatch].file, c.at[0], true) : loc(x.f, c.l, true),
         ])) : `- ${code(usage(x))}`
@@ -632,10 +672,14 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
             ...((hs) => {
               const fns = [...new Set(a.choices!.map((v) => hs[v]?.[0]).filter((id): id is string => !!id && !!p.ix.funcs[id]))]
               const at = (v: string) => (hs[v] && p.ix.funcs[hs[v][0]] ? loc(p.ix.funcs[hs[v][0]].file, hs[v][1], true) : t('（未找到）'))
+              // 作用: what each value does, when an AI has written it
+              const does = (v: string) => ai(`value:${x.prog}${c ? ' ' + c.name : ''} ${a.name}=${v}`, true)
+              const w = a.choices!.some((v) => does(v))
+              const what = (v: string) => (w ? [does(v)] : [])
               // one function handles every value: named once, the table keeps the value and its line
               return fns.length === 1 && a.choices!.every((v) => hs[v])
-                ? [t('全部在 {v1} 處理。', { v1: fnLinkMod(p.ix, fns[0]) }), mdTable([t('值'), t('位置')], a.choices!.map((v) => [code(v, true), at(v)]))]
-                : [mdTable([t('值'), t('處理的函式'), t('位置')], a.choices!.map((v) => [code(v, true), hs[v] && p.ix.funcs[hs[v][0]] ? fnLinkMod(p.ix, hs[v][0]) : '', at(v)]))]
+                ? [t('全部在 {v1} 處理。', { v1: fnLinkMod(p.ix, fns[0]) }), mdTable([t('值'), ...(w ? [t('作用（AI 說明）')] : []), t('位置')], a.choices!.map((v) => [code(v, true), ...what(v), at(v)]))]
+                : [mdTable([t('值'), ...(w ? [t('作用（AI 說明）')] : []), t('處理的函式'), t('位置')], a.choices!.map((v) => [code(v, true), ...what(v), hs[v] && p.ix.funcs[hs[v][0]] ? fnLinkMod(p.ix, hs[v][0]) : '', at(v)]))]
             })(a.handled ?? {}),
             Object.keys(a.handled ?? {}).length ? note(t('處理位置：從這個指令執行的函式往下三層呼叫，第一個寫出這個值的地方。')) : '',
           ].filter(Boolean).join('\n\n')))
@@ -692,6 +736,7 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     const at = (refs: string[]) => refs.filter(inProgram).map((r) => (fname(r) ? `${esc(fname(r)!)} ${code(r)}` : code(r))).join(t('、'))
     parts.push({ id: 'ov-env', title: t('執行期設定（環境變數）'), summary: sums.env, md: [
       env.map(([name, v]) => `- **${code(name)}**：` + [
+        ai('env:' + name),
         name === 'LD_PRELOAD' ? t('由 dynamic loader 在程式啟動時讀取，先載入其中的程式庫。') : '',
         ...(g.env_info?.[name] ? meaning(g.env_info[name]) : []),
         t('讀取：{v1}', { v1: at(v.get) || '—' }),
@@ -705,9 +750,12 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
   }
 
   if (g.build && (g.build.built.length || g.build.install.length)) parts.push(buildPart(g.build))
-  if (g.writes) parts.push(writesPart(p.ix, writes, inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS)))
-  if (reads.length) parts.push({ id: 'ov-reads', title: t('讀取的檔案'), summary: sums.reads, md: mdTable([t('檔案'), t('函式'), t('方式'), t('位置')], reads.map((r) => [
-    r.name ? code(r.name, true) : r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ? code(r.expr, true) : t('（執行時決定）'), fnLink(p.ix, r.fid), code(r.call, true), loc(r.f, r.l, true)])) })
+  if (g.writes) parts.push(writesPart(p.ix, writes, inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS), (w) => (w.name || w.expr ? ai('data:' + (w.name || w.expr)) : '')))
+  // 內容: what the file holds, when an AI has written it
+  const dataAi = (r: { name?: string; expr?: string }) => (r.name || r.expr ? ai('data:' + (r.name || r.expr), true) : '')
+  const readsAi = reads.some((r) => dataAi(r))
+  if (reads.length) parts.push({ id: 'ov-reads', title: t('讀取的檔案'), summary: sums.reads, md: mdTable([t('檔案'), ...(readsAi ? [t('內容（AI 說明）')] : []), t('函式'), t('方式'), t('位置')], reads.map((r) => [
+    r.name ? code(r.name, true) : r.param ? t('參數 {v1}', { v1: r.param }) : r.expr ? code(r.expr, true) : t('（執行時決定）'), ...(readsAi ? [dataAi(r)] : []), fnLink(p.ix, r.fid), code(r.call, true), loc(r.f, r.l, true)])) })
 
   // 值得檢查的地方: one ### per check, its findings or 沒有找到
   if (g.worth) {
@@ -918,7 +966,7 @@ function buildPart(build: BuildInfo): PartMd {
 }
 
 /** Where the code creates or writes files, and the file names when the code spells them out. */
-function writesPart(ix: Index, writes: FileWrite[], none: string): PartMd {
+function writesPart(ix: Index, writes: FileWrite[], none: string, holds: (w: FileWrite) => string = () => ''): PartMd {
   const how = (w: FileWrite) => w.call === 'shm_open' ? t('以 shm_open（O_CREAT）建立')
     : /^(write_text|write_bytes)$/.test(w.call) ? t('以 {v1} 寫入', { v1: w.call })
     : /(replace|rename)$/i.test(w.call) ? t('以 {v1} 換成這個檔案', { v1: w.call })
@@ -932,7 +980,7 @@ function writesPart(ix: Index, writes: FileWrite[], none: string): PartMd {
   return {
     id: 'ov-writes', title: t('寫出的檔案'), summary: t('{v1} 處', { v1: writes.length }),
     md: writes.length ? writes.map((w) => `- **${name(w)}**：${fnLink(ix, w.fid)} ${how(w)}，${loc(w.f, w.l)}`
-      + (said(w) ? BR + said(w) : '')
+      + (said(w) ? BR + said(w) : '') + (holds(w) ? BR + holds(w) : '')
       // the names the callers pass in: _atomic_json(STATE_DIR / 'controller.json', …)
       + (w.via?.length ? w.via.map((v) => `\n  - ${code(v.name)} ${fnLink(ix, v.fid)} ${loc(v.f, v.l)}`).join('') : '')).join('\n')
       : note(none ? t('沒有寫入檔案的地方（{v1}）。', { v1: none }) : t('本專案的語言沒有寫入檔案的檢查。')),

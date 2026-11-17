@@ -26,18 +26,31 @@ def path(root):
     return Path(root) / FILE
 
 
-def load(root):
+def load_all(root):
+    """The whole file: {"funcs": {...}, "items": {...}}; items are files, components, commands and the rest."""
     try:
         data = json.loads(path(root).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
-    return data.get("funcs", {}) if isinstance(data, dict) else {}
+        data = {}
+    data = data if isinstance(data, dict) else {}
+    return {"funcs": data.get("funcs", {}) or {}, "items": data.get("items", {}) or {}}
 
 
-def save(root, funcs):
+def load(root):
+    return load_all(root)["funcs"]
+
+
+def save(root, funcs=None, items=None):
+    """Write the functions' or the items' descriptions, keeping the other half as it is."""
+    data = load_all(root)
+    if funcs is not None:
+        data["funcs"] = funcs
+    if items is not None:
+        data["items"] = items
     p = path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"version": 1, "funcs": dict(sorted(funcs.items()))}, ensure_ascii=False, indent=1) + "\n",
+    p.write_text(json.dumps({"version": 2, "funcs": dict(sorted(data["funcs"].items())),
+                             "items": dict(sorted(data["items"].items()))}, ensure_ascii=False, indent=1) + "\n",
                  encoding="utf-8")
 
 
@@ -105,8 +118,10 @@ def state(root, idx, nid, entry):
 
 
 def funcs_in(idx, file):
+    """The repository's own functions in a file (not call sites, outside functions or the file itself), in order."""
+    from .arch import repo_func
     return sorted((nid for nid, n in idx["nodes"].items()
-                   if n.get("file") == file and n.get("defined", True) and n.get("kind") not in ("module", "file")),
+                   if n.get("file") == file and repo_func(n) and n.get("line") and n.get("kind") not in ("module", "file")),
                   key=lambda nid: idx["nodes"][nid]["line"])
 
 
@@ -123,8 +138,9 @@ def pending(root, idx, files, only_missing=False):
 
 def project_files(idx, tests=False):
     """Every file with a function of the repository's own, test files only with tests."""
+    from .arch import repo_func
     return sorted({n["file"] for n in idx["nodes"].values()
-                   if n.get("defined") and n.get("line") and n.get("file") and n.get("kind") not in ("module", "file")
+                   if repo_func(n) and n.get("line") and n.get("kind") not in ("module", "file")
                    and (tests or n.get("scope") != "test")})
 
 

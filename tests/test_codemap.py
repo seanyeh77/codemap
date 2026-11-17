@@ -361,6 +361,51 @@ class DescribeBatches(unittest.TestCase):
         self.assertEqual(sum(parts, []), ids)
 
 
+class DescribeItems(unittest.TestCase):
+    """Rounds 2 to 4: files, the project, its route and glossary, checked against the code before they are kept."""
+
+    def test_items_checked_and_stale(self):
+        from codemap import describe_items
+        a = "def main():\n    run()\n\n\ndef run():\n    return 'VXLAN'\n"
+        b = "def handler():\n    return 1\n"
+        node = lambda f, n, l, e: dict(name=n, file=f, line=l, end=e, defined=True, kind="function")
+        idx = {"nodes": {"a.py:main": node("a.py", "main", 1, 2), "a.py:run": node("a.py", "run", 5, 6),
+                         "b.py:handler": node("b.py", "handler", 1, 2)},
+               "edges": [dict(src="a.py:main", dst="a.py:run", file="a.py", line=2, kind="call", source="static")]}
+        g = {"funcs": {k: dict(v, comp=".") for k, v in idx["nodes"].items()}, "comps": [{"id": "."}], "files": {}}
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "a.py").write_text(a)
+            (Path(d) / "b.py").write_text(b)
+            (Path(d) / "README.md").write_text("# Tool\n")
+            its = describe_items.items(d, idx, g)
+            self.assertEqual(sorted(k for k in its if k.startswith("file:")), ["file:a.py", "file:b.py"])
+            lv, keys = describe_items.pending(d, idx, g, level=2)
+            self.assertEqual((lv, sorted(keys)), (2, ["file:a.py", "file:b.py"]))
+            answer = {
+                "descriptions": [
+                    {"id": "file:a.py", "zh-TW": "入口與工作。", "en": "Entry and work.", "evidence": ["a.py:1"]},
+                    {"id": "file:b.py", "zh-TW": "處理。", "en": "Handles.", "evidence": ["a.py:5"]},          # not in b.py
+                    {"id": "project", "zh-TW": "一個工具。", "en": "A tool.", "evidence": ["README.md:1"]},      # a document: allowed
+                ],
+                "route": {"zh-TW": "路線", "en": "route", "steps": [
+                    {"id": "a.py:main", "zh-TW": "入口", "en": "entry"}, {"id": "a.py:run", "zh-TW": "工作", "en": "work"},
+                    {"id": "b.py:handler", "zh-TW": "另一個入口", "en": "another entry"}]},                       # nothing calls it: allowed
+                "terms": [{"term": "VXLAN", "zh-TW": "隧道", "en": "a tunnel", "evidence": ["a.py:6"]},
+                          {"term": "MPLS", "zh-TW": "標籤", "en": "labels", "evidence": ["a.py:6"]}],             # not on that line
+            }
+            kept, rejected = describe_items.apply(d, idx, g, answer, by="test")
+            self.assertEqual(sorted(kept), ["file:a.py", "project", "route", "term:VXLAN"])
+            self.assertIn("not in b.py", " ".join(rejected["file:b.py"]))
+            self.assertIn("does not have the term", " ".join(rejected["term:MPLS"]))
+            bad = describe_items.apply(d, idx, g, {"route": {"zh-TW": "x", "en": "x", "steps": [
+                {"id": "a.py:run", "zh-TW": "a", "en": "a"}, {"id": "a.py:main", "zh-TW": "b", "en": "b"},
+                {"id": "a.py:run", "zh-TW": "c", "en": "c"}, {"id": "b.py:handler", "zh-TW": "d", "en": "d"}]}}, by="t")
+            self.assertEqual(bad[0], ["route"])                                     # each step calls the next, or starts again
+            (Path(d) / "a.py").write_text(a.replace("'VXLAN'", "'GRE'"))
+            shown = describe_items.described(d, idx, g)
+            self.assertEqual((shown["file:a.py"]["state"], shown["term:VXLAN"]["state"]), ("stale", "wrong"))
+
+
 class Cli(unittest.TestCase):
     """argparse programs: each command, its arguments and the functions it runs (facts.py_cli)."""
 

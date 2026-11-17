@@ -42,12 +42,13 @@ export function useDescOrder(): DescOrder {
 }
 
 /** An AI description in the reader's language, or in the other one, marked; with its state. */
-export function aiText(ai: Graph['funcs'][string]['ai']): { text: string; lang?: string; state?: 'ok' | 'stale' | 'wrong' } | null {
-  if (!ai?.text) return null
+export function aiText(ai: { text?: Record<string, string>; state?: 'ok' | 'stale' | 'wrong' } | undefined): { text: string; lang?: string; state?: 'ok' | 'stale' | 'wrong' } | null {
+  const text = ai?.text
+  if (!text) return null
   const want = lang()
-  if (ai.text[want]) return { text: ai.text[want], state: ai.state }
-  const other = Object.keys(ai.text).find((k) => ai.text[k])
-  return other ? { text: ai.text[other], lang: other, state: ai.state } : null
+  if (text[want]) return { text: text[want], state: ai?.state }
+  const other = Object.keys(text).find((k) => text[k])
+  return other ? { text: text[other], lang: other, state: ai?.state } : null
 }
 
 /** B: the facts about one function, most telling first. Each is short; callers use the first few. */
@@ -116,3 +117,18 @@ export function codeSpans(text: string): (string | { code: string })[] {
 
 /** Text without the backticks, for a place that shows plain text only (a list's second line). */
 export const plain = (text: string) => text.replace(/`([^`]+)`/g, '$1')
+
+/** Whether the reader's order uses AI descriptions, and whether before the author's. */
+export const usesAi = (order: DescOrder) => ORDERS.find((o) => o.id === order)!.kinds.includes('ai')
+export const aiFirst = (order: DescOrder) => ORDERS.find((o) => o.id === order)!.kinds[0] === 'ai'
+
+/** An item's AI description (a file, a component, a command, the project...), when the order uses them and it does
+ *  not contradict the code. */
+export function aiItem(ix: Index, key: string, order: DescOrder): Desc | null {
+  if (!usesAi(order)) return null
+  const a = aiText(ix.g.described?.[key])
+  return a && a.state !== 'wrong' ? { kind: 'ai', ...a } : null
+}
+
+/** A route step's text in the reader's language. */
+export const stepText = (s: Record<string, string>) => s[lang()] || s['zh-TW'] || s.en || ''

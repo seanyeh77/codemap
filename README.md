@@ -215,26 +215,42 @@ AI's description once that exists. The panel lists every kind with where it
 comes from; a file's list of functions and a link's card show one line, the
 first kind there is in the order chosen in Settings.
 
-codemap never calls an AI itself. To have one describe the functions:
+codemap never calls an AI itself. `codemap describe` writes prompts for what is not
+described yet, in four rounds, each resting on the one below it:
+
+1. functions: what each does
+2. files, the commands of an argparse program and the allowed values of their
+   arguments, environment variables, the files the code reads and writes
+3. components, from what their files do
+4. the project (two or three sentences), a reading route (the functions to read
+   first, in order) and a glossary of the project's own words
 
 ```sh
-codemap describe                       # prompts for every function not yet described, in .codemap/prompts/
+codemap describe                       # prompts for the lowest round not done, in .codemap/prompts/
 # give each prompt-NN.md to an AI, save its JSON answer as answer-NN.json beside it, then
 codemap describe --apply .codemap/prompts/answer-*.json --by claude-opus-5-5
-codemap describe --status              # how many are up to date, stale or wrong
+codemap describe                       # the next round, until it says everything is described
+codemap describe --status              # each round: up to date, stale, wrong, missing
 ```
 
-With no file named it takes the whole project (not its tests: `--tests`), only the
-functions without an up-to-date description (all of them: `--rewrite`), about 30
-functions to a prompt (`--batch N`) so each answer stays complete. Name files to
-take only those: `codemap describe src/client.c -o prompt.md` writes one prompt.
-After the code changes, the same `codemap describe` writes prompts for just the
-changed and the new functions.
+With no file named it takes the whole project (not its tests: `--tests`), only
+what has no up-to-date description (all of it: `--rewrite`), about 30 functions
+or items to a prompt (`--batch N`). `--level N` writes round N even if one below
+is not done. Name files to take only their functions: `codemap describe
+src/client.c -o prompt.md`. After the code changes, the same `codemap describe`
+asks again for just what changed.
 
 Each description is in Traditional Chinese and English, cites the lines it rests
-on, and is kept in `.codemap/descriptions.json` with a hash of the function's
-source. An answer that cites a line outside the function and its neighbours, or a
-name in `code` font the code does not have, is not kept. A function changed since
+on, and is kept in `.codemap/descriptions.json` with a hash of what it describes
+(the function's source, the file, the functions a command runs, the lines a
+variable is read on). An answer is not kept where it cites a line outside what
+it describes (a function and its neighbours; a file; a command's functions; the
+project may cite any file, its README too), a name in `code` font the code does
+not have, a term on a line without that word, or a route step that neither
+calls the next nor is a place the program starts (nothing in the repository
+calls it). The viewer shows them in the overview (這個專案, 閱讀路線, 名詞, the
+components, and the commands, values, variables and data files in their
+tables), in a file's panel and for each function. A function changed since
 is shown as stale (after the facts, faded); `codemap check` lists the stale and
 the wrong ones. `codemap where NAME` prints every kind of description, and
 `codemap callers NAME -d` / `callees NAME -d` print them for each function listed.

@@ -28,7 +28,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import arch, backends, check, describe, docs, frameworks, layer1, rules, view
+from . import arch, backends, check, describe, describe_items, docs, frameworks, layer1, rules, view
 
 INDEX = Path(".codemap") / "index.json"
 CALLISH = ("call", "indirect_candidate", "indirect_saved", "fnptr_assign", "constructor", "destructor")
@@ -162,8 +162,7 @@ def cmd_index(a):
 
 def next_steps(root, idx):
     """What to do with the index just built: open it, take it along, and how many functions say what they do."""
-    funcs = [(nid, n) for nid, n in idx["nodes"].items()
-             if n.get("defined") and n.get("line") and n.get("kind") not in ("module", "file") and n.get("scope") != "test"]
+    funcs = [(nid, idx["nodes"][nid]) for f in describe.project_files(idx) for nid in describe.funcs_in(idx, f)]
     ai = describe.load(root)
     told = sum(1 for nid, n in funcs if nid in ai or docs.func_doc(root, n["file"], n["line"], n.get("lang", "c")))
     print("\nnext:")
@@ -202,51 +201,80 @@ def cmd_where(a):
 
 
 def cmd_describe(a):
-    """Write the prompt for an AI to describe the functions of some files, or keep its answer, or say where
-    the kept descriptions stand."""
+    """Write the prompts for an AI to describe what is not described yet (the functions first, then the files,
+    commands and the rest, then the components, then the project), or keep its answers, or say where they stand."""
     root = Path(a.root).resolve()
     idx = load(root)
+    graph = {}
+    g = lambda: graph.setdefault("g", view.build(root, idx, rules.load_config(root)))   # built only when needed
     if a.apply:
         bad_total = 0
-        for ans in a.apply:                          # several answers: one per prompt of a project
+        for ans in a.apply:                          # several answers: one per prompt
             text = sys.stdin.read() if ans == "-" else Path(ans).read_text(encoding="utf-8")
             try:
-                kept, rejected = describe.apply(root, idx, text, by=a.by)
+                data = json.loads(text)
             except ValueError as e:
                 print(f"{ans}: the answer is not JSON: {e}")
                 bad_total += 1
                 continue
-            for nid, bad in rejected.items():
-                print(f"{ans}: not kept: {nid}: " + "; ".join(bad))
-            print(f"{ans}: kept {len(kept)} descriptions" + (f", {len(rejected)} not kept" if rejected else ""))
+            ds = data.get("descriptions", []) if isinstance(data, dict) else data if isinstance(data, list) else []
+            fs = [d for d in ds if isinstance(d, dict) and d.get("id") in idx["nodes"]]
+            kept, rejected = describe.apply(root, idx, {"descriptions": fs}, by=a.by) if fs else ([], {})
+            rest = dict(data, descriptions=[d for d in ds if d not in fs]) if isinstance(data, dict) else {"descriptions": []}
+            if rest.get("descriptions") or rest.get("route") or "terms" in rest:
+                k2, r2 = describe_items.apply(root, idx, g(), rest, by=a.by)
+                kept += k2
+                rejected.update(r2)
+            for key, bad in rejected.items():
+                print(f"{ans}: not kept: {key}: " + "; ".join(bad))
+            print(f"{ans}: kept {len(kept)}" + (f", {len(rejected)} not kept" if rejected else ""))
             bad_total += len(rejected)
+        if not bad_total:
+            lv, keys = describe_items.pending(root, idx, g(), tests=a.tests)
+            print(f"next: codemap describe ({len(keys)} to describe in round {lv}: {describe_items.LEVELS[lv]})" if lv
+                  else "everything is described")
         sys.exit(1 if bad_total else 0)
     if a.status:
         r = describe.report(root, idx)
-        total = sum(1 for n in idx["nodes"].values() if n.get("defined") and n.get("kind") not in ("module", "file") and n.get("line"))
         for st in ("stale", "wrong"):
             for nid in r[st]:
                 print(f"{st}: {fmt_node(idx, nid)}")
-        print(f"{len(r['ok'])} up to date, {len(r['stale'])} stale (the function changed), {len(r['wrong'])} wrong, "
-              f"{total - sum(map(len, r.values()))} functions without one")
+        total = len([n for f in describe.project_files(idx, a.tests) for n in describe.funcs_in(idx, f)])
+        print(f"round 1, functions: {len(r['ok'])} up to date, {len(r['stale'])} stale, {len(r['wrong'])} wrong, "
+              f"{max(0, total - sum(map(len, r.values())))} without one")
+        ri, missing = describe_items.report(root, idx, g())
+        for st in ("stale", "wrong"):
+            for key in ri[st]:
+                print(f"{st}: {key}")
+        for lv in (2, 3, 4):
+            keys = [k for k in ri["ok"] + ri["stale"] + ri["wrong"] if describe_items.KIND_LEVEL.get(describe_items.kind(k)) == lv]
+            ok = sum(1 for k in keys if k in ri["ok"])
+            print(f"round {lv}, {describe_items.LEVELS[lv]}: {ok} up to date, {len(keys) - ok} stale or wrong, {missing[lv]} without one")
         return
-    # no file named: the whole project; up-to-date descriptions are kept unless --rewrite
-    files = describe.project_files(idx, a.tests) if not a.files else [
-        str(Path(f).resolve().relative_to(root)) if Path(f).resolve().is_relative_to(root) and not (root / f).exists() else f for f in a.files]
-    ids = describe.pending(root, idx, files, only_missing=not a.rewrite)
+    if a.files:                                      # some files: their functions only
+        files = [str(Path(f).resolve().relative_to(root)) if Path(f).resolve().is_relative_to(root) and not (root / f).exists() else f for f in a.files]
+        level, ids = 1, describe.pending(root, idx, files, only_missing=not a.rewrite)
+    else:                                            # the project: the lowest round with something to write
+        files = describe.project_files(idx, a.tests)
+        level, ids = describe_items.pending(root, idx, g(), a.level, tests=a.tests, rewrite=a.rewrite)
     if not ids:
-        print("every function there has an up-to-date description (codemap describe --rewrite to write them again)")
+        print("everything there has an up-to-date description (codemap describe --rewrite to write it again)")
         return
-    parts = describe.batches(idx, ids, a.batch)
-    if len(parts) == 1 and a.files:
-        text, n = describe.prompt(root, idx, ids=parts[0])
+    if level == 1:
+        parts = describe.batches(idx, ids, a.batch)
+        texts = [describe.prompt(root, idx, ids=part)[0] for part in parts]
+    else:
+        size = a.batch if level == 2 else 10 ** 9   # a component, or the project, sees all of its round at once
+        parts = [ids[i:i + size] for i in range(0, len(ids), size)]
+        texts = [describe_items.prompt(root, idx, g(), level, part) for part in parts]
+    if len(texts) == 1 and a.files:
         if a.output:
-            Path(a.output).write_text(text, encoding="utf-8")
-            print(f"wrote the prompt for {n} functions to {a.output}")
+            Path(a.output).write_text(texts[0], encoding="utf-8")
+            print(f"wrote the prompt for {len(ids)} functions to {a.output}")
         else:
-            print(text)
+            print(texts[0])
         return
-    # many functions: one prompt per batch, so each answer stays complete. -o x.md: x-01.md, x-02.md beside it;
+    # one prompt per batch, so each answer stays complete. -o x.md: x-01.md, x-02.md beside it;
     # otherwise a folder (default .codemap/prompts), emptied of the last round's prompts and answers first
     out = Path(a.output or ".codemap/prompts")
     out = out if out.is_absolute() else Path.cwd() / out
@@ -255,20 +283,23 @@ def cmd_describe(a):
     else:
         folder, stem = out, "prompt"
         for old in [*folder.glob("prompt-*.md"), *folder.glob("answer-*.json")]:
-            old.unlink()                              # the last round's: their functions may be described now
+            old.unlink()                              # the last round's: their items may be described now
     folder.mkdir(parents=True, exist_ok=True)
     if folder.name == "prompts" and folder.parent.name == ".codemap":
         (folder / ".gitignore").write_text("*\n")      # scratch: not part of the repository
     names = []
-    for i, part in enumerate(parts, 1):
-        text, _ = describe.prompt(root, idx, ids=part)
+    for i, text in enumerate(texts, 1):
         names.append(folder / f"{stem}-{i:02d}.md")
         names[-1].write_text(text.replace("codemap describe --apply <that file>", f"codemap describe --apply answer-{i:02d}.json"), encoding="utf-8")
     rel = lambda p: p.relative_to(Path.cwd()) if p.is_relative_to(Path.cwd()) else p
-    print(f"{len(ids)} functions in {len(files)} file{'s' * (len(files) != 1)}: {len(parts)} prompts, "
-          f"{rel(names[0])} ... {names[-1].name}")
+    what = (f"{len(ids)} functions in {len(files)} file{'s' * (len(files) != 1)}" if level == 1
+            else f"{len(ids)} item{'s' * (len(ids) != 1)}")
+    print(f"round {level} of 4, {describe_items.LEVELS[level]}: {what}: {len(texts)} prompt{'s' * (len(texts) != 1)}, "
+          f"{rel(names[0])}" + (f" ... {names[-1].name}" if len(names) > 1 else ""))
     print("give each to an AI, save its answer as answer-NN.json beside it, then:")
     print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
+    if level < 4:
+        print("then run codemap describe again for the next round")
 
 
 def cmd_relations(a):
@@ -312,8 +343,19 @@ def cmd_check(a):
             print(f"{describe.FILE}: {fmt_node(idx, nid)}: " + "; ".join(describe.problems(root, idx, nid, describe.load(root)[nid])))
         for nid in r["stale"]:
             print(f"{describe.FILE}: {fmt_node(idx, nid)}: the function changed since it was described (codemap describe writes its prompt again)")
-        print(f"{describe.FILE}: {len(r['ok'])} up to date, {len(r['stale'])} stale, {len(r['wrong'])} wrong")
+        print(f"{describe.FILE}: functions: {len(r['ok'])} up to date, {len(r['stale'])} stale, {len(r['wrong'])} wrong")
         bad += len(r["wrong"])
+        # the files, components, commands, the project and the rest
+        g = view.build(root, idx, rules.load_config(root))
+        its = describe_items.all_items(root, idx, g)
+        have = describe.load_all(root)["items"]
+        ri, _ = describe_items.report(root, idx, g)
+        for key in ri["wrong"]:
+            print(f"{describe.FILE}: {key}: " + "; ".join(describe_items.problems(root, idx, its.get(key) or {}, key, have[key]) or ["no longer in the code"]))
+        for key in ri["stale"]:
+            print(f"{describe.FILE}: {key}: what it describes changed since (codemap describe writes its prompt again)")
+        print(f"{describe.FILE}: the rest: {len(ri['ok'])} up to date, {len(ri['stale'])} stale, {len(ri['wrong'])} wrong")
+        bad += len(ri["wrong"])
     sys.exit(1 if bad else 0)
 
 
@@ -378,7 +420,9 @@ def main(argv=None):
     s = sub.add_parser("describe", help="AI descriptions of functions: prompts for the project (or some files), or keep the answers")
     s.add_argument("files", nargs="*", help="only these files (default: the whole project, without its tests)")
     s.add_argument("--tests", action="store_true", help="the test files too")
-    s.add_argument("--rewrite", action="store_true", help="also functions whose description is up to date")
+    s.add_argument("--rewrite", action="store_true", help="also what has an up-to-date description")
+    s.add_argument("--level", type=int, choices=(1, 2, 3, 4), help="this round, even if one below it is not done: "
+                   "1 functions, 2 files/commands/values/env/data files, 3 components, 4 project/route/glossary")
     s.add_argument("--batch", type=int, default=30, help="functions per prompt when there are many (default 30)")
     s.add_argument("-o", "--output", help="write the prompt here; with several prompts, the folder (default .codemap/prompts)")
     s.add_argument("--apply", metavar="ANSWER", nargs="+", help="keep the AI's JSON answers (- for standard input)")

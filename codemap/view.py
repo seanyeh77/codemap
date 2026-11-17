@@ -352,6 +352,11 @@ def build(root, index, config=None):
                # which files the project lets people change: .codemap/rules.json "roles", path or folder -> editable or protected
                roles={k: v for k, v in config.get("roles", {}).items() if v in ("editable", "protected")},
                config=dict(cc=index.get("cc"), scope=index.get("scope")))
+    # AI descriptions of the files, components, commands, values, variables, data files, the project, its
+    # reading route and glossary, each with whether it still matches the code (they rest on the graph above)
+    from . import describe_items
+    if describe.path(root).exists():
+        out["described"] = describe_items.described(root, index, out)
     return out
 
 
