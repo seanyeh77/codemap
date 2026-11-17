@@ -1,3 +1,4 @@
+import { KIND_LABEL, oneLine as descLine, useDescOrder, type DescOrder } from './data/describe'
 import { OpenFunc } from './components/CallLinks'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -207,7 +208,8 @@ function Shell(p: ShellProps) {
   const tablet = useTablet()
   const [navOpen, setNavOpen] = useState(false)
   const [recent, setRecent] = useState<PaletteItem[]>([])
-  const palette = useMemo(() => paletteItems(ix), [ix])
+  const descOrder = useDescOrder()
+  const palette = useMemo(() => paletteItems(ix, descOrder), [ix, descOrder])
   const [query, setQuery] = useState('')
   // words the graph has no name for (overrun, SIGTERM): the text of the files, from the server when
   // live, from the functions a snapshot keeps otherwise; listed after every name that matches
@@ -570,7 +572,7 @@ type Target = { type: 'func'; id: string } | { type: 'comp'; id: string } | { ty
 type PaletteItem = UI.PaletteItem & { target: Target; weight?: number }
 
 /** Everything the search finds: functions, files, components, environment variables and pages. */
-function paletteItems(ix: Index): PaletteItem[] {
+function paletteItems(ix: Index, order: DescOrder): PaletteItem[] {
   const short = (ref: string) => '`' + UI.format.path(ref) + '`'
   const readable = new Set(ix.g.readable ?? [])
   const items: PaletteItem[] = []
@@ -583,9 +585,13 @@ function paletteItems(ix: Index): PaletteItem[] {
   }
   for (const [id, f] of Object.entries(ix.funcs)) {
     const twins = sameName.get(f.name)! - 1
-    items.push({ id: 'f:' + id, kind: ({ method: '方法', class: '類別', module: '模組', page: '頁面', stylesheet: '樣式表' } as Record<string, string>)[f.kind ?? ''] ?? '函式', label: f.name, code: true, keywords: [f.file],
+    // what it does, when someone wrote it: shown first, and its words find the function (「同步路由」 finds _sync_as)
+    const d = descLine(ix, id, order)
+    const what = d && d.kind !== 'facts' ? `${t(KIND_LABEL[d.kind])}：${d.text} · ` : ''
+    items.push({ id: 'f:' + id, kind: ({ method: '方法', class: '類別', module: '模組', page: '頁面', stylesheet: '樣式表' } as Record<string, string>)[f.kind ?? ''] ?? '函式', label: f.name, code: true,
+      keywords: [f.file, ...(f.doc ? [f.doc] : []), ...Object.values(f.ai?.text ?? {})],
       // functions of the same name differ only by their path: shown in full, never shortened
-      detail: `${twins ? '`' + `${f.file}:${f.line}` + '`' : short(`${f.file}:${f.line}`)} · ${f.comp}` + (twins ? t('（同名的還有 {v1}）', { v1: (byName.get(f.name) ?? []).filter((g) => g !== f).slice(0, 3).map((g) => '`' + `${g.file}:${g.line}` + '`').join(t('、')) + (twins > 3 ? t(' 等') : '') }) : ''),
+      detail: what + `${twins ? '`' + `${f.file}:${f.line}` + '`' : short(`${f.file}:${f.line}`)} · ${f.comp}` + (twins ? t('（同名的還有 {v1}）', { v1: (byName.get(f.name) ?? []).filter((g) => g !== f).slice(0, 3).map((g) => '`' + `${g.file}:${g.line}` + '`').join(t('、')) + (twins > 3 ? t(' 等') : '') }) : ''),
       weight: ix.callers(id).length + ix.callees(id, false).length, target: { type: 'func', id } })
   }
   for (const c of ix.g.comps) {

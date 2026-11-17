@@ -3,7 +3,8 @@ import { UI } from '../ui'
 import { DocRefs, OpenFile, langLabel, useCodeRefs } from '../components/DocRefs'
 import { t } from '../i18n'
 import { useCallLinks } from '../components/CallLinks'
-import { KIND_LABEL, oneLine, useDescOrder } from '../data/describe'
+import { oneLine, useDescOrder } from '../data/describe'
+import { DescText } from '../components/DescText'
 import type { Index } from '../data/graph'
 import { useFileSource, useLineSource } from '../data/hooks'
 import { vscodeURL } from '../prefs'
@@ -60,7 +61,7 @@ function FileOutline(p: { ix: Index; f: string; onLine: (l: number) => void }) {
             <li key={id}>
               <button type="button" className="linklike mono" onClick={() => p.onLine(f.line)}>{f.name}</button>
               <span className="small muted"> :{f.line}</span>
-              {d ? <span className={'block small desc-' + d.kind}>{d.kind === 'facts' ? null : <><UI.Tag>{t(KIND_LABEL[d.kind])}</UI.Tag> </>}{d.text}</span> : null}
+              {d ? <span className="block small"><DescText d={d} tag /></span> : null}
             </li>)
         })}
       </ul>

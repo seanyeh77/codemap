@@ -192,6 +192,23 @@ AI's description once that exists. The panel lists every kind with where it
 comes from; a file's list of functions and a link's card show one line, the
 first kind there is in the order chosen in Settings.
 
+codemap never calls an AI itself. To have one describe the functions of a file:
+
+```sh
+codemap describe harness/lab3.py --missing -o prompt.md   # the prompt: each function's code and neighbours
+# give prompt.md to an AI, save its JSON answer as answer.json, then
+codemap describe --apply answer.json --by claude-opus-5-5  # kept only where it matches the code
+codemap describe --status                                  # how many are up to date, stale or wrong
+```
+
+Each description is in Traditional Chinese and English, cites the lines it rests
+on, and is kept in `.codemap/descriptions.json` with a hash of the function's
+source. An answer that cites a line outside the function and its neighbours, or a
+name in `code` font the code does not have, is not kept. A function changed since
+is shown as stale (after the facts, faded); `codemap check` lists the stale and
+the wrong ones. `codemap where NAME` prints every kind of description, and
+`codemap callers NAME -d` / `callees NAME -d` print them for each function listed.
+
 For a Python program that reads its command line with `argparse`, 「進入與結束」
 lists its commands as a person types them (`python3 harness/lab3.py status
 [--json]`, or the `[project.scripts]` name from `pyproject.toml`) and the

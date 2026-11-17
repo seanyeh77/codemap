@@ -41,6 +41,8 @@ export function dateTime(d: Date): string {
 }
 
 /** A count as the interface's language writes it. */
+/** The interface's language. */
+export const lang = (): Lang => current
 export const num = (n: number) => new Intl.NumberFormat(current === 'en' ? 'en-US' : 'zh-TW').format(n)
 
 /** A noun after a count: 「caller」 in Chinese, "caller" or "callers" in English. */

@@ -7,7 +7,8 @@ import { entryText, type Index } from '../data/graph'
 import { useFileSource, useFuncSource } from '../data/hooks'
 import { commandsOf, usage } from '../data/cli'
 import { useCallLinks } from '../components/CallLinks'
-import { KIND_LABEL, descriptions, useDescOrder } from '../data/describe'
+import { descriptions, useDescOrder } from '../data/describe'
+import { DescText } from '../components/DescText'
 import { inferred, type Edge, type Sel } from '../data/types'
 import { vscodeURL } from '../prefs'
 import { CodeAt, LineLink } from './CodeAt'
@@ -135,7 +136,7 @@ export function Detail(p: Props) {
       <ul className="desc-list" aria-label={t('函式說明')}>
         {descriptions(p.ix, p.sel.id, descOrder).map((d) => (
           <li key={d.kind} className={'desc desc-' + d.kind}>
-            <UI.Tag>{t(KIND_LABEL[d.kind])}</UI.Tag> <span>{d.text}</span>{d.lang ? <span className="small muted">{' '}({d.lang === 'en' ? 'English' : '中文'})</span> : null}
+            <DescText d={d} tag full />
           </li>))}
       </ul>
       <UI.DetailList items={[

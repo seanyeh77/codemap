@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react'
 import { commandsOf } from './cli'
 import type { Graph } from './types'
 import type { Index } from './graph'
-import { t } from '../i18n'
+import { lang, t } from '../i18n'
 
 export type DescKind = 'ai' | 'author' | 'facts'
 export type DescOrder = 'ai-author-facts' | 'author-ai-facts' | 'author-facts' | 'facts'
@@ -41,15 +41,13 @@ export function useDescOrder(): DescOrder {
   return useSyncExternalStore((f) => { listeners.add(f); return () => listeners.delete(f) }, () => (current ??= read()))
 }
 
-/** An AI description in the reader's language, or in the other one, marked. (C: none are written yet.) */
-export function aiText(ai: unknown): { text: string; lang?: string } | null {
-  if (!ai || typeof ai !== 'object') return null
-  const a = ai as { text?: Record<string, string>; state?: string }
-  if (!a.text || a.state === 'wrong') return null
-  const want = (document.documentElement.lang || 'zh-TW').startsWith('en') ? 'en' : 'zh-TW'
-  if (a.text[want]) return { text: a.text[want] }
-  const other = Object.keys(a.text)[0]
-  return other ? { text: a.text[other], lang: other } : null
+/** An AI description in the reader's language, or in the other one, marked; with its state. */
+export function aiText(ai: Graph['funcs'][string]['ai']): { text: string; lang?: string; state?: 'ok' | 'stale' | 'wrong' } | null {
+  if (!ai?.text) return null
+  const want = lang()
+  if (ai.text[want]) return { text: ai.text[want], state: ai.state }
+  const other = Object.keys(ai.text).find((k) => ai.text[k])
+  return other ? { text: ai.text[other], lang: other, state: ai.state } : null
 }
 
 /** B: the facts about one function, most telling first. Each is short; callers use the first few. */
@@ -81,25 +79,28 @@ export function facts(ix: Index, id: string): string[] {
   return out
 }
 
-export interface Desc { kind: DescKind; text: string; lang?: string }
+export interface Desc { kind: DescKind; text: string; lang?: string; state?: 'ok' | 'stale' | 'wrong' }
 
 /** Every description of a function, in the reader's order (for the panel). */
 export function descriptions(ix: Index, id: string, order: DescOrder): Desc[] {
   const f = ix.funcs[id]
   if (!f) return []
   const out: Desc[] = []
+  const late: Desc[] = []
   for (const k of ORDERS.find((o) => o.id === order)!.kinds) {
-    if (k === 'ai') { const a = aiText(f.ai); if (a) out.push({ kind: 'ai', ...a }) }
+    // an AI's description the code no longer matches (stale) or contradicts (wrong) goes after the facts
+    if (k === 'ai') { const a = aiText(f.ai); if (a) (a.state === 'stale' || a.state === 'wrong' ? late : out).push({ kind: 'ai', ...a }) }
     if (k === 'author' && f.doc) out.push({ kind: 'author', text: f.doc })
     if (k === 'facts') { const b = facts(ix, id); if (b.length) out.push({ kind: 'facts', text: b.join(t('；')) }) }
   }
-  return out
+  return [...out, ...late]
 }
 
 /** The one line where only one fits (the file's list, a link's card, the flow tree, search): the first kind
  *  there is, in the reader's order; facts are cut to the first three. */
 export function oneLine(ix: Index, id: string, order: DescOrder): Desc | null {
   for (const d of descriptions(ix, id, order)) {
+    if (d.state === 'wrong') continue                   // never the one line: it cites what the code does not have
     if (d.kind !== 'facts') return d
     return { ...d, text: facts(ix, id).slice(0, 3).join(t('；')) }
   }
@@ -107,3 +108,11 @@ export function oneLine(ix: Index, id: string, order: DescOrder): Desc | null {
 }
 
 export const KIND_LABEL: Record<DescKind, string> = { ai: 'AI', author: '註解', facts: '事實' }
+
+/** Text with `names` in code font, as React parts. */
+export function codeSpans(text: string): (string | { code: string })[] {
+  return text.split(/`([^`]+)`/).map((x, i) => (i % 2 ? { code: x } : x)).filter((x) => x !== '')
+}
+
+/** Text without the backticks, for a place that shows plain text only (a list's second line). */
+export const plain = (text: string) => text.replace(/`([^`]+)`/g, '$1')

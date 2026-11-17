@@ -1,3 +1,5 @@
+import { oneLine as descLine, useDescOrder } from '../data/describe'
+import { DescText } from '../components/DescText'
 import { useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { live } from '../data/load'
@@ -47,6 +49,7 @@ function affected(ix: Index, start: string): Row[] {
 const KIND_LABEL: Record<Kind, string> = { direct: '直接', state: '共用變數', indirect: '間接' }
 
 export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (id: string, edge: Sel['edge']) => void; openSearch: () => void }) {
+  const descOrder = useDescOrder()
   const rows = useMemo(() => affected(p.ix, p.start), [p.ix, p.start])
   const comps = [...new Set(rows.map((r) => r.comp))]
   const vars = [...new Set(rows.filter((r) => r.kind === 'state').map((r) => r.via))]
@@ -139,6 +142,10 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               render: (r: Row) => <span className="locs">{r.lines.map((l) => (
                 <UI.InlineCode key={l} href={`#${r.f}:${l}`} onClick={(e) => { e.preventDefault(); p.onSel(r.fid, { f: r.f, l }) }}>{`${r.f.split('/').pop()}:${l}`}</UI.InlineCode>))}</span> },
             { key: 'depth', label: t('距離'), numeric: true, unit: t('層'), width: 72, grow: 0.5 },
+            // what each affected function does: hidden at first (the table is already wide beside the panel), in 欄位
+            { key: 'what', label: t('作用'), width: 220, grow: 2, hidden: true,
+              searchText: (r: Row) => descLine(p.ix, r.fid, descOrder)?.text ?? '', fullText: (r: Row) => descLine(p.ix, r.fid, descOrder)?.text ?? '',
+              render: (r: Row) => ((d) => d ? <DescText d={d} tag /> : null)(descLine(p.ix, r.fid, descOrder)) },
           ]}
           rows={rows}
           filters={[{ key: 'comp' as const, label: t('元件'), options: comps.map((c) => ({ value: c, label: c })) },

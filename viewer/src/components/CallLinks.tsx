@@ -4,6 +4,7 @@ import * as UI from '@seanyeh77/ui'
 import type { Index } from '../data/graph'
 import { t } from '../i18n'
 import { oneLine, useDescOrder } from '../data/describe'
+import { DescText } from './DescText'
 
 /** Opens a function's flow page; App provides it. */
 export const OpenFunc = createContext<(id: string) => void>(() => {})
@@ -79,7 +80,7 @@ export function useCallLinks(ix: Index, file: string | undefined, start: number,
             return (
               <div key={id}>
                 <UI.InlineCode href={'#' + id} onClick={(e) => { e.preventDefault(); open(id) }}>{f.name}</UI.InlineCode>
-                {((d) => d ? <div className="small">{d.text}</div> : null)(oneLine(ix, id, order))}
+                {((d) => d ? <div className="small"><DescText d={d} tag /></div> : null)(oneLine(ix, id, order))}
                 <div className="small muted">{t('定義在 {v1}', { v1: `${f.file}:${f.line}` })}{f.comp ? ` · ${f.comp}` : ''}</div>
               </div>
             )

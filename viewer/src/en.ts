@@ -894,4 +894,7 @@ export const EN: Record<string, string> = {
   "由誰執行、執行什麼指令、讀寫哪些檔案、被誰呼叫": "What runs it, the commands it runs, the files it reads and writes, who calls it",
   "讀取 {v1} 的命令列，分派 {v2} 個指令": "Reads the command line of {v1} and runs one of its {v2} commands",
   "讀取 {v1} 的命令列": "Reads the command line of {v1}",
+  "作用": "What it does",
+  "函式在說明寫好之後改過，說明可能過時。用 codemap describe --missing 重寫。": "The function changed after this was written; it may be out of date. Rewrite it with codemap describe --missing.",
+  "說明提到的位置或名稱與程式碼不符，codemap check 會列出。": "It cites a place or a name the code does not have; codemap check lists them.",
 }

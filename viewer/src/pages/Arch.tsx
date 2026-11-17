@@ -5,7 +5,7 @@ import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
 import { entryText, push, type Index } from '../data/graph'
 import { fileGraph, fileView, roleOf, type Role } from '../data/files'
-import { KIND_LABEL, oneLine as descLine, useDescOrder } from '../data/describe'
+import { KIND_LABEL, oneLine as descLine, plain as plainText, useDescOrder } from '../data/describe'
 import { FEW_CHOICES, argText, commonRuns, usage } from '../data/cli'
 import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
@@ -387,7 +387,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
             const d = descLine(p.ix, id, descOrder)
             const at = `${base(p.ix.funcs[id].file)}:${p.ix.funcs[id].line}`
             // the description first: a long one is cut at the end of the line, where the place is the least loss
-            return { id, name: p.ix.funcs[id].name, meta: d && d.kind !== 'facts' ? `${t(KIND_LABEL[d.kind])}：${d.text} · ${at}` : `${at} · ${p.ix.callerText(id)}` }
+            return { id, name: p.ix.funcs[id].name, meta: d && d.kind !== 'facts' ? `${t(KIND_LABEL[d.kind])}：${plainText(d.text)} · ${at}` : `${at} · ${p.ix.callerText(id)}` }
           })}
           onSelect={(n) => { if (p.ix.funcs[n.id]) p.onPick(n.id) }} />
       </div>

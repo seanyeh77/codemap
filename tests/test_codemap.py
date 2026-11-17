@@ -316,6 +316,35 @@ class FuncDoc(unittest.TestCase):
             self.assertIsNone(docs.func_doc(d, "r.c", 6, "c"))
 
 
+class Describe(unittest.TestCase):
+    """AI descriptions: a prompt out, an answer kept only where it matches the code, stale after a change."""
+
+    def test_apply_check_and_stale(self):
+        from codemap import describe
+        text = "def helper(x):\n    return x + 1\n\n\ndef run():\n    return helper(2)\n"
+        idx = {"nodes": {"m.py:helper": dict(name="helper", file="m.py", line=1, end=2, defined=True, kind="function"),
+                         "m.py:run": dict(name="run", file="m.py", line=5, end=6, defined=True, kind="function")},
+               "edges": [dict(src="m.py:run", dst="m.py:helper", file="m.py", line=6, kind="call", source="static")]}
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "m.py").write_text(text)
+            prompt, n = describe.prompt(d, idx, ["m.py"])
+            self.assertEqual(n, 2)
+            self.assertIn("### id: m.py:run", prompt)
+            self.assertIn("- calls: helper (m.py:1)", prompt)
+            answer = {"descriptions": [
+                {"id": "m.py:run", "zh-TW": "用 `helper` 算出 3。", "en": "Gets 3 from `helper`.", "evidence": ["m.py:6", "m.py:2"]},
+                {"id": "m.py:helper", "zh-TW": "呼叫 `fetch`。", "en": "Calls `fetch`.", "evidence": ["m.py:40"]},
+                {"id": "m.py:helper", "zh-TW": "", "en": "Adds one.", "evidence": []},
+            ]}
+            kept, rejected = describe.apply(d, idx, answer, by="test")
+            self.assertEqual(kept, ["m.py:run"])
+            bad = " ".join(rejected["m.py:helper"])
+            self.assertIn("no zh-TW text", bad)                         # the last answer for helper is the one reported
+            self.assertEqual(describe.report(d, idx), {"ok": ["m.py:run"], "stale": [], "wrong": []})
+            (Path(d) / "m.py").write_text(text.replace("helper(2)", "helper(3)"))
+            self.assertEqual(describe.report(d, idx)["stale"], ["m.py:run"])
+
+
 class Cli(unittest.TestCase):
     """argparse programs: each command, its arguments and the functions it runs (facts.py_cli)."""
 

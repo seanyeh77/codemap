@@ -11,7 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import arch, check, docs, facts, rules, state
+from . import arch, check, describe, docs, facts, rules, state
 from .arch import in_repo, repo_func
 from .source import c_body_end, code_lines, lines
 from .schema import CALL_SOURCES
@@ -190,6 +190,7 @@ def build(root, index, config=None):
         prod = {k: v for k, v in nodes.items() if v.get("scope") != "test"}
         lay = arch.layout(dict(index, nodes=prod, edges=[e for e in index["edges"] if e["src"] in prod and e["dst"] in prod]), config)
     funcs = {}
+    ai = describe.load(root)
     for nid, n in nodes.items():
         if not repo_func(n):
             continue
@@ -211,6 +212,9 @@ def build(root, index, config=None):
         # what the author wrote about it: the docstring, or the comment above the definition
         if doc := docs.func_doc(root, n["file"], n["line"], n.get("lang", "c")):
             funcs[nid]["doc"] = doc
+        # an AI's description kept by `codemap describe --apply`, with whether it still matches the code
+        if nid in ai:
+            funcs[nid]["ai"] = {"text": ai[nid].get("text", {}), "state": describe.state(root, index, nid, ai[nid]), "by": ai[nid].get("by")}
         if end:
             top = min(n.get("top") or n["line"], docs.lead_line(root, n["file"], n["line"]))   # the comment, attributes and decorators above it
             if top < n["line"]:

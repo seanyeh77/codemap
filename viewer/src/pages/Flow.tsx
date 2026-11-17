@@ -1,3 +1,4 @@
+import { KIND_LABEL, oneLine as descLine, plain as plainText, useDescOrder, type DescOrder } from '../data/describe'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from '../ui'
 import { local, t } from '../i18n'
@@ -11,7 +12,7 @@ interface Entry { fid: string; edge: Edge | null; names: string[]; open: boolean
 /** The call tree handed to TreeList. Only the start's level is built; TreeList loads a node's
  *  children when it is opened (loadChildren). Guess mode: a node, the start included, opens only once revealed. */
 function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolean, predict: boolean, revealed: Record<string, boolean>,
-  openLine: (fid: string, e: Edge, key: string) => void, index: Record<string, Entry> = {}, along: Set<string> = new Set()) {
+  openLine: (fid: string, e: Edge, key: string) => void, index: Record<string, Entry> = {}, along: Set<string> = new Set(), order: DescOrder = 'ai-author-facts') {
   const stageIds: string[] = []
   const kidsOf = (fid: string) => (dir === 'down' ? ix.callees(fid, showExt) : ix.callers(fid))
   function node(nid: string, e: Edge | null, key: string, path: string[], parent: string, sites: Edge[] = []): TreeNode {
@@ -20,6 +21,9 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
     // called from several lines of the parent: one row, its lines listed ("main.c:183、205、214")
     const at = e ? (sites.length > 1 ? t('{v1}:{v2}', { v1: e.f, v2: sites.map((s) => s.l).join(t('、')) }) : `${e.f}:${e.l}`) : f ? `${f.file}:${f.line}` : undefined
     const n: TreeNode = { id: key, name: ix.nameOf(nid, e), path: at }
+    // what it does, when someone wrote it, before where the call is (cut at the end, the place is the least loss)
+    const d = f ? descLine(ix, nid, order) : null
+    if (d && d.kind !== 'facts') { n.meta = `${t(KIND_LABEL[d.kind])}：${plainText(d.text)}${at ? ' · ' + at : ''}`; delete n.path }
     if (sites.length > 1) n.tags = [<UI.Tag key="n">{`×${sites.length}`}</UI.Tag>]
     if (e) {
       // the call is in the parent (looking down) or in this node's function (looking up)
@@ -142,13 +146,14 @@ export function Flow(p: FlowProps) {
   // the rows TreeList already opened keep their entries when the tree is built again (a reveal, a new
   // selection handler): a new, empty index would leave an open row's children unknown ("reading 'kids'")
   const selRef = useRef(p.onSel)
+  const descOrder = useDescOrder()
   useEffect(() => { selRef.current = p.onSel })
   const kept = useRef<{ for: string; index: Record<string, Entry> }>({ for: '', index: {} })
   const tree = useMemo(() => {
     const id = [p.start, p.dir, p.showExt, p.predict, (p.along ?? []).join(',')].join('|')
     if (kept.current.for !== id) kept.current = { for: id, index: {} }
-    return buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, (fid, e, key) => selRef.current(fid, e, key), kept.current.index, new Set(p.along ?? []))
-  }, [p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.along])
+    return buildTree(p.ix, p.start, p.dir, p.showExt, p.predict, revealed, (fid, e, key) => selRef.current(fid, e, key), kept.current.index, new Set(p.along ?? []), descOrder)
+  }, [p.ix, p.start, p.dir, p.showExt, p.predict, revealed, p.along, descOrder])
   const selKey = p.selKey && tree.index[p.selKey] ? p.selKey : 'root'
   const { onSel, start } = p
   // a selection made on another page is not in this tree: select the start, so the tree and Detail agree
