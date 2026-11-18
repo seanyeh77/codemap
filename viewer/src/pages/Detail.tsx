@@ -9,6 +9,7 @@ import { commandsOf, usage } from '../data/cli'
 import { useCallLinks } from '../components/CallLinks'
 import { descriptions, useDescOrder } from '../data/describe'
 import { DescText } from '../components/DescText'
+import { signature } from './Reader'
 import { inferred, type Edge, type Sel } from '../data/types'
 import { vscodeURL } from '../prefs'
 import { CodeAt, LineLink } from './CodeAt'
@@ -33,6 +34,9 @@ export function Detail(p: Props) {
   const f = p.ix.funcs[p.sel.id]
   const e = p.sel.edge
   const src = useFuncSource(f, p.isLive, p.sourceId)
+  const descOrder = useDescOrder()
+  const said = f ? descriptions(p.ix, p.sel.id, descOrder).filter((d) => d.kind !== 'facts') : []
+  const sig = f && src.data ? signature(src.data.lines, f.line - src.data.start + 1) : undefined
   const refs = useCodeRefs(p.ix)
   // a file:line clicked in this panel, shown in place of the function until another selection
   const [shown, setShown] = useState<{ key: string; f: string; l: number } | null>(null)
@@ -45,7 +49,6 @@ export function Detail(p: Props) {
   const [wholeKey, setWhole] = useState<string | null>(null)
   const whole = wholeKey === selKey
   const file = useFileSource(whole && f ? f.file : null, p.isLive, p.sourceId)
-  const descOrder = useDescOrder()
   const fileCalls = useCallLinks(p.ix, file.data?.file, 1, file.data?.lines)
   const srcCalls = useCallLinks(p.ix, src.data?.file, src.data?.start ?? 1, src.data?.lines)
   // a file:line clicked elsewhere (the impact table): once the code is shown, bring that line into view; the card
@@ -133,14 +136,16 @@ export function Detail(p: Props) {
         el?.focus({ focusVisible: true } as FocusOptions)
       }}>{t('跳到呼叫流程樹')}</button></p> : null}
       {/* what it does: every kind there is, in the reader's order, each marked with where it comes from */}
+      {/* only what its author or an AI wrote; who calls it and what it calls are the rows below, by name. With
+          neither, its signature says what goes in and comes out, in the code's own words */}
       <ul className="desc-list" aria-label={t('函式說明')} data-tour="desc">
-        {descriptions(p.ix, p.sel.id, descOrder).map((d) => (
+        {said.map((d) => (
           <li key={d.kind} className={'desc desc-' + d.kind}>
             <DescText d={d} tag full />
           </li>))}
-        {/* nobody said what it does: how to have it said, once, under the facts */}
-        {!descriptions(p.ix, p.sel.id, descOrder).some((d) => d.kind !== 'facts' && d.state !== 'wrong')
-          ? <li className="small muted">{t('這個函式沒有註解或 AI 說明。在 repo 裡執行 codemap describe，請 AI 補上。')}</li> : null}
+        {!said.some((d) => d.state !== 'wrong') ? <>
+          {sig ? <li><pre className="reader-sig mono">{sig}</pre></li> : null}
+          <li className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</li></> : null}
       </ul>
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },

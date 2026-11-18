@@ -114,7 +114,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
 
 /** A function's signature from its first lines: up to the line that ends it (a Python def's colon, a C body's
  *  brace), at most 8 lines, the brace left out. */
-function signature(lines: string[] | undefined, line: number): string | undefined {
+export function signature(lines: string[] | undefined, line: number): string | undefined {
   if (!lines || !lines[line - 1]) return undefined
   const out: string[] = []
   for (let i = line - 1; i < Math.min(lines.length, line + 7); i++) {

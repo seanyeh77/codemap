@@ -145,7 +145,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             // what each affected function does: hidden at first (the table is already wide beside the panel), in 欄位
             { key: 'what', label: t('作用'), width: 220, grow: 2, hidden: true,
               searchText: (r: Row) => descLine(p.ix, r.fid, descOrder)?.text ?? '', fullText: (r: Row) => descLine(p.ix, r.fid, descOrder)?.text ?? '',
-              render: (r: Row) => ((d) => d ? <DescText d={d} tag /> : null)(descLine(p.ix, r.fid, descOrder)) },
+              render: (r: Row) => ((d) => d && d.kind !== 'facts' ? <DescText d={d} tag /> : null)(descLine(p.ix, r.fid, descOrder)) },
           ]}
           rows={rows}
           filters={[{ key: 'comp' as const, label: t('元件'), options: comps.map((c) => ({ value: c, label: c })) },
