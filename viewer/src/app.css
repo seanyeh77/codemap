@@ -200,3 +200,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
   .ov-toc { display: none; }
   .ov-doc { padding: var(--space-4); }
 }
+/* the small buttons that fold the function list: quiet, not a 40 px outlined box */
+.reader-toc-head button, .reader-rail-closed button { width: 28px; height: 28px; min-width: 28px; box-shadow: none; border: 0; background: transparent; color: var(--ink-muted); }
+.reader-toc-head button:hover, .reader-rail-closed button:hover { background: var(--surface-sub); color: var(--ink); }
