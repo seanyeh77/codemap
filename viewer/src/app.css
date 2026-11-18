@@ -1,9 +1,10 @@
 /* Page layout for the codemap viewer. Values come from the design system tokens. */
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-sans); }
 #root { height: 100%; }
-.app { position: relative; display: flex; height: 100vh; height: 100dvh; overflow: clip; }   /* relative: positioned parts of components stay inside */
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.body { flex: 1; min-height: 0; display: flex; gap: var(--space-6); padding: var(--space-6); overflow: clip; }
+.body { flex: 1; min-height: 0; display: flex; gap: var(--space-6); overflow: clip; }
+/* the design system's frame pads its main area and scrolls it; codemap's pages fill its height and scroll inside */
+.cm-shell .ui-shell-main { display: flex; flex-direction: column; padding-bottom: var(--space-6); }
+.shell-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .body.below { flex-direction: column; }
 .pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--space-4); overflow: auto; }
 .ui-card p { margin: 0; }
@@ -25,7 +26,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .brand-mark { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 6px; background: var(--accent); }
 .chips { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
 .boot { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
-.alert-wrap { padding: var(--space-6) var(--space-6) 0; }
+.alert-wrap { padding: 0; }
 
 /* open-snapshot screen */
 .open-wrap { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: var(--space-6); box-sizing: border-box; }
@@ -47,24 +48,19 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .detail.tree-panel { overflow: clip; }
 
 /* settings */
-.settings-wrap { flex: 1; min-height: 0; padding: var(--space-6); overflow: auto; }
+.settings-wrap { flex: 1; min-height: 0; overflow: auto; }
 .set-row { display: flex; align-items: center; gap: var(--space-4); }
 
 @media (max-width: 959px) {
-  .body { flex-direction: column; overflow: auto; padding: var(--space-4); }
+  .body { flex-direction: column; overflow: auto; }
   /* stacked: the page scrolls as one, rather than a short box scrolling inside it */
   .detail, .body.below .detail { width: auto; flex: 0 0 auto; max-height: none; overflow: visible; }
   .detail.tree-panel { height: 70vh; }
   .pane { overflow: visible; flex: 0 0 auto; }
-  .alert-wrap { padding: var(--space-4) var(--space-4) 0; }
+  .alert-wrap { padding: 0; }
 }
 @media (max-width: 599px) {
-  .app { flex-direction: column; }
-  .app .ui-sidenav { display: none; }
-  .main { min-height: 0; }
-  .settings-wrap { padding: var(--space-4); }
 }
-@media (min-width: 600px) { .mobile-only { display: none; } }
 
 /* cards as tall as their content in a row layout, so a short diagram leaves no white block below it */
 .pane.fit, .detail.fit { align-self: flex-start; max-height: 100%; }
@@ -213,3 +209,5 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* no description yet: the function's signature, in the code's own words */
 .reader-sig { margin: 0; padding: var(--space-3); background: var(--surface-sub); border-radius: var(--radius-sm); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .desc-health { flex: 0 0 auto; }
+/* the sidebar as a strip of icons: only the mark of the name */
+.ui-sidenav.is-collapsed .brand-home > span:last-child { display: none; }

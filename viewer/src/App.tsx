@@ -40,18 +40,6 @@ const TOUR_TARGETS = ['arch', 'search', 'tree', 'desc', 'impact', 'notes']
 // phones have no Ctrl K: the tour points at the search button instead
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 
-/** 600 to 1024 px: no sidebar, the navigation opens in a drawer from the menu button (design system AppShell). */
-const TABLET = '(min-width: 600px) and (max-width: 1023px)'
-function useTablet() {
-  const [on, setOn] = useState(() => typeof matchMedia === 'function' && matchMedia(TABLET).matches)
-  useEffect(() => {
-    if (typeof matchMedia !== 'function') return
-    const m = matchMedia(TABLET), f = () => setOn(m.matches)
-    m.addEventListener('change', f)
-    return () => m.removeEventListener('change', f)
-  }, [])
-  return on
-}
 // built when drawn, in the current language
 const navItems = () => (['overview', 'arch', 'flow', 'impact', 'check'] as const).map(nav)
 
@@ -147,14 +135,6 @@ function Shell(p: ShellProps) {
   // a file opened in the side panel belongs to the page it was opened on, not to every page after it. It is in the
   // address (o=path:line), so opening a file or going to another line is a step back can return from
   const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(() => fileOf(init.o, 'arch'))
-  // the sidebar's width, kept in this browser: one choice for the pages, one for reading a file (narrow by default,
-  // so the code has the room)
-  const [navWide, setNavWide] = useState(() => { try { return JSON.parse(localStorage.getItem('codemap:nav') ?? '{}') as { page?: boolean; read?: boolean } } catch { return {} } })
-  const setNav = (k: 'page' | 'read', collapsedNow: boolean) => setNavWide((w) => {
-    const n = { ...w, [k]: collapsedNow }
-    try { localStorage.setItem('codemap:nav', JSON.stringify(n)) } catch { /* private window: for this visit only */ }
-    return n
-  })
   // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
   const [chosenComp, setSelComp] = useState(init.c ?? '')
   const [selEdge, setSelEdge] = useState(init.e ?? '')        // a line of the architecture diagram; '' when a box or nothing is selected
@@ -217,8 +197,6 @@ function Shell(p: ShellProps) {
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
-  const tablet = useTablet()
-  const [navOpen, setNavOpen] = useState(false)
   const [recent, setRecent] = useState<PaletteItem[]>([])
   const descOrder = useDescOrder()
   const palette = useMemo(() => paletteItems(ix, descOrder), [ix, descOrder])
@@ -403,7 +381,7 @@ function Shell(p: ShellProps) {
   // the name at the top of the sidebar goes home: the architecture overview, nothing chosen, no file open
   const goHome = () => { setFileAt(null); setView('overview'); requestAnimationFrame(() => UI.focusMain()) }
   const brand = (full: boolean) => <a className="brand-home" href="#overview" aria-label={t('回到首頁：總覽')} title={t('回到首頁：總覽')}
-    onClick={(e) => { e.preventDefault(); goHome(); setNavOpen(false) }}><span className="brand-mark" />{full ? <span>codemap</span> : null}</a>
+    onClick={(e) => { e.preventDefault(); goHome() }}><span className="brand-mark" />{full ? <span>codemap</span> : null}</a>
   const switchView = (v: View) => {
     if (v === 'impact' && view !== 'impact' && ix.funcs[sel.id] && sel.id !== start) goImpact(sel.id)
     else setView(v)
@@ -506,7 +484,6 @@ function Shell(p: ShellProps) {
     : <div className="below-frame">{a}{b}</div>
   const reading = fileAt && view === 'arch'
     ? <FileReader ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} frame={frame} /> : null
-  const collapsed = reading ? navWide.read ?? true : navWide.page ?? false
   const side = view === 'overview' ? null : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
@@ -523,28 +500,19 @@ function Shell(p: ShellProps) {
   const openFile = (f: string, l: number) => { setFileAt({ f, l, view: 'arch' }); setView('arch') }
   return (
     <OpenFile.Provider value={openFile}><OpenFunc.Provider value={goFlow}>
-    <div className="app">
-      <a className="ui-skip" href="#main" onClick={(e) => { e.preventDefault(); UI.focusMain() }}>{t('跳到主要內容')}</a>
-      <a className="ui-skip" href="#nav" onClick={(e) => { e.preventDefault(); (document.querySelector<HTMLElement>('.mobile-only:not([hidden]) [role=tab][aria-selected=true], nav [aria-current=page]') ?? document.querySelector<HTMLElement>('nav a, nav button'))?.focus() }}>{t('跳到導覽')}</a>
-      {tablet ? (
-        <UI.Drawer open={navOpen} onClose={() => setNavOpen(false)} title={t('導覽')} side="left" width={280}>
-          <UI.SideNav value={view} onChange={(v) => { switchView(v as View); setNavOpen(false) }}
-            brand={brand(true)} sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
-        </UI.Drawer>
-      ) : (
-        <UI.SideNav value={view} onChange={(v) => switchView(v as View)} collapsed={collapsed} onToggle={() => setNav(reading ? 'read' : 'page', !collapsed)}
-          brand={brand(!collapsed)}
-          sections={[{ items: navItems() }, { items: [nav('settings')] }]} />
-      )}
-      <main className="main">
-        <UI.TopBar title={t(PAGES[view].title)} searchLabel={t('搜尋')} onSearch={() => setSearchOpen(true)} onMenu={tablet ? () => setNavOpen(true) : undefined}>
-          {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
-          <UI.IconButton icon="question" label={t('重看導覽')} onClick={tourStart}
-            hint={welcome && view !== 'settings' ? { text: t('導覽：五個步驟介紹各頁。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
-          <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
-            value={p.sourceId} onChange={p.setSource} options={p.sources}
-            footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setView('settings') }}>{t('所有資料來源設定')}</a>} />
-        </UI.TopBar>
+    {/* the design system's frame: the sidebar (a strip of icons that opens on hover until pinned, a drawer from 600 to
+        1024 px, tabs on phones), the top bar and the main area */}
+    <UI.AppShell className="cm-shell" nav={[{ items: navItems() }, { items: [nav('settings')] }]} value={view}
+      onNavigate={(v) => switchView(v as View)} brand={brand(true)} title={t(PAGES[view].title)} onSearch={() => setSearchOpen(true)}
+      actions={<>
+        {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
+        <UI.IconButton icon="question" label={t('重看導覽')} onClick={tourStart}
+          hint={welcome && view !== 'settings' ? { text: t('導覽：五個步驟介紹各頁。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
+        <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
+          value={p.sourceId} onChange={p.setSource} options={p.sources}
+          footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setView('settings') }}>{t('所有資料來源設定')}</a>} />
+      </>}>
+      <div className="shell-page">
         {snapAlert}
         {/* an address or a choice that points at test code while test code is hidden: say so, rather than showing main */}
         {((id) => id && !ix.funcs[id] && p.graph.funcs[id]?.scope === 'test' ? (
@@ -586,11 +554,8 @@ function Shell(p: ShellProps) {
           { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
           { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
         ]} />
-        <div className="mobile-only">
-          <UI.MobileTabBar value={view} onChange={(v) => switchView(v as View)} items={[...navItems(), nav('settings')]} />
-        </div>
-      </main>
-    </div>
+      </div>
+    </UI.AppShell>
     </OpenFunc.Provider></OpenFile.Provider>
   )
 }
