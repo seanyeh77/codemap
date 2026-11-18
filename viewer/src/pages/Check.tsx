@@ -27,6 +27,9 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const [fileSel, setFile] = useState<string | null>(null)
   const cur = files.find((f) => f.file === fileSel) ?? files[0]
   const openFile = useContext(OpenFile)
+  // all rows or only those that need a look (錯誤, 待確認); and whether what each result means is shown
+  const [all, setAll] = useState(false)
+  const [explain, setExplain] = useState(false)
   // the result is said once after 重新檢查, not every time the page opens (the page title is said then)
   const asked = useRef(false)
   useEffect(() => {
@@ -60,11 +63,19 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   }
   const code = (t: string) => <UI.CodeText text={t} refHref={refHref} onRef={onRef} />
   const fixes = rows.filter((r) => r.fix)
+  const issues = rows.filter((r) => r.status === 'fail' || r.status === 'review')
+  const shown = all ? rows : issues
   return (
     <div className="pane">
       {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={countUnit('項', 'item', 'items')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
       <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
+        {/* one line of where things stand; what each result means is behind 「結果的意思」 */}
+        <p className="small muted">{p.isLive && q.dataUpdatedAt ? t('檢查時間：{v1}。', { v1: dateTime(new Date(q.dataUpdatedAt)) }) + ' ' : ''}
+          {t('共 {v1} 項：{v2} 項錯誤、{v3} 項待確認。', { v1: rows.length, v2: issues.filter((r) => r.status === 'fail').length, v3: issues.filter((r) => r.status === 'review').length })}{' '}
+          <button type="button" className="linklike" aria-expanded={explain} onClick={() => setExplain(!explain)}>{t('結果的意思')}</button>{' · '}
+          <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟 {v1} 全文', { v1: cur.file })}</button></p>
+        {explain ? <div className="check-explain">
         <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
         {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤、{v3} 項待確認。', { v1: dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length, v3: rows.filter((r) => r.status === 'review').length })
           // what "0 errors" covers: how many references there were, and how many only had their names checked
@@ -72,19 +83,24 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
             v2: rows.filter((r) => r.basis === 'calls' || r.basis === 'syntax').length, v3: rows.filter((r) => r.basis === 'names' || r.basis === 'exists').length })}</p> : null}
         {rows.some((r) => r.result === 'syntax') ? <p className="small muted">{t('「呼叫寫在程式碼裡」：目標由靜態分析或 tree-sitter 找到，未經編譯器確認。說明欄註明為哪一種。')}</p> : null}
         <p className="small muted">{t('「呼叫已確認」：筆記寫的呼叫經編譯器確認。「名稱出現」：引用的行含筆記中的名稱，句子其餘說法（例如由誰設定、讀取）未檢查。「待確認」：說明欄列出須對照的位置。')}</p>
-        <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}{' '}
-          <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟 {v1} 全文', { v1: cur.file })}</button></p>
+        <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}</p>
+        </div> : null}
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>
-      <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
-        summary={{ key: 'result', items: ['fail', 'review', 'calls', 'syntax', 'names', 'exists', 'done'].filter((v) => rows.some((r) => r.result === v)).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
+      {shown.length ? <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
+        summary={{ key: 'result', items: ['fail', 'review', 'calls', 'syntax', 'names', 'exists', 'done'].filter((v) => shown.some((r) => r.result === v)).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
         columns={[
           { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <button type="button" className="linklike code-link" aria-label={t('在檔案中開啟 {v1}', { v1: r.at })} onClick={() => openFile(r.at.slice(0, r.at.lastIndexOf(':')), r.line)}><UI.InlineCode>{r.at}</UI.InlineCode></button> },
           { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
           { key: 'result', label: t('結果'), width: 120, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{t(LABEL[result(r)])}</UI.Badge> },
           { key: 'why', label: t('說明'), width: 280, grow: 3, long: true, searchText: (r: CheckItem) => whyText(r), render: (r: CheckItem) => code(whyText(r)) },
         ]}
-        rows={rows} />
+        rows={shown} /> : null}
+      {/* only what needs a look is listed; the rest is one line, and all of it a click away */}
+      {issues.length < rows.length ? <p className="check-rest small">
+        <span className="check-ok-dot" aria-hidden="true" />
+        {issues.length ? t('其餘 {v1} 項沒問題。', { v1: rows.length - issues.length }) : t('{v1} 項都沒問題。', { v1: rows.length })}{' '}
+        <button type="button" className="linklike" aria-expanded={all} onClick={() => setAll(!all)}>{all ? t('只列有問題的') : t('顯示全部')}</button></p> : null}
       {fixes.length ? (
         <UI.Card className="fixes" title={((a, b) => a && b ? t('修正建議（{v1} 個：{v2} 項{v4}、{v3} 項待確認）', { v1: fixes.length, v2: a, v3: b, v4: countUnit('錯誤', 'error', 'errors')(a) }) : t('修正建議（{v1} 個）', { v1: fixes.length }))(
           fixes.filter((r) => r.status === 'fail').length, fixes.filter((r) => r.status === 'review').length)}>

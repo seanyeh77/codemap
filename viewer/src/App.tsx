@@ -204,6 +204,23 @@ function Shell(p: ShellProps) {
   openRef.current = searchOpen
   // from here the palette's own Ctrl K listens; the page says it is ready for the early listener
   useEffect(() => { early.search = false; stopEarly(); document.body.dataset.codemapReady = '1' }, [])
+  // the design system draws every code link the same: a place (harness/lab3.py:52) is marked so it can be a small grey
+  // note beside the name; the AI mark at the start of an AI description is a tag, not something to tab to
+  useEffect(() => {
+    const mark = () => {
+      document.querySelectorAll<HTMLElement>('.ui-code.is-link:not([data-cm])').forEach((el) => {
+        el.dataset.cm = '1'
+        if (/^[\w./-]+:\d+$/.test(el.textContent ?? '')) el.dataset.loc = '1'
+      })
+      document.querySelectorAll<HTMLAnchorElement>('a[href="#ai-mark"]:not([data-cm])').forEach((a) => {
+        a.dataset.cm = '1'; a.tabIndex = -1; a.setAttribute('aria-label', t('AI 說明'))
+      })
+    }
+    const o = new MutationObserver(mark)
+    o.observe(document.body, { childList: true, subtree: true })
+    mark()
+    return () => o.disconnect()
+  }, [])
   // Ctrl K / ⌘ K, caught first (capture phase) and by the physical key too (KeyK, whatever the keyboard
   // layout): reports said it sometimes did nothing; this way no handler further in, and no layout, can lose it.
   // The palette's own listener is told to stand down for this press, so the box does not open and close at once.
@@ -537,7 +554,16 @@ function Shell(p: ShellProps) {
       )}
       <main className="main">
         <UI.TopBar title={t(PAGES[view].title)} searchLabel={t('搜尋')} onSearch={() => setSearchOpen(true)} onMenu={tablet ? () => setNavOpen(true) : undefined}>
-          <UI.IconButton icon="question" label={t('重看導覽')} onClick={tourStart} />
+          {/* a first visit: a dot on the help button and a small note under it, instead of a banner on every page */}
+          <span className="help-wrap">
+            <UI.IconButton icon="question" label={welcome ? t('開始導覽') : t('重看導覽')} onClick={tourStart} />
+            {welcome && view !== 'settings' ? <>
+              <span className="help-dot" aria-hidden="true" />
+              <span className="help-note" role="note">{t('導覽：五個步驟介紹各頁。')}
+                <button type="button" className="help-note-go" onClick={tourStart}>{t('開始')}</button>
+                <UI.IconButton icon="x" label={t('關閉')} onClick={() => { setWelcome(false); seenTour.close() }} /></span>
+            </> : null}
+          </span>
           <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
             value={p.sourceId} onChange={p.setSource} options={p.sources}
             footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setView('settings') }}>{t('所有資料來源設定')}</a>} />
@@ -558,14 +584,6 @@ function Shell(p: ShellProps) {
             </UI.Alert>
           </div>
         ) : null)(chosenStart ?? '')}
-        {welcome && view !== 'settings' ? (
-          <div className="alert-wrap">
-            <UI.Alert tone="info" title={t('第一次使用 codemap')} actionLabel={t('開始導覽')} onAction={tourStart}
-              onDismiss={() => { setWelcome(false); seenTour.close() }}>
-              {COARSE ? t('五個步驟介紹架構、搜尋（上方的放大鏡）、流程、影響範圍與檢查筆記。') : t('五個步驟介紹架構、搜尋（Ctrl K）、流程、影響範圍與檢查筆記。')}
-            </UI.Alert>
-          </div>
-        ) : null}
         {view === 'settings'
           ? <Settings graph={p.graph} meta={p.meta} cat={cat} setCat={setCat} snapName={p.snapName} hasLive={p.hasLive}
               backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}

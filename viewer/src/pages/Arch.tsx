@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { OpenFile, useCodeRefs } from '../components/DocRefs'
-import { Notes, Q, worthAt } from './Reader'
+import { Notes, Parts, Q, worthAt } from './Reader'
 import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
@@ -366,6 +366,7 @@ function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
   const found = worthAt(g, (x) => !!p.ix.funcs[x.fid] && p.ix.funcs[x.fid].scope !== 'test')
   return (
     <UI.Card className="detail level-detail" title={g.repo}>
+      <Parts>
       <Q title={t('是什麼')}>
         {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('{v1} 個元件、{v2} 個函式。', { v1: g.comps.length, v2: Object.keys(p.ix.funcs).length })}</p>}
         <a className="link small" href="#overview">{t('讀總覽：從哪裡讀起、名詞、對外介面')}</a>
@@ -383,6 +384,7 @@ function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
         <DescCoverage ix={p.ix} />
         {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
       </Q>
+      </Parts>
     </UI.Card>
   )
 }
@@ -415,6 +417,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
     <div className="detail split">
       <UI.Card title={p.file} actions={<UI.Button icon="file-code" onClick={() => openFile(p.file, 1)}>{t('讀程式碼')}</UI.Button>}>
         {/* the same three parts as every level: what it is, who it is tied to, what is worth a note */}
+        <Parts>
         <Q title={t('是什麼')}>
         {((a) => [
           a && (aiFirst(descOrder) || !doc) ? <p key="ai" className="small"><DescText d={a} tag full /></p> : null,
@@ -432,8 +435,8 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
           { label: t('它呼叫的檔案'), value: out.length ? <span className="entry-list">{other(out, 'b')}</span> : t('（無）') },
         ]} />
         </Q>
-        <Notes ix={p.ix} f={p.file} />
-        {role ? <p className="small muted">{byRules ? t('可修改／受保護的依據：.codemap/rules.json 的 roles') : t('可修改／受保護的依據：檔案開頭註解的第一個詞')}</p> : null}
+        <Notes ix={p.ix} f={p.file} why={role ? (byRules ? t('可修改／受保護的依據：.codemap/rules.json 的 roles') : t('可修改／受保護的依據：檔案開頭註解的第一個詞')) : undefined} />
+        </Parts>
       </UI.Card>
       <div className="tree-panel grow-panel">
         <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；點選函式讀它的程式碼', { v1: ids.length })} height="100%"
@@ -508,7 +511,8 @@ function aiMd(d: Desc | null, inTable = false): string {
   if (!d) return ''
   const body = codeSpans(d.text).map((x) => (typeof x === 'string' ? esc(x) : code(x.code, inTable))).join('')
   // in a table the column's header says AI once; a stale one still says so in its cell
-  return body + (d.state === 'stale' ? ' ' + t('（AI 說明，程式已改過，可能過時）') : inTable ? '' : ' ' + t('（AI 說明）'))
+  // outside a table the paragraph starts with a small AI mark (an ai: link the page draws as a tag, not a link)
+  return (inTable ? '' : '[AI](ai:) ') + body + (d.state === 'stale' ? ' ' + t('（AI 說明，程式已改過，可能過時）') : '')
 }
 
 function docsPart(docs: DocSummary[]): PartMd {
@@ -994,18 +998,19 @@ const MdLinksCtx = createContext<MdLinks | null>(null)
 /** The overview's Markdown: ### is an h4 under the part's h3 title; fn: links open the flow page. */
 function OvMd(p: { children: string }) {
   const c = useContext(MdLinksCtx)!
-  const web = (h: string) => /^[a-z][a-z0-9+.-]*:/i.test(h) && !h.startsWith('fn:')
+  const web = (h: string) => /^[a-z][a-z0-9+.-]*:/i.test(h) && !h.startsWith('fn:') && h !== 'ai:'
   return (
-    <UI.Markdown topLevel={2} schemes={['fn']} {...c.refs}
-      linkHref={(h) => (h.startsWith('fn:') ? '#flow?s=' + h.slice(3) : web(h) ? h : '#' + h)}
-      onLink={(h) => { if (h.startsWith('fn:')) c.onFn(decodeURIComponent(h.slice(3))); else if (web(h)) window.open(h, '_blank', 'noopener'); else c.openFile(h, 1) }}>
+    <UI.Markdown topLevel={2} schemes={['fn', 'ai']} {...c.refs} className="ov-md"
+      linkHref={(h) => (h === 'ai:' ? '#ai-mark' : h.startsWith('fn:') ? '#flow?s=' + h.slice(3) : web(h) ? h : '#' + h)}
+      onLink={(h) => { if (h === 'ai:') return; if (h.startsWith('fn:')) c.onFn(decodeURIComponent(h.slice(3))); else if (web(h)) window.open(h, '_blank', 'noopener'); else c.openFile(h, 1) }}>
       {p.children}
     </UI.Markdown>
   )
 }
 
 interface PartMd { id: string; title: string; summary?: string; open?: boolean; md: string }
-const partText = (x: PartMd) => [`## ${x.title}`, x.summary, x.md].filter(Boolean).join('\n\n')
+// copied as Markdown, the AI mark becomes words at the end of its paragraph again
+const partText = (x: PartMd) => [`## ${x.title}`, x.summary, x.md.replace(/\[AI\]\(ai:\) ([^\n]*)/g, (_, rest: string) => rest + ' ' + t('（AI 說明）'))].filter(Boolean).join('\n\n')
 
 /** One part of the overview: a Section with its title, its line of numbers and a copy button; open or closed is
  *  kept per repository. 元件 and 進入與結束 start open, the rest closed. */
@@ -1126,6 +1131,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
     <div className="detail split">
       {/* the same three parts as every level: what it is, who it is tied to, what is worth a note */}
       <UI.Card className="level-detail" title={p.comp}>
+        <Parts>
         <Q title={t('是什麼')}>
           {ai ? <p><DescText d={ai} tag full /></p> : null}
           {comp?.doc ? <p className="small">{comp.doc.text}<br /><From doc={comp.doc} /></p> : null}
@@ -1151,6 +1157,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
           {found.length ? <><ul className="level-notes">{found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul>
             <a className="link small" href="#check">{t('到檢查筆記看細節')}</a></> : <p className="small muted">{t('沒有發現。')}</p>}
         </Q>
+        </Parts>
       </UI.Card>
       <div className="tree-panel grow-panel">{tree}</div>
     </div>

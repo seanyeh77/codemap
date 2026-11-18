@@ -1,5 +1,5 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { Children, isValidElement, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { UI } from '../ui'
 import { DocRefs, OpenFile, langLabel, useCodeRefs } from '../components/DocRefs'
 import { useCallLinks } from '../components/CallLinks'
@@ -112,9 +112,26 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   </div>
 }
 
-/** One of the three parts every level of the architecture page answers: 是什麼, 和誰有關, 值得注意. */
+/** One of the three parts every level of the architecture page answers: 是什麼, 和誰有關, 值得注意. Inside Parts it is
+ *  one tab; its title is the tab's name. */
 export function Q(p: { title: string; children: ReactNode }) {
-  return <section className="level-q"><h3 className="level-q-title">{p.title}</h3>{p.children}</section>
+  return <section className="level-q" aria-label={p.title}>{p.children}</section>
+}
+
+// the tab being read stays the same from one level, file or function to the next, and in this browser
+let shownTab = (() => { try { return Number(localStorage.getItem('codemap:part') ?? 0) || 0 } catch { return 0 } })()
+
+/** The three parts of a level as tabs, one shown at a time. Its children are Q (or Notes, which is 值得注意). */
+export function Parts(p: { children: ReactNode }) {
+  const qs = Children.toArray(p.children).filter(isValidElement) as ReactElement<{ title?: string }>[]
+  const [at, setAt] = useState(Math.min(shownTab, qs.length - 1))
+  const pick = (i: number) => { shownTab = i; setAt(i); try { localStorage.setItem('codemap:part', String(i)) } catch { /* storage off */ } }
+  const titles = qs.map((q) => q.props.title ?? t('值得注意'))
+  const i = Math.min(at, qs.length - 1)
+  return <div className="level-parts">
+    <UI.Tabs label={t('說明')} items={titles.map((x, k) => ({ id: String(k), label: x }))} value={String(i)} onChange={(v) => pick(Number(v))} />
+    {qs[i]}
+  </div>
 }
 
 /** A line outside every function: the file itself. */
@@ -124,12 +141,14 @@ function FileLevel(p: { ix: Index; f: string; l: number }) {
   const doc = p.ix.g.files?.[p.f]
   return <>
     <p className="small muted">{t('第 {v1} 行不在任何函式內。點選函式清單或程式碼裡的一行。', { v1: p.l })}</p>
+    <Parts>
     <Q title={t('是什麼')}>
       {ai ? <p><DescText d={ai} tag full /></p> : null}
       {doc ? <p>{doc.text.split('\n\n')[0]}</p> : null}
       {!ai && !doc ? <p className="muted">{t('沒有說明註解。')}</p> : null}
     </Q>
     <Notes ix={p.ix} f={p.f} />
+    </Parts>
   </>
 }
 
@@ -151,6 +170,7 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
   const fw = fn.entry?.framework
   return <>
     <p className="small muted">{t('第 {v1} 行', { v1: p.l })} · {p.f}</p>
+    <Parts>
     <Q title={t('是什麼')}>
       {ds.length ? ds.map((d, i) => <p key={i} className="reader-desc"><DescText d={d} tag full /></p>)
         : <p className="small muted">{t('沒有註解或 AI 說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
@@ -164,11 +184,12 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
       <div><UI.Button icon="share-network" onClick={() => p.onFunc(p.id)}>{t('看流程')}</UI.Button></div>
     </Q>
     <Notes ix={p.ix} f={p.f} id={p.id} />
+    </Parts>
   </>
 }
 
 /** 值得注意: whether people may change the file, and what the checks found in this function (or this file). */
-export function Notes(p: { ix: Index; f: string; id?: string }) {
+export function Notes(p: { ix: Index; f: string; id?: string; why?: string }) {
   const g = p.ix.g
   const role = roleOf(g, p.f)
   const found = worthAt(g, (x) => (p.id ? x.fid === p.id : x.f === p.f))
@@ -183,6 +204,7 @@ export function Notes(p: { ix: Index; f: string; id?: string }) {
   return <Q title={t('值得注意')}>
     {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('沒有發現。')}</p>}
     {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
+    {p.why ? <p className="small muted">{p.why}</p> : null}
   </Q>
 }
 
