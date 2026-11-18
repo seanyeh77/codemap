@@ -177,7 +177,7 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
   const callers = [...new Set(p.ix.callers(p.id).map((e) => e.s).filter((s) => p.ix.funcs[s]))]
   const callees = [...new Set(p.ix.callees(p.id, false).map((e) => e.d).filter((d) => p.ix.funcs[d] && d !== p.id))]
   const go = (id: string) => { const g = p.ix.funcs[id]; p.open(g.file, g.line) }
-  const name = (id: string) => <UI.InlineCode key={id} href={'#' + id} onClick={(e) => { e.preventDefault(); go(id) }}>{p.ix.funcs[id].name}</UI.InlineCode>
+  const name = (id: string) => <UI.InlineCode key={id} look="name" href={'#' + id} onClick={(e) => { e.preventDefault(); go(id) }}>{p.ix.funcs[id].name}</UI.InlineCode>
   const list = (ids: string[], none: string) => ids.length
     ? <ul className="reader-refs">{ids.slice(0, 12).map((id) => <li key={id}>{name(id)}{p.ix.funcs[id].file !== p.f ? <span className="muted small">{p.ix.funcs[id].file.split('/').pop()}</span> : null}</li>)}
       {ids.length > 12 ? <li className="muted small">{t('還有 {n} 個', { n: ids.length - 12 })}</li> : null}</ul>

@@ -26,7 +26,7 @@ export function DocRefs(p: { ix: Index; lines: string[] | undefined }) {
     <p className="small doc-refs">
       {t('這段程式碼提到的文件：')}
       {[...found.keys()].map((f, i) => (
-        <span key={f}>{i ? t('、') : ''}<UI.InlineCode href={'#' + f} onClick={(e) => { e.preventDefault(); open(f, 1) }}>{f}</UI.InlineCode></span>
+        <span key={f}>{i ? t('、') : ''}<UI.InlineCode look="location" href={'#' + f} onClick={(e) => { e.preventDefault(); open(f, 1) }}>{f}</UI.InlineCode></span>
       ))}
     </p>
   )

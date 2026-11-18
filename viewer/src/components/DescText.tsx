@@ -7,7 +7,8 @@ export function DescText(p: { d: Desc; tag?: boolean; full?: boolean }) {
   const { d } = p
   return (
     <span className={'desc-' + d.kind + (d.state && d.state !== 'ok' ? ' desc-' + d.state : '')}>
-      {p.tag && d.kind !== 'facts' ? <><UI.Tag>{t(KIND_LABEL[d.kind])}</UI.Tag> </> : null}
+      {/* AI writing starts with the design system's AI mark; the author's comment keeps its word tag */}
+      {p.tag && d.kind === 'ai' ? <><UI.AiMark label={t('AI 說明')} /> </> : p.tag && d.kind !== 'facts' ? <><UI.Tag>{t(KIND_LABEL[d.kind])}</UI.Tag> </> : null}
       {codeSpans(d.text).map((x, i) => (typeof x === 'string' ? x : <code key={i} className="desc-code">{x.code}</code>))}
       {d.lang ? <span className="small muted">{' '}{t('（{v1}）', { v1: d.lang === 'en' ? 'English' : '中文' })}</span> : null}
       {p.full && d.state === 'stale' ? <span className="block small muted">{t('函式在說明寫好之後改過，說明可能過時。執行 codemap describe 會重寫。')}</span> : null}

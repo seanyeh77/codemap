@@ -492,13 +492,14 @@ const short = (t: string, n = 140) => (t.length > n ? t.slice(0, n).replace(/\s+
 /** The first sentence of a comment: enough to tell a file's role (Protected ..., Editable ...). */
 const firstSentence = (t: string) => ((m) => (m ? m[0] : t))(t.match(/^[\s\S]*?[.。](?=\s|$)/))
 
-/** A function as a Markdown link to the flow page; a name the index does not have stays code. */
-const fnLink = (ix: Index, id: string) => (ix.funcs[id] ? `[${esc(ix.funcs[id].name)}](fn:${encodeURIComponent(id)})` : code(id))
+/** A function as a Markdown link to the flow page, its name in code so the design system draws it as a name; a name
+ *  the index does not have stays code. */
+const fnLink = (ix: Index, id: string) => (ix.funcs[id] ? `[${code(ix.funcs[id].name)}](fn:${encodeURIComponent(id)})` : code(id))
 /** A module-level Python function with its module in front (runtime.deploy), where a bare name reads like something else. */
 const fnLinkMod = (ix: Index, id: string) => {
   const f = ix.funcs[id]
   if (!f || f.lang !== 'python' || f.name.includes('.')) return fnLink(ix, id)
-  return `[${esc(f.file.split('/').pop()!.replace(/\.py$/, '') + '.' + f.name)}](fn:${encodeURIComponent(id)})`
+  return `[${code(f.file.split('/').pop()!.replace(/\.py$/, '') + '.' + f.name)}](fn:${encodeURIComponent(id)})`
 }
 const loc = (f: string, l: number, inTable = false) => code(`${f}:${l}`, inTable)
 
@@ -510,7 +511,7 @@ function aiMd(d: Desc | null, inTable = false): string {
   if (!d) return ''
   const body = codeSpans(d.text).map((x) => (typeof x === 'string' ? esc(x) : code(x.code, inTable))).join('')
   // in a table the column's header says AI once; a stale one still says so in its cell
-  // outside a table the paragraph starts with a small AI mark (an ai: link the page draws as a tag, not a link)
+  // outside a table the paragraph starts with the design system's small AI mark
   return (inTable ? '' : '[AI](ai:) ') + body + (d.state === 'stale' ? ' ' + t('（AI 說明，程式已改過，可能過時）') : '')
 }
 
@@ -996,11 +997,11 @@ const MdLinksCtx = createContext<MdLinks | null>(null)
 /** The overview's Markdown: ### is an h4 under the part's h3 title; fn: links open the flow page. */
 function OvMd(p: { children: string }) {
   const c = useContext(MdLinksCtx)!
-  const web = (h: string) => /^[a-z][a-z0-9+.-]*:/i.test(h) && !h.startsWith('fn:') && h !== 'ai:'
+  const web = (h: string) => /^[a-z][a-z0-9+.-]*:/i.test(h) && !h.startsWith('fn:')
   return (
-    <UI.Markdown topLevel={2} schemes={['fn', 'ai']} {...c.refs} className="ov-md"
-      linkHref={(h) => (h === 'ai:' ? '#ai-mark' : h.startsWith('fn:') ? '#flow?s=' + h.slice(3) : web(h) ? h : '#' + h)}
-      onLink={(h) => { if (h === 'ai:') return; if (h.startsWith('fn:')) c.onFn(decodeURIComponent(h.slice(3))); else if (web(h)) window.open(h, '_blank', 'noopener'); else c.openFile(h, 1) }}>
+    <UI.Markdown topLevel={2} schemes={['fn']} {...c.refs} className="ov-md"
+      linkHref={(h) => (h.startsWith('fn:') ? '#flow?s=' + h.slice(3) : web(h) ? h : '#' + h)}
+      onLink={(h) => { if (h.startsWith('fn:')) c.onFn(decodeURIComponent(h.slice(3))); else if (web(h)) window.open(h, '_blank', 'noopener'); else c.openFile(h, 1) }}>
       {p.children}
     </UI.Markdown>
   )

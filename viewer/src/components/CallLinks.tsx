@@ -79,7 +79,7 @@ export function useCallLinks(ix: Index, file: string | undefined, start: number,
             const f = ix.funcs[id]
             return (
               <div key={id}>
-                <UI.InlineCode href={'#' + id} onClick={(e) => { e.preventDefault(); open(id) }}>{f.name}</UI.InlineCode>
+                <UI.InlineCode look="name" href={'#' + id} onClick={(e) => { e.preventDefault(); open(id) }}>{f.name}</UI.InlineCode>
                 {((d) => d ? <div className="small"><DescText d={d} tag /></div> : null)(oneLine(ix, id, order))}
                 <div className="small muted">{t('定義在 {v1}', { v1: `${f.file}:${f.line}` })}{f.comp ? ` · ${f.comp}` : ''}</div>
               </div>

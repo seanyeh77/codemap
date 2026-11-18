@@ -279,9 +279,9 @@ function entryPath(ix: Index, to: string): { id: string; e: Edge | null }[] | nu
  *  a link), with a plain click staying in the page. Agents and people alike looked for links here. */
 function FnLink(p: { id: string; go: (id: string) => void; children: ReactNode }) {
   return (
-    <a className="linklike" href={'#flow?s=' + encodeURIComponent(p.id)}
+    <UI.InlineCode look="name" href={'#flow?s=' + encodeURIComponent(p.id)}
       onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); p.go(p.id) } }}>
       {p.children}
-    </a>
+    </UI.InlineCode>
   )
 }

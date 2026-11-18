@@ -206,29 +206,10 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* the three parts of a level as tabs */
 .level-parts { display: flex; flex-direction: column; gap: var(--space-3); }
 .level-parts > .level-q { border-top: 0; padding-top: 0; }
-/* names are links in the accent colour, without the grey chip or underline (underline on hover); a place (file:line)
-   is a small grey note after them; an AI description starts with a small AI mark */
-.ui-code.is-link { background: transparent; padding: 0; color: var(--accent-text); text-decoration: none; }
-.ui-code.is-link:hover { text-decoration: underline; text-decoration-thickness: 1px; }
-.ui-code.is-link[data-loc] { color: var(--ink-muted); font-size: 0.8em; }
-.ui-code.is-link[data-loc]:hover { color: var(--accent-text); }
-:is(.ui-dt-body, .ui-dt-detail, .ui-md-table td) .ui-code.is-link { background: transparent; box-shadow: none; }
-.ov-md a[href="#ai-mark"], .ui-md a[href="#ai-mark"] { pointer-events: none; text-decoration: none; display: inline-block; font-size: 10px; font-weight: 700; line-height: 14px; color: var(--ink-muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 3px; margin-right: 2px; vertical-align: 2px; }
-/* first visit: a dot on the help button and a small dark note under it */
-.help-wrap { position: relative; display: inline-flex; }
-.help-dot { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-chrome, var(--surface)); pointer-events: none; }
-.help-note { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; background: var(--ink); color: var(--bg); border-radius: var(--radius-md); padding: 6px 6px 6px 12px; font-size: 13px; box-shadow: var(--shadow-overlay, 0 8px 24px rgb(0 0 0 / 0.2)); }
-.help-note::before { content: ''; position: absolute; top: -5px; right: 14px; width: 10px; height: 10px; background: inherit; transform: rotate(45deg); }
-.help-note-go { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-.help-note-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.help-note button:last-child { width: 28px; height: 28px; min-width: 28px; color: inherit; background: transparent; box-shadow: none; border: 0; }
 /* 檢查筆記: only what needs a look, then one line for the rest */
 .check-rest { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-3) var(--space-4); background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-sm, 0 1px 2px rgb(0 0 0 / 0.06)); }
 .check-ok-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success, #1ca655); flex: none; }
 .check-explain { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); background: var(--surface-sub); border-radius: var(--radius-md); }
-/* a name written as a Markdown link (the reading route, the overview) looks like the other names: accent, no underline */
-.ui-md-link[href^="#flow"] { color: var(--accent-text); text-decoration: none; }
-.ui-md-link[href^="#flow"]:hover { text-decoration: underline; }
 /* no description yet: the function's signature, in the code's own words */
 .reader-sig { margin: 0; padding: var(--space-3); background: var(--surface-sub); border-radius: var(--radius-sm); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .desc-health { flex: 0 0 auto; }

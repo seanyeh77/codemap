@@ -140,7 +140,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             { key: 'loc', label: t('位置'), width: 100, grow: 1, searchText: (r: Row) => r.loc, fullText: (r: Row) => `${r.f}:${r.lines.join(t('、'))}`,
               // the file name and every line; the full path is the cell's description
               render: (r: Row) => <span className="locs">{r.lines.map((l) => (
-                <UI.InlineCode key={l} href={`#${r.f}:${l}`} onClick={(e) => { e.preventDefault(); p.onSel(r.fid, { f: r.f, l }) }}>{`${r.f.split('/').pop()}:${l}`}</UI.InlineCode>))}</span> },
+                <UI.InlineCode key={l} look="location" href={`#${r.f}:${l}`} onClick={(e) => { e.preventDefault(); p.onSel(r.fid, { f: r.f, l }) }}>{`${r.f.split('/').pop()}:${l}`}</UI.InlineCode>))}</span> },
             { key: 'depth', label: t('距離'), numeric: true, unit: t('層'), width: 72, grow: 0.5 },
             // what each affected function does: hidden at first (the table is already wide beside the panel), in 欄位
             { key: 'what', label: t('作用'), width: 220, grow: 2, hidden: true,

@@ -16,7 +16,7 @@ export function EditorButton(p: { ix: Index; file: string; line: number }) {
 /** A file:line that shows its code inside codemap, plus the VS Code button when one is set up. */
 export function LineLink(p: { ix: Index; file: string; line: number; onOpen: () => void }) {
   const loc = `${p.file}:${p.line}`
-  const link = <UI.InlineCode href={'#' + loc} onClick={(e) => { e.preventDefault(); p.onOpen() }}>{loc}</UI.InlineCode>
+  const link = <UI.InlineCode look="location" href={'#' + loc} onClick={(e) => { e.preventDefault(); p.onOpen() }}>{loc}</UI.InlineCode>
   // alone it stays inline text; with the VS Code button the two sit on one row
   return vscodeURL(p.file, p.line, p.ix.g.root, p.ix.g.host)
     ? <span className="row nowrap">{link}<EditorButton ix={p.ix} file={p.file} line={p.line} /></span>

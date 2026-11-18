@@ -11,16 +11,6 @@ import { startApp } from './pwa'
 
 UI.initTheme()
 
-// Until the design system reads 3-digit colours: the build shortens #ffffff to #fff in tokens.css, the design system's
-// accent-text check cannot read #fff and darkens the link colour all the way to black. Drop that wrong value so the
-// theme's own accent-text applies (codemap keeps the default accent).
-const fixAccentText = () => {
-  const v = document.documentElement.style.getPropertyValue('--accent-text').trim().toLowerCase()
-  if (v === '#000000' || v === '#ffffff') document.documentElement.style.removeProperty('--accent-text')
-}
-new MutationObserver(fixAccentText).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-theme'] })
-fixAccentText()
-
 listenEarly()
 startApp()
 UI.setTheme(prefs.get().theme)
