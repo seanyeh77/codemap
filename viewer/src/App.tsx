@@ -380,8 +380,8 @@ function Shell(p: ShellProps) {
   // the impact page starts from the function the reader has open, not from where the flow began
   // the name at the top of the sidebar goes home: the architecture overview, nothing chosen, no file open
   const goHome = () => { setFileAt(null); setView('overview'); requestAnimationFrame(() => UI.focusMain()) }
-  const brand = (full: boolean) => <a className="brand-home" href="#overview" aria-label={t('回到首頁：總覽')} title={t('回到首頁：總覽')}
-    onClick={(e) => { e.preventDefault(); goHome() }}><span className="brand-mark" />{full ? <span>codemap</span> : null}</a>
+  // the name at the top of the sidebar: the mark alone while the sidebar is a strip of icons, the name beside it open
+  const brand: UI.NavBrand = { mark: <span className="brand-mark" />, name: 'codemap', href: '#overview', onClick: (e) => { e.preventDefault(); goHome() } }
   const switchView = (v: View) => {
     if (v === 'impact' && view !== 'impact' && ix.funcs[sel.id] && sel.id !== start) goImpact(sel.id)
     else setView(v)
@@ -503,7 +503,7 @@ function Shell(p: ShellProps) {
     {/* the design system's frame: the sidebar (a strip of icons that opens on hover until pinned, a drawer from 600 to
         1024 px, tabs on phones), the top bar and the main area */}
     <UI.AppShell className="cm-shell" nav={[{ items: navItems() }, { items: [nav('settings')] }]} value={view}
-      onNavigate={(v) => switchView(v as View)} brand={brand(true)} title={t(PAGES[view].title)} onSearch={() => setSearchOpen(true)}
+      onNavigate={(v) => switchView(v as View)} brand={brand} title={t(PAGES[view].title)} onSearch={() => setSearchOpen(true)}
       actions={<>
         {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
         <UI.IconButton icon="question" label={t('重看導覽')} onClick={tourStart}
