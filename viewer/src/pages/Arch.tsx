@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { OpenFile, useCodeRefs } from '../components/DocRefs'
+import { Notes, Q, worthAt } from './Reader'
 import { UI } from '../ui'
 import { countUnit, list, t } from '../i18n'
 import { revealTop } from '../scroll'
@@ -351,9 +352,39 @@ export function CompDetail(p: { ix: Index; comp: string; isLive: boolean; source
   if (p.comp === TRACED) return <EntryDetail ix={p.ix} id={TRACED} onPick={p.onPick} onBack={() => p.onComp('')} />
   const c = p.ix.g.comps.find((x) => x.id === p.comp)
   if (c?.lang) return <ScriptsDetail ix={p.ix} comp={c.id} isLive={p.isLive} sourceId={p.sourceId} onBack={() => p.onComp('')} />
-  if (!p.comp) return <Overview ix={p.ix} isLive={p.isLive} sourceId={p.sourceId} onComp={p.onComp} onPick={p.onPick} />
+  if (!p.comp) return <ProjectDetail ix={p.ix} onComp={p.onComp} />
   if (p.comp.startsWith('file:')) return <FileDetail ix={p.ix} file={p.comp.slice(5)} onPick={p.onPick} onComp={p.onComp} />
-  return <CompTree {...p} onBack={() => p.onComp('')} />
+  return <CompTree {...p} onBack={() => p.onComp('')} onComp={p.onComp} />
+}
+
+/** The project level of the architecture page, in the three parts every level has: what it is (and where the whole
+ *  overview is), its components, and what is worth a note. */
+function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
+  const g = p.ix.g
+  const order = useDescOrder()
+  const project = aiItem(p.ix, 'project', order)
+  const found = worthAt(g, (x) => !!p.ix.funcs[x.fid] && p.ix.funcs[x.fid].scope !== 'test')
+  return (
+    <UI.Card className="detail level-detail" title={g.repo}>
+      <Q title={t('是什麼')}>
+        {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('{v1} 個元件、{v2} 個函式。', { v1: g.comps.length, v2: Object.keys(p.ix.funcs).length })}</p>}
+        <a className="link small" href="#overview">{t('讀總覽：從哪裡讀起、名詞、對外介面')}</a>
+      </Q>
+      <Q title={t('和誰有關')}>
+        <ul className="level-list">{g.comps.map((c) => {
+          const d = aiItem(p.ix, 'comp:' + c.id, order)
+          return <li key={c.id}><button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.id}</button>
+            {d ? <span className="small muted"> {plainText(d.text).split(/(?<=[。.])\s*/)[0]}</span> : c.doc ? <span className="small muted"> {firstSentence(c.doc.text)}</span> : null}</li>
+        })}</ul>
+        <p className="small muted">{t('點選元件，或圖上的方塊，往下一層。')}</p>
+      </Q>
+      <Q title={t('值得注意')}>
+        {found.length ? <ul className="level-notes">{found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul> : <p className="small muted">{t('沒有發現。')}</p>}
+        <DescCoverage ix={p.ix} />
+        {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
+      </Q>
+    </UI.Card>
+  )
 }
 
 /** A file's box: what it is for, whether people may change it, which files it calls and is called by, and its functions. */
@@ -379,18 +410,20 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
   const other = (xs: { a: string; b: string; es: unknown[] }[], end: 'a' | 'b') => xs.sort((x, y) => y.es.length - x.es.length).map((l) => (
     <span key={l[end]} className="entry-row"><button type="button" className="linklike" onClick={() => p.onComp('file:' + l[end])}>{base(l[end])}</button>{' '}{t('{n} 次', { n: l.es.length })}</span>))
   const inn = fg.links.filter((l) => l.b === p.file), out = fg.links.filter((l) => l.a === p.file)
+  const openFile = useContext(OpenFile)
   return (
     <div className="detail split">
-      <UI.Card title={p.file} actions={<UI.Button icon="arrow-left" onClick={() => p.onComp('')}>{t('回到概觀')}</UI.Button>}>
-        {role ? <p className="small"><UI.Tag>{role === 'editable' ? t('可修改') : t('受保護')}</UI.Tag>{' '}
-          {byRules ? t('依據：.codemap/rules.json 的 roles') : t('依據：檔案開頭註解的第一個詞')}</p> : null}
-        {/* what the file is for: its top comment and an AI's description, in the reader's order */}
+      <UI.Card title={p.file} actions={<UI.Button icon="file-code" onClick={() => openFile(p.file, 1)}>{t('讀程式碼')}</UI.Button>}>
+        {/* the same three parts as every level: what it is, who it is tied to, what is worth a note */}
+        <Q title={t('是什麼')}>
         {((a) => [
           a && (aiFirst(descOrder) || !doc) ? <p key="ai" className="small"><DescText d={a} tag full /></p> : null,
           doc ? <p key="doc" className="small">{short(doc.text, 400)}<br /><From doc={doc} /></p> : null,
           a && !aiFirst(descOrder) && doc ? <p key="ai2" className="small"><DescText d={a} tag full /></p> : null,
           !a && !doc ? <p key="none" className="small muted">{t('沒有說明註解。')}</p> : null,
         ])(aiItem(p.ix, 'file:' + p.file, descOrder))}
+        </Q>
+        <Q title={t('和誰有關')}>
         <UI.DetailList items={[
           // a controller's event handlers have no caller in the repo: the framework calls them
           ...[...new Set(ids.map((id) => p.ix.funcs[id].entry?.framework).filter(Boolean))].map((fw) => ({ label: t('由框架呼叫'),
@@ -398,9 +431,12 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
           { label: t('呼叫它的檔案'), value: inn.length ? <span className="entry-list">{other(inn, 'a')}</span> : t('（無）') },
           { label: t('它呼叫的檔案'), value: out.length ? <span className="entry-list">{other(out, 'b')}</span> : t('（無）') },
         ]} />
+        </Q>
+        <Notes ix={p.ix} f={p.file} />
+        {role ? <p className="small muted">{byRules ? t('可修改／受保護的依據：.codemap/rules.json 的 roles') : t('可修改／受保護的依據：檔案開頭註解的第一個詞')}</p> : null}
       </UI.Card>
       <div className="tree-panel grow-panel">
-        <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；點選函式會到流程頁', { v1: ids.length })} height="100%"
+        <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；點選函式讀它的程式碼', { v1: ids.length })} height="100%"
           label={t('{v1} 的函式', { v1: base(p.file) })} items={ids.map((id) => {
             // what it does when someone wrote it (the author, or an AI); otherwise who calls it, by name
             const d = descLine(p.ix, id, descOrder)
@@ -408,7 +444,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
             // the description first: a long one is cut at the end of the line, where the place is the least loss
             return { id, name: p.ix.funcs[id].name, meta: d && d.kind !== 'facts' ? `${t(KIND_LABEL[d.kind])}：${plainText(d.text)} · ${at}` : `${at} · ${p.ix.callerText(id)}` }
           })}
-          onSelect={(n) => { if (p.ix.funcs[n.id]) p.onPick(n.id) }} />
+          onSelect={(n) => { if (p.ix.funcs[n.id]) openFile(p.file, p.ix.funcs[n.id].line) }} />
       </div>
     </div>
   )
@@ -495,7 +531,10 @@ function From(p: { doc: Doc }) {
 
 /** Nothing selected: what each component is for, how the code is entered and left, and what the
  *  environment controls - the parts the diagram's boxes and lines do not say. */
-function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void }) {
+/** The project's overview, as Markdown parts. On the 總覽 page (mode 'page') it is a document: the parts in reading
+ *  order with their contents on the left. On the check page (mode 'bare') only the parts asked for, one after another. */
+export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void
+  mode?: 'page' | 'bare'; only?: string[]; skip?: string[] }) {
   const g = p.ix.g
   const refs = useCodeRefs(p.ix)
   const openFile = useContext(OpenFile)
@@ -800,10 +839,34 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
     ].filter(Boolean).join('\n\n') })
   }
 
+  // the parts this place shows, in reading order: first what the project is, then how it meets the world
+  const shownParts = parts.filter((x) => (!p.only || p.only.includes(x.id)) && !p.skip?.includes(x.id))
+    .sort((a, b) => READING.indexOf(a.id) - READING.indexOf(b.id))
   // the whole overview, the same text the page shows
-  const all = [`# ${t('{v1} 的概觀', { v1: g.repo })}`, ...parts.map(partText)].join('\n\n') + '\n'
+  const all = [`# ${t('{v1} 的概觀', { v1: g.repo })}`, ...shownParts.map(partText)].join('\n\n') + '\n'
   const copy = () => navigator.clipboard.writeText(all).then(() => { setCopied(true); UI.announce(t('已複製概觀的 Markdown')); setTimeout(() => setCopied(false), 2000) },
     () => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')))
+  const body = (x: PartMd) => (
+    <section key={x.id} id={x.id} className="ov-sec" aria-labelledby={x.id + '-h'}>
+      <h2 id={x.id + '-h'} tabIndex={-1}>{x.title}</h2>
+      {x.summary ? <p className="small muted">{x.summary}</p> : null}
+      <OvMd>{x.md}</OvMd>
+    </section>
+  )
+  if (p.mode === 'bare') return <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
+  if (p.mode === 'page') return (
+    <div className="ov-page">
+      <OvToc parts={shownParts} />
+      <article className="ov-doc" data-tour="arch">
+        <header className="ov-doc-head">
+          <h1 className="ov-title">{g.repo}</h1>
+          <UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} />
+        </header>
+        <DescCoverage ix={p.ix} />
+        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
+      </article>
+    </div>
+  )
   return (
     // the 全部展開／全部收合 toggle sits in the card's title row next to the copy icon, so the group wraps the card
     <UI.SectionGroup bar={false} className="ov-group">
@@ -812,12 +875,54 @@ function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id
         <p className="small muted">{t('點選方塊查看函式，點選線查看依據。')}</p>
         <DescCoverage ix={p.ix} />
         <div data-tour="arch"><RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>
-          {parts.map((x) => <Part key={x.id} {...x} />)}
+          {shownParts.map((x) => <Part key={x.id} {...x} />)}
         </MdLinksCtx.Provider></RepoKey.Provider></div>
       </UI.Card>
     </UI.SectionGroup>
   )
 
+}
+
+/** The order the overview is read in: what the project is, then how it meets the world, then what to check. */
+const READING = ['ov-project', 'ov-comps', 'ov-terms', 'ov-docs', 'ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads', 'ov-worth']
+const MEETS = new Set(['ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads'])
+
+/** The overview's contents: its parts in two groups, the one on screen marked; a click scrolls to it. */
+function OvToc(p: { parts: PartMd[] }) {
+  const [on, setOn] = useState(p.parts[0]?.id ?? '')
+  useEffect(() => {
+    // the part whose title last passed the top of the document is the one being read
+    const doc = document.querySelector('.ov-doc')
+    if (!doc) return
+    const f = () => {
+      const top = doc.getBoundingClientRect().top + 80
+      let cur = p.parts[0]?.id ?? ''
+      for (const x of p.parts) { const el = document.getElementById(x.id); if (el && el.getBoundingClientRect().top <= top) cur = x.id }
+      // at the end of the document the last parts cannot reach the top: the last one is the one being read
+      if (doc.scrollTop + doc.clientHeight >= doc.scrollHeight - 4) cur = p.parts[p.parts.length - 1]?.id ?? cur
+      setOn(cur)
+    }
+    doc.addEventListener('scroll', f, { passive: true })
+    f()
+    return () => doc.removeEventListener('scroll', f)
+  }, [p.parts])
+  const go = (id: string) => {
+    setOn(id)
+    const el = document.getElementById(id)
+    el?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    document.getElementById(id + '-h')?.focus({ preventScroll: true })
+  }
+  const group = (label: string, xs: PartMd[]) => (xs.length ? <>
+    <p className="reader-label">{label}</p>
+    <ul>{xs.map((x) => <li key={x.id}><a className={'reader-toc-item' + (x.id === on ? ' is-on' : '')} href={'#' + x.id} aria-current={x.id === on ? 'location' : undefined}
+      onClick={(e) => { e.preventDefault(); go(x.id) }}>{x.title}</a></li>)}</ul>
+  </> : null)
+  return (
+    <nav className="reader-toc ov-toc" aria-label={t('總覽的章節')}>
+      {group(t('認識專案'), p.parts.filter((x) => !MEETS.has(x.id)))}
+      {group(t('對外介面'), p.parts.filter((x) => MEETS.has(x.id)))}
+    </nav>
+  )
 }
 
 /** What a variable does, from the code (or the project's own words in .codemap/rules.json), as Markdown lines. */
@@ -987,8 +1092,10 @@ function writesPart(ix: Index, writes: FileWrite[], none: string, holds: (w: Fil
   }
 }
 
-function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; onBack: () => void }) {
+function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; onBack: () => void; onComp: (id: string) => void }) {
   const docs = p.ix.g.files ?? {}
+  const openFile = useContext(OpenFile)
+  const order = useDescOrder()
   const items = useMemo(() => {
     const files = [...p.ix.byFile()].filter(([, ids]) => p.ix.funcs[ids[0]].comp === p.comp).sort(([a], [b]) => a.localeCompare(b))
     return files.map(([f, ids]) => ({
@@ -1006,21 +1113,32 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
   const comp = p.ix.g.comps.find((c) => c.id === p.comp)
   const uses = useMemo(() => (comp?.shared ? usesOf(p.ix, p.comp) : null), [p.ix, p.comp, comp])
   const tree = (
-    <UI.TreeList key={p.comp} kind="plain" title={p.comp} subtitle={((h) => (h ? t('{v1} 個原始檔、{v2} 個標頭檔', { v1: items.length - h, v2: h }) : t('{v1} 個檔案', { v1: items.length })) + t('；點選函式會到流程頁'))(items.filter((i) => i.name.endsWith('.h')).length)} height="100%"
-      actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}
-      label={p.comp + t(' 的函式')} items={items} defaultOpen={items.map((i) => i.id)}
-      onSelect={(n) => { if (p.ix.funcs[n.id]) p.onPick(n.id) }} />
+    <UI.TreeList key={p.comp} kind="plain" title={t('檔案與函式')} subtitle={((h) => (h ? t('{v1} 個原始檔、{v2} 個標頭檔', { v1: items.length - h, v2: h }) : t('{v1} 個檔案', { v1: items.length })) + t('；點選檔案往下一層，點選函式讀它的程式碼'))(items.filter((i) => i.name.endsWith('.h')).length)} height="100%"
+      label={p.comp + t(' 的函式')} items={items} defaultOpen={[]}
+      onSelect={(n) => { const f = p.ix.funcs[n.id]; if (f) openFile(f.file, f.line); else if (n.id.startsWith('file:')) p.onComp(n.id) }} />
   )
   // Python tools that parse its headers: counted among its users on the diagram, so listed here too
   const readers = p.ix.g.links.filter((l) => l.kind === 'reads' && l.b === p.comp)
-  if (!comp?.doc && !uses?.size) return <div className="detail tree-panel">{tree}</div>
+  const ai = aiItem(p.ix, 'comp:' + p.comp, order)
+  const others = p.ix.g.links.filter((l) => (l.a === p.comp || l.b === p.comp) && l.a !== l.b)
+  const found = worthAt(p.ix.g, (x) => p.ix.funcs[x.fid]?.comp === p.comp)
   return (
     <div className="detail split">
-      <UI.Card title={comp?.doc ? t('用途') : t('誰使用 {v1}', { v1: p.comp })}>
-        {comp?.doc ? <p className="small">{comp.doc.text}<br /><From doc={comp.doc} /></p> : null}
+      {/* the same three parts as every level: what it is, who it is tied to, what is worth a note */}
+      <UI.Card className="level-detail" title={p.comp}>
+        <Q title={t('是什麼')}>
+          {ai ? <p><DescText d={ai} tag full /></p> : null}
+          {comp?.doc ? <p className="small">{comp.doc.text}<br /><From doc={comp.doc} /></p> : null}
+          {!ai && !comp?.doc ? <p className="small muted">{t('沒有說明註解。')}</p> : null}
+        </Q>
+        <Q title={t('和誰有關')}>
+        {others.length ? <ul className="level-list">{[...new Set(others.map((l) => (l.a === p.comp ? l.b : l.a)))].map((c) => (
+          <li key={c}><button type="button" className="linklike" onClick={() => p.onComp(c)}>{c}</button>
+            <span className="small muted"> {others.some((l) => l.a === p.comp && l.b === c) ? t('它呼叫') : ''}{others.some((l) => l.a === p.comp && l.b === c) && others.some((l) => l.b === p.comp && l.a === c) ? t('、') : ''}{others.some((l) => l.b === p.comp && l.a === c) ? t('呼叫它') : ''}</span></li>))}</ul>
+          : <p className="small muted">{t('和其他元件沒有呼叫關係。')}</p>}
         {uses?.size ? (
           <>
-            {comp?.doc ? <h3 className="small">{t('誰使用 {v1}', { v1: p.comp })}</h3> : null}
+            <h4 className="small">{t('誰使用 {v1}', { v1: p.comp })}</h4>
             {/* which of its functions each user calls shows which way data goes */}
             <UI.DetailList items={[...uses].sort(([a], [b]) => a.localeCompare(b)).map(([c, es]) => {
               const names = [...new Set(es.map((e) => p.ix.funcs[e.d].name))].sort()
@@ -1028,6 +1146,11 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
             }).concat(readers.map((l) => ({ label: l.a, value: <span>{t('Python 工具讀取 {v1}（推測，非呼叫）', { v1: list(l.names ?? []) })}</span> })))} />
           </>
         ) : null}
+        </Q>
+        <Q title={t('值得注意')}>
+          {found.length ? <><ul className="level-notes">{found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul>
+            <a className="link small" href="#check">{t('到檢查筆記看細節')}</a></> : <p className="small muted">{t('沒有發現。')}</p>}
+        </Q>
       </UI.Card>
       <div className="tree-panel grow-panel">{tree}</div>
     </div>

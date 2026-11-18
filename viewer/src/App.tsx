@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { KIND_LABEL, oneLine as descLine, useDescOrder, type DescOrder } from './data/describe'
 import { OpenFunc } from './components/CallLinks'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,18 +14,19 @@ import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import { written, type Func, type Graph, type GrepHit, type Meta, type Sel } from './data/types'
 import { OpenFile } from './components/DocRefs'
-import { Arch, CompDetail, EdgeDetail, TRACED, edgeId, jump } from './pages/Arch'
+import { Arch, CompDetail, EdgeDetail, Overview, TRACED, edgeId, jump } from './pages/Arch'
 import { Flow, chainKeys } from './pages/Flow'
 import { Impact } from './pages/Impact'
 import { Check } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
-import { FileReader } from './pages/Reader'
+import { Crumbs, FileReader } from './pages/Reader'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
-type View = 'arch' | 'flow' | 'impact' | 'check' | 'settings'
+type View = 'overview' | 'arch' | 'flow' | 'impact' | 'check' | 'settings'
 const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> = {
+  overview: { title: '總覽', icon: 'house', detail: '專案在做什麼、從哪裡讀起、對外介面' },
   arch: { title: '架構', icon: 'squares-four', detail: '元件與其間的呼叫' },
   flow: { title: '流程', icon: 'share-network', detail: '追蹤函式的呼叫' },
   impact: { title: '影響範圍', icon: 'pulse', detail: '修改函式的影響範圍' },
@@ -33,7 +35,7 @@ const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> 
 }
 const nav = (id: View) => ({ id, label: t(PAGES[id].title), icon: PAGES[id].icon })
 // the tour shows the flow tree and the check page, so it moves between pages and returns afterwards
-const TOUR_VIEWS: (View | null)[] = ['arch', null, 'flow', 'flow', 'impact', 'check']
+const TOUR_VIEWS: (View | null)[] = ['overview', null, 'flow', 'flow', 'impact', 'check']
 const TOUR_TARGETS = ['arch', 'search', 'tree', 'desc', 'impact', 'notes']
 // phones have no Ctrl K: the tour points at the search button instead
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
@@ -51,7 +53,7 @@ function useTablet() {
   return on
 }
 // built when drawn, in the current language
-const navItems = () => (['arch', 'flow', 'impact', 'check'] as const).map(nav)
+const navItems = () => (['overview', 'arch', 'flow', 'impact', 'check'] as const).map(nav)
 
 interface Snap { id: string; name: string | null; graph: Graph }   // name null: embedded in this page
 
@@ -141,10 +143,10 @@ function Shell(p: ShellProps) {
   // where the address points: the page, and what is chosen on it (#flow?s=main&k=…)
   // #harness/routing.py:108 or #parse_fib: an address someone typed by hand opens the function there
   const init = useMemo(() => typedHash(ix), [])   // eslint-disable-line react-hooks/exhaustive-deps
-  const [view, setView] = useState<View>(init.view ?? 'arch')
+  const [view, setView] = useState<View>(init.view ?? 'overview')
   // a file opened in the side panel belongs to the page it was opened on, not to every page after it. It is in the
   // address (o=path:line), so opening a file or going to another line is a step back can return from
-  const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(() => fileOf(init.o, init.view ?? 'arch'))
+  const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(() => fileOf(init.o, 'arch'))
   // the sidebar's width, kept in this browser: one choice for the pages, one for reading a file (narrow by default,
   // so the code has the room)
   const [navWide, setNavWide] = useState(() => { try { return JSON.parse(localStorage.getItem('codemap:nav') ?? '{}') as { page?: boolean; read?: boolean } } catch { return {} } })
@@ -399,8 +401,8 @@ function Shell(p: ShellProps) {
   const goImpact = (id: string) => { setFileAt(null); setStart(id); setSel({ id, edge: null, key: null }); setView('impact'); moved('impact') }
   // the impact page starts from the function the reader has open, not from where the flow began
   // the name at the top of the sidebar goes home: the architecture overview, nothing chosen, no file open
-  const goHome = () => { setFileAt(null); setSelComp(''); setSelEdge(''); setView('arch'); requestAnimationFrame(() => UI.focusMain()) }
-  const brand = (full: boolean) => <a className="brand-home" href="#arch" aria-label={t('回到首頁：架構概觀')} title={t('回到首頁：架構概觀')}
+  const goHome = () => { setFileAt(null); setView('overview'); requestAnimationFrame(() => UI.focusMain()) }
+  const brand = (full: boolean) => <a className="brand-home" href="#overview" aria-label={t('回到首頁：總覽')} title={t('回到首頁：總覽')}
     onClick={(e) => { e.preventDefault(); goHome(); setNavOpen(false) }}><span className="brand-mark" />{full ? <span>codemap</span> : null}</a>
   const switchView = (v: View) => {
     if (v === 'impact' && view !== 'impact' && ix.funcs[sel.id] && sel.id !== start) goImpact(sel.id)
@@ -419,12 +421,13 @@ function Shell(p: ShellProps) {
     else if (t.type === 'line') (view === 'impact' ? goImpact(t.fid) : goFlow(t.fid, { f: t.f, l: t.l }))
     else if (t.type === 'ext') goImpact(t.id)
     else if (t.type === 'overview') {
-      setFileAt(null); setSelComp(''); setSelEdge(''); setView('arch')
+      // what to check is on the check page; the rest of the overview on its own page
+      setFileAt(null); setView(t.sec && WORTH_SECTIONS.has(t.sec) ? 'check' : 'overview')
       const sec = t.sec
       if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)     // after the overview is drawn, and again once its lists have settled
     }
     else if (t.type === 'file' && ((hit) => !!hit && ix.funcs[hit.id].line === t.l)(ix.at(`${t.f}:${t.l}`))) (view === 'impact' ? goImpact : goFlow)(ix.at(`${t.f}:${t.l}`)!.id)   // the line that defines a function: the function, with its callers
-    else if (t.type === 'file') { const v = view === 'check' || view === 'settings' ? 'flow' : view; setFileAt({ f: t.f, l: t.l, view: v }); setView(v) }
+    else if (t.type === 'file') { setFileAt({ f: t.f, l: t.l, view: 'arch' }); setView('arch') }
     // a function chosen in the search: focus its name in the detail panel, where a screen reader hears what was opened
     // once, as soon as the panel shows the chosen function: a second focus later took the keyboard back from whoever
     // had already pressed Tab (the panel is drawn again after the search closes)
@@ -449,7 +452,7 @@ function Shell(p: ShellProps) {
     setTourStep(i)
     const v = TOUR_VIEWS[i]
     if (v) setView(v)
-    if (v === 'arch') { setSelComp(''); setSelEdge(''); setFileAt(null) }      // step 1 points at the overview
+
   }
   function tourStart() {
     beforeTour.current = { view, comp: selComp, edge: selEdge }
@@ -488,14 +491,22 @@ function Shell(p: ShellProps) {
     : view === 'flow' && start ? <Flow key={start + dir} ix={ix} start={start} dir={dir} setDir={setDir} dirMoved={dirMoved}
         predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} along={along?.start === start ? along.keys : undefined} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={(id, at) => pick(id, at, null, !!at)} openSearch={() => setSearchOpen(true)} />
-    : view === 'check' ? <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
+    : view === 'check' ? <div className="pane check-page"><Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
+        <UI.Card className="worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={() => {}} onPick={goFlow} mode="bare" only={['ov-worth']} /></UI.Card></div>
+    : view === 'overview' && !empty ? <Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={(c) => { setSelComp(c); setSelEdge(''); setView('arch') }}
+        // a function named in the overview (a step of the reading route) is read in its file on the architecture page
+        onPick={(id) => { const f = ix.funcs[id]; if (f) { setFileAt({ f: f.file, l: f.line, view: 'arch' }); setView('arch') } else goFlow(id) }} mode="page" skip={['ov-worth']} />
     : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
   // an open file takes the whole page to be read (FileReader); going back returns to the page it was opened on
-  const reading = fileAt && fileAt.view === view && view !== 'settings'
-    ? <FileReader ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} backLabel={t('回到{v1}', { v1: t(PAGES[view].title) })}
-      onClose={() => { setFileAt(null); UI.announce(t('已關閉檔案')); requestAnimationFrame(() => UI.focusMain()) }} /> : null
+  // the architecture page has one layout at every level: the breadcrumb, the stage (the diagram, or a file's code) and
+  // the detail column, whose width the reader drags and keeps
+  const frame = (a: ReactNode, b: ReactNode) => pr.panel !== 'below'
+    ? <UI.SplitPane className="split" a={a} b={b} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} />
+    : <div className="below-frame">{a}{b}</div>
+  const reading = fileAt && view === 'arch'
+    ? <FileReader ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} frame={frame} /> : null
   const collapsed = reading ? navWide.read ?? true : navWide.page ?? false
-  const side = view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
+  const side = view === 'overview' ? null : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
 
   const snapAlert = !isLive && alertOpen ? (
     <div className="alert-wrap">
@@ -507,7 +518,8 @@ function Shell(p: ShellProps) {
     </div>
   ) : null
 
-  const openFile = (f: string, l: number) => setFileAt({ f, l, view })
+  // a file is read on the architecture page, whichever page it was opened from
+  const openFile = (f: string, l: number) => { setFileAt({ f, l, view: 'arch' }); setView('arch') }
   return (
     <OpenFile.Provider value={openFile}><OpenFunc.Provider value={goFlow}>
     <div className="app">
@@ -559,7 +571,10 @@ function Shell(p: ShellProps) {
               backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
               onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()}
               openAt={(f, l) => select({ id: `t:${f}:${l}`, label: `${f}:${l}`, target: { type: 'file', f, l } })} />
-          : reading ? <div className="body reader-body">{reading}</div>
+          : reading ? <div className="body split-body">{reading}</div>
+          : view === 'arch' && side ? <div className="body split-body"><div className="arch-frame">
+              <Crumbs ix={ix} comp={selComp && !selComp.startsWith('file:') ? selComp : undefined} file={selComp.startsWith('file:') ? selComp.slice(5) : undefined} />
+              {frame(main, side)}</div></div>
           : side && pr.panel !== 'below'
             // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
             ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
@@ -569,7 +584,7 @@ function Shell(p: ShellProps) {
           placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
           kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
         <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
-          { target: 'arch', title: t('架構圖'), text: t('方塊為元件，線為元件之間的關係。點選概觀的段落名稱可跳到該段。') },
+          { target: 'arch', title: t('總覽'), text: t('專案在做什麼、從哪裡讀起，以及它的對外介面。左側章節可跳到該段；架構頁是元件、檔案與程式碼的地圖。') },
           { target: 'search', title: t('搜尋'), text: COARSE ? t('點選畫面上方的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
           { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則：…）」的關係由括號中的規則推得，點選標籤可查看依據。') },
           { target: 'desc', title: t('函式說明'), text: t('右側面板說明函式的作用：作者的註解、AI 的說明，或 codemap 知道的事實。沒有說明的函式可以用 codemap describe 請 AI 補上；說明的順序在設定裡改。') },
@@ -641,11 +656,11 @@ function paletteItems(ix: Index, order: DescOrder): PaletteItem[] {
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],
     [t('外部進入點（LD_PRELOAD 攔截）'), ['LD_PRELOAD', 'interpose', 'hook', t('攔截'), 'entry point']],
     [t('執行期設定（環境變數）'), ['env', 'getenv', 'environment', t('設定')]]] as const) {
-    items.push({ id: 'k:' + label, kind: '概觀', label, detail: t('架構頁的概觀'), keywords: [...keywords], target: { type: 'overview' } })
+    items.push({ id: 'k:' + label, kind: '概觀', label, detail: t('總覽'), keywords: [...keywords], target: { type: 'overview' } })
   }
   // every section of the overview, by its heading
   for (const [sec, label] of OVERVIEW_SECTIONS) {
-    items.push({ id: 'k:' + sec, kind: '概觀', label: t(label), detail: t('架構頁的概觀'), keywords: [label, t(label), ...(SECTION_WORDS[sec] ?? [])], target: { type: 'overview', sec } })
+    items.push({ id: 'k:' + sec, kind: '概觀', label: t(label), detail: t('總覽'), keywords: [label, t(label), ...(SECTION_WORDS[sec] ?? [])], target: { type: 'overview', sec } })
   }
   // every readable file (headers, Makefile, linker maps too), and macros and file-scope variables by name
   // one entry per file: its name, with the path and the number of functions under it
@@ -694,6 +709,8 @@ const SECTION_WORDS: Record<string, string[]> = { 'ov-docs': ['docs', 'documenta
   'ov-build': ['make', 'Makefile', '安裝', 'install'], 'ov-writes': ['輸出', 'output', 'fopen'], 'ov-entry': ['constructor', 'destructor', 'LD_PRELOAD'] }
 
 /** The overview's sections and their headings (ids are the headings' element ids). */
+// the overview's sections about what to check: they are on the check page
+const WORTH_SECTIONS = new Set(['ov-worth', 'ov-stops', 'ov-arrays', 'ov-unset', 'ov-errors', 'ov-loss', 'ov-leftovers', 'ov-limits', 'ov-plain', 'ov-nullenv'])
 const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束'], ['ov-env', '執行期設定（環境變數）'], ['ov-build', '建置產物'],
   ['ov-writes', '寫出的檔案'], ['ov-worth', '值得檢查的地方'], ['ov-stops', '結束程式的呼叫'], ['ov-arrays', '固定大小的全域陣列'],
   ['ov-unset', '只在未設定時才設定的環境變數'], ['ov-errors', '回傳固定錯誤碼的地方'], ['ov-docs', '專案文件'], ['ov-loss', '會丟掉資料的地方'], ['ov-leftovers', '程式結束後會留下的東西'], ['ov-limits', '到達上限時直接返回、不印訊息'], ['ov-plain', '不經 atomic 操作就修改的全域變數'],

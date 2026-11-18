@@ -27,9 +27,15 @@ summary; every number and message goes to `.codemap/index.log` (`-v` prints them
 too). Piped, in CI or with `CODEMAP_PLAIN=1` it prints plain `==> step` lines;
 `NO_COLOR` turns colours off.
 
-In the map: 架構 shows the components and how they call each other, 流程 the
-calls down or up from a function, 影響範圍 what a change reaches, 檢查筆記
-whether notes still match the code. Click any function for what it does: its
+In the map: 總覽 (the home page) is what the project does, where to start
+reading, its terms and documents, and how it meets the world (entry points,
+commands, environment variables, files read and written). 架構 is the map:
+project › component › file › function, one layout all the way down (the
+diagram, or a file's code with its functions beside it, and a detail column that
+answers the same three questions at every level: what it is, what it is tied
+to, what is worth a note). 流程 shows the calls down or up from a function,
+影響範圍 what a change reaches, 檢查筆記 whether notes still match the code and
+what the checks found worth checking. Click any function for what it does: its
 author's comment, an AI's description, or the facts codemap knows. The **?** in the top bar
 walks through the pages; `codemap` alone lists every command.
 
