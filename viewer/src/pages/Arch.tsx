@@ -66,7 +66,8 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
   const tabs = view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('依元件') }, { id: 'file', label: t('依檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null
   return (
     <UI.Card className="pane fit">
-      {shown === 'file' ? <FileArch {...p} toolbar={tabs} /> : <CompArch {...p} toolbar={tabs} />}
+      {/* a component chosen in the explorer is not a box of the file diagram: nothing there is chosen then */}
+      {shown === 'file' ? <FileArch {...p} sel={p.sel.startsWith('file:') ? p.sel : ''} toolbar={tabs} /> : <CompArch {...p} toolbar={tabs} />}
     </UI.Card>
   )
 }

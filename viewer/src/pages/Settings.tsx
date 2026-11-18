@@ -22,6 +22,8 @@ interface Props {
   refresh: () => void
   /** opens a file at a line, as a search hit does */
   openAt?: (f: string, l: number) => void
+  /** puts the workbench's areas and views back where a first visit has them */
+  resetLayout?: () => void
 }
 
 function when(sec: number) {
@@ -162,7 +164,9 @@ export function Settings(p: Props) {
         <UI.RadioGroup label={t('說明的順序')} value={descOrder} onChange={(v) => setDescOrder(v as DescOrder)}
           options={ORDERS.map((o) => ({ value: o.id, label: <span><span className="block">{t(ORDER_LABEL[o.id][0])}</span><span className="small muted block">{t(ORDER_LABEL[o.id][1])}</span></span> }))} />
       </UI.SettingsSection>
-      <UI.SettingsSection title={t('版面')}>{radios(t('原始碼面板'), 'panel', [['right', t('右側')], ['below', t('下方')]])}</UI.SettingsSection>
+      <UI.SettingsSection title={t('版面')} description={t('檔案總管、右側欄與下方面板的邊界可以拖曳；分頁可以在右側欄與下方面板之間拖曳。這裡把它們放回原處。')}>
+        <div><UI.Button icon="arrow-u-up-left" onClick={p.resetLayout}>{t('還原預設版面')}</UI.Button></div>
+      </UI.SettingsSection>
     </>
   )
   const look = (

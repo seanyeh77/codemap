@@ -247,7 +247,7 @@ function pathTo(ix: Index, from: string, to: string): { id: string; e: Edge | nu
 
 /** The shortest chain from a function nothing in the repository calls down to `to`, found by walking
  *  callers upward; each step carries the call (or hand-off) to the next one. Null when `to` is itself one. */
-function entryPath(ix: Index, to: string): { id: string; e: Edge | null }[] | null {
+export function entryPath(ix: Index, to: string): { id: string; e: Edge | null }[] | null {
   const next = new Map<string, Edge | null>([[to, null]])
   let level = [to]
   for (let depth = 0; depth < 15 && level.length; depth++) {

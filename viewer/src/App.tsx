@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { KIND_LABEL, oneLine as descLine, useDescOrder, type DescOrder } from './data/describe'
 import { OpenFunc } from './components/CallLinks'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,17 +9,19 @@ import { Index, isEnv, production, push } from './data/graph'
 import { usePrefs } from './data/hooks'
 import { prefs } from './prefs'
 import { rank } from './data/search'
-import { revealTop } from './scroll'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
-import { written, type Func, type Graph, type GrepHit, type Meta, type Sel } from './data/types'
+import { written, type Func, type Graph, type GrepHit, type Meta } from './data/types'
 import { OpenFile } from './components/DocRefs'
-import { Arch, CompDetail, EdgeDetail, Overview, TRACED, edgeId, jump } from './pages/Arch'
+import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
 import { Flow, chainKeys } from './pages/Flow'
 import { Impact } from './pages/Impact'
 import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
-import { Detail } from './pages/Detail'
-import { Crumbs, FileReader } from './pages/Reader'
+import { FileReader, compOfFile } from './pages/Reader'
+import { Info, fnAt, type At } from './pages/Info'
+import { Relations } from './pages/Relations'
+import { Explorer } from './pages/Explorer'
+import { Workbench, useLayout, type WbLayout, type WbView } from './components/Workbench'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
@@ -33,15 +34,8 @@ const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> 
   check: { title: '檢查筆記', icon: 'check-circle', detail: '核對筆記與程式碼' },
   settings: { title: '設定', icon: 'gear', detail: '資料來源、開啟方式、主題' },
 }
-const nav = (id: View) => ({ id, label: t(PAGES[id].title), icon: PAGES[id].icon })
-// the tour shows the flow tree and the check page, so it moves between pages and returns afterwards
-const TOUR_VIEWS: (View | null)[] = ['overview', null, 'flow', 'flow', 'impact', 'check']
-const TOUR_TARGETS = ['arch', 'search', 'tree', 'desc', 'impact', 'notes']
 // phones have no Ctrl K: the tour points at the search button instead
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
-
-// built when drawn, in the current language
-const navItems = () => (['overview', 'arch', 'flow', 'impact', 'check'] as const).map(nav)
 
 interface Snap { id: string; name: string | null; graph: Graph }   // name null: embedded in this page
 
@@ -121,60 +115,99 @@ interface ShellProps {
   openError: string | null
 }
 
+type ViewId = 'info' | 'flow' | 'impact' | 'check'
+const VIEW_IDS: ViewId[] = ['info', 'flow', 'impact', 'check']
+// the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
+const LAYOUT: WbLayout<ViewId> = { side: ['info'], panel: ['flow', 'impact', 'check'], sideOn: 'info', panelOn: 'flow',
+  tree: true, sideOpen: true, panelOpen: true, treeW: 260, sideW: 380, panelH: 280 }
+// the tour points at the explorer, the search, the stage and three of the views, wherever the reader moved them
+const TOUR_TARGETS = ['tree', 'search', 'stage', 'view-info', 'view-flow', 'view-check']
+
 function Shell(p: ShellProps) {
   const pr = usePrefs()
   // production code by default: test files, and what they call or set, come in only when asked for
   const ix = useMemo(() => new Index(pr.tests ? p.graph : production(p.graph)), [p.graph, pr.tests])
   const qc = useQueryClient()
   const isLive = !!p.meta
-  const first = useMemo(() => ix.firstFunc(), [ix])
-  // where the address points: the page, and what is chosen on it (#flow?s=main&k=…)
-  // #harness/routing.py:108 or #parse_fib: an address someone typed by hand opens the function there
-  const init = useMemo(() => typedHash(ix), [])   // eslint-disable-line react-hooks/exhaustive-deps
-  const [view, setView] = useState<View>(init.view ?? 'overview')
-  // a file opened in the side panel belongs to the page it was opened on, not to every page after it. It is in the
-  // address (o=path:line), so opening a file or going to another line is a step back can return from
-  const [fileAt, setFileAt] = useState<{ f: string; l: number; view: View } | null>(() => fileOf(init.o, 'arch'))
-  // nothing selected at first: the whole diagram reads at full strength and the panel says what to click
-  const [chosenComp, setSelComp] = useState(init.c ?? '')
-  const [selEdge, setSelEdge] = useState(init.e ?? '')        // a line of the architecture diagram; '' when a box or nothing is selected
-  // with no start in the address, the function last looked at in this repository (kept per browser), not main
-  const lastKey = `codemap:last:${p.graph.repo}`
-  const remembered = ((id) => (id && ix.funcs[id] ? id : null))((() => { try { return localStorage.getItem(lastKey) } catch { return null } })())
-  const [chosenStart, setStart] = useState<string | null>(init.s ?? remembered ?? first)
-  const [chosenSel, setSel] = useState<Sel>({ id: init.f ?? init.s ?? remembered ?? first ?? '', edge: null, key: init.k ?? 'root' })
-  useEffect(() => { try { if (chosenStart && ix.funcs[chosenStart]) localStorage.setItem(lastKey, chosenStart) } catch { /* private mode */ } }, [chosenStart, ix, lastKey])
-  // 重新載入索引 swaps the graph in place: a choice the new index no longer has falls back to the default
-  // '' : nothing selected; a component the new index lacks falls back to nothing
-  // a component, the traced program, or a file of the file diagram (file:harness/controller.py)
-  const selComp = p.graph.comps.some((c) => c.id === chosenComp) || chosenComp === TRACED
-    || (chosenComp.startsWith('file:') && Object.values(p.graph.funcs).some((f) => f.file === chosenComp.slice(5))) ? chosenComp : ''
-  // a repo function, or an external one the repo calls (the impact page then lists its callers)
-  // an address written by hand: a file (harness/controller.py) or file:name (harness/controller.py:controller.py,
-  // harness/routing.py:parse_fib) is the module or the one function of that name in the file
+  // what the address opens: the project, a component, a place in a file, or settings; and which view to show
+  const init = useMemo(() => readHash(ix), [])   // eslint-disable-line react-hooks/exhaustive-deps
+  const [at, setAtState] = useState<At>(init.at ?? { kind: 'proj' })
+  const [edge, setEdge] = useState('')          // a line of the architecture diagram, explained in 說明
+  const [layout, setLayout, resetLayout] = useLayout<ViewId>('codemap:workbench', LAYOUT, VIEW_IDS)
+  // the function the code is in: what 說明, 呼叫流程 and 影響範圍 are about
+  const fn = at.kind === 'file' ? fnAt(ix, at.f, at.l) : null
+  // the panel keeps its start while the reader follows it: a name clicked in the call tree opens that function above,
+  // and the tree stays rooted where it was. Moving anywhere else (the explorer, the code, the search) roots it there:
+  // the pin holds only while the function open is the one the panel went to
+  const [pin, setPin] = useState<{ id: string; for: string | null } | null>(() => init.s ? { id: init.s, for: init.at?.kind === 'file' ? fnAt(ix, init.at.f, init.at.l) : null } : null)
   const known = (id: string) => !!(ix.funcs[id] || ix.inn.has(id))
-  const alias = (id: string | null) => {
-    if (!id || known(id)) return id
-    if (known(id + ':<module>')) return id + ':<module>'
-    const cut = id.lastIndexOf(':'), file = id.slice(0, cut), name = id.slice(cut + 1)
-    if (cut < 0) return id
-    if (ix.funcs[file + ':<module>']?.name === name) return file + ':<module>'
-    const hits = Object.keys(ix.funcs).filter((k) => ix.funcs[k].file === file && (ix.funcs[k].name === name || ix.funcs[k].name.endsWith('.' + name)))
-    return hits.length === 1 ? hits[0] : id
-  }
-  const start = ((id) => (id && known(id) ? id : first))(alias(chosenStart))
-  const selId = alias(chosenSel.id) ?? ''
-  const sel: Sel = ix.funcs[selId] || ix.inn.has(selId) || ix.out.has(selId) ? { ...chosenSel, id: selId } : { id: start ?? '', edge: null, key: 'root' }
+  const start = pin && pin.for === fn && known(pin.id) ? pin.id : fn
+  const [flowSel, setFlowSel] = useState<{ start: string | null; key: string }>({ start, key: 'root' })
+  const selKey = flowSel.start === start ? flowSel.key : 'root'
   const [dir, setDirState] = useState<'down' | 'up'>(init.d === 'up' ? 'up' : 'down')
-  // the flow tree is rebuilt when the direction changes: the keyboard goes back to the direction tabs
   const dirMoved = useRef(false)
   const setDir = (d: 'down' | 'up') => { dirMoved.current = true; setDirState(d) }
   const [predict, setPredict] = useState(false)
+  const [along, setAlong] = useState<{ start: string; keys: string[] } | null>(null)
   const [showExt, setShowExt] = useState(pr.showExtDefault)
-  // kept outside the component: a language change redraws the whole app and must not leave the settings tab
   const [cat, setCatState] = useState(lastCat)
   const setCat = (c: string) => { lastCat = c; setCatState(c) }
   const [alertOpen, setAlertOpen] = useState(true)
+  const [picked, setPicked] = useState(0)
+  const [paletteKey, setPaletteKey] = useState(0)
+
+  // where to go; every move clears the diagram's chosen line and tells a narrow screen's explorer to close
+  const setAt = (a: At) => { setEdge(''); setAtState(a); setPicked((n) => n + 1) }
+  const openFile = (f: string, l: number) => setAt({ kind: 'file', f, l })
+  const placeOf = (id: string): At | null => (ix.funcs[id] ? { kind: 'file', f: ix.funcs[id].file, l: ix.funcs[id].line } : null)
+  const openFn = (id: string) => {
+    const a = placeOf(id)
+    if (a) setAt(a)
+    else if (ix.inn.has(id)) { setPin({ id, for: fn }); show('impact') }       // a function outside the repo: who in the repo calls it
+  }
+  const openComp = (c: string) => (c.startsWith('file:') ? openFile(c.slice(5), 1) : c ? setAt({ kind: 'comp', id: c }) : setAt({ kind: 'proj' }))
+  /** Opens a place from the panel: the panel stays on its start. */
+  const fromPanel = (a: At | null) => { if (!a) return; if (start) setPin({ id: start, for: a.kind === 'file' ? fnAt(ix, a.f, a.l) : null }); setAt(a) }
+  /** Shows a view wherever the reader has put it, opening its area. */
+  const show = (v: ViewId) => setLayout((x) => (x.side.includes(v) ? { ...x, sideOn: v, sideOpen: true } : { ...x, panelOn: v, panelOpen: true }))
+  const explorerOpen = (id: string) => {
+    if (id === 'proj') setAt({ kind: 'proj' })
+    else if (id.startsWith('comp:')) setAt({ kind: 'comp', id: id.slice(5) })
+    else if (id.startsWith('file:')) openFile(id.slice(5), 1)
+    else if (id.startsWith('fn:')) openFn(id.slice(3))
+  }
+
+  // the address: what is open (each a step back can return to) and the panel's view (replaced, not a new step)
+  const base = hashOf(at, start !== fn ? start : null, dir)
+  const here = base + (layout.panelOpen && layout.panelOn ? (base.includes('?') ? '&' : '?') + 'v=' + layout.panelOn : '')
+  const placed = useRef(false)
+  const lastBase = useRef(base)
+  useEffect(() => {
+    if (location.hash !== here) {
+      if (placed.current && lastBase.current !== base) history.pushState(null, '', here)
+      else history.replaceState(null, '', here)
+    }
+    lastBase.current = base
+    placed.current = true
+  }, [here, base])
+  useEffect(() => {
+    const onPop = () => {
+      const h = readHash(ix)
+      if (h.at) { setEdge(''); setAtState(h.at) }
+      setPin(h.s ? { id: h.s, for: h.at?.kind === 'file' ? fnAt(ix, h.at.f, h.at.l) : null } : null)
+      setDirState(h.d === 'up' ? 'up' : 'down')
+      if (h.v) show(h.v)
+    }
+    addEventListener('popstate', onPop)
+    addEventListener('hashchange', onPop)
+    return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
+  }, [ix])   // eslint-disable-line react-hooks/exhaustive-deps
+  // an address that asks for a view shows it once, at start
+  useEffect(() => { if (init.v) show(init.v) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  // what changed on screen, for screen readers
+  useEffect(() => { if (at.kind === 'file') UI.announce(t('已開啟 {v1} 第 {v2} 行', { v1: at.f.split('/').pop(), v2: at.l })) }, [at])
+  useEffect(() => { try { if (fn) localStorage.setItem(`codemap:last:${p.graph.repo}`, fn) } catch { /* private mode */ } }, [fn, p.graph.repo])
+
   const [searchOpen, setSearchOpen] = useState(early.search)
   // opening and closing in one place: a closed box forgets its words and starts empty next time
   const setPalette = (o: boolean) => { setSearchOpen(o); if (!o) { setQuery(''); setPaletteKey((k) => k + 1) } }
@@ -189,7 +222,7 @@ function Shell(p: ShellProps) {
   // The palette's own listener is told to stand down for this press, so the box does not open and close at once.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key.toLowerCase() !== 'k' && e.code !== 'KeyK')) return
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || !['k', 'p'].includes(e.key.toLowerCase()) && e.code !== 'KeyK' && e.code !== 'KeyP') return
       e.preventDefault()
       e.stopImmediatePropagation()
       paletteOpen.current(!openRef.current)
@@ -274,288 +307,136 @@ function Shell(p: ShellProps) {
     const files = ranked.filter((r) => r.kind === '檔案')
     return [...ranked.filter((r) => r.kind !== '檔案'), ...code, ...files, ...textHits.filter((h) => h.kind !== '程式碼')]
   }, [ranked, textHits, query])
-  // the tour starts only when asked: opened by itself on a first visit it covered the page, and readers who
-  // came for one answer had to find 「略過」 first. A first visit shows an offer instead (welcome, below)
-  // a new box each time the search closes: the next search starts empty, not after the last words
-  const [paletteKey, setPaletteKey] = useState(0)
   const seenTour = UI.useTour('codemap')
   const [tourOpen, setTourOpen] = useState(false)
   const [welcome, setWelcome] = useState(() => !seenTour.seen)
-  const tour = { open: tourOpen, start: () => { setWelcome(false); setTourOpen(true) }, close: () => { seenTour.close(); setTourOpen(false) } }
   const [tourStep, setTourStep] = useState(0)
-  const beforeTour = useRef<{ view: View; comp: string; edge: string } | null>(null)
-
-  // each page and each choice on it is a history entry: back and forward return to the previous
-  // selection, and the address can be shared (a typed #check opens that page)
-  // an address that names no function stays as written, so the page keeps saying so instead of turning into main's
-  const asked = chosenStart && !known(alias(chosenStart) ?? '') && !p.graph.funcs[chosenStart] ? chosenStart : null
-  const here = hashOf({ view, c: selComp, e: selEdge, s: asked ?? start ?? '', f: sel.id, k: sel.key ?? '', d: dir,
-    o: fileAt && fileAt.view === view ? `${fileAt.f}:${fileAt.l}` : '' })
-  const placed = useRef(false)
-  // what had the keyboard on each address when it was left: going back puts the keyboard there again
-  const leftFrom = useRef(new Map<string, string>())
-  // the last thing focused: by the time the address changes, the page that had it may be gone already
-  const lastFocus = useRef('')
-  useEffect(() => {
-    const on = (e: FocusEvent) => { const el = e.target as HTMLElement; if (el && el !== document.body) lastFocus.current = (el.textContent ?? '').trim().slice(0, 120) }
-    addEventListener('focusin', on)
-    return () => removeEventListener('focusin', on)
-  }, [])
-  useEffect(() => {
-    // the first address only gains what was filled in by default: no extra step back
-    if (location.hash !== here) {
-      if (placed.current && lastFocus.current) leftFrom.current.set(location.hash, lastFocus.current)
-      if (placed.current) history.pushState(null, '', here)
-      else history.replaceState(null, '', here)
-    }
-    placed.current = true
-  }, [here])
-  useEffect(() => {
-    const onPop = () => {
-      const h = typedHash(ix)
-      if (!h.view) return
-      setFileAt(fileOf(h.o, h.view))
-      setView(h.view)
-      setSelComp(h.c ?? ''); setSelEdge(h.e ?? '')
-      if (h.s) setStart(h.s)
-      if (h.s || h.f) setSel({ id: h.f ?? h.s!, edge: null, key: h.k ?? 'root' })
-      setDirState(h.d === 'up' ? 'up' : 'down')
-      const text = leftFrom.current.get(location.hash)
-      // the page is drawn again first: look for it for up to a second
-      if (text) {
-        let tries = 0
-        const find = () => {
-          const el = [...document.querySelectorAll<HTMLElement>('main [role=treeitem], main button, main a, main [tabindex]')].find((x) => (x.textContent ?? '').trim().slice(0, 120) === text)
-          if (el) el.focus()
-          else if (++tries < 10) setTimeout(find, 100)
-        }
-        setTimeout(find, 100)
-      }
-    }
-    addEventListener('popstate', onPop)
-    addEventListener('hashchange', onPop)
-    return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
-  }, [])
-  // what changed on screen, for screen readers
-  useEffect(() => { if (selComp) UI.announce(t('已開啟 {v1}', { v1: selComp === TRACED ? t('被追蹤的程式（repo 外）') : selComp.replace(/^file:/, '') })) }, [selComp])
-  useEffect(() => {
-    if (!selEdge) return
-    const l = ix.g.links.find((x) => edgeId(x) === selEdge)
-    const to = selEdge.startsWith('ext:') ? selEdge.split('->').pop()! : null      // a line from the traced program
-    const launch = selEdge.startsWith('ext:launch->')
-    const files = selEdge.startsWith('file:') ? selEdge.slice(5).split('->') : null
-    UI.announce(l ? t('已開啟 {v1} 到 {v2} 的說明', { v1: l.a, v2: l.b }) : files ? t('已開啟 {v1} 到 {v2} 的說明', { v1: files[0], v2: files[1] })
-      : to ? t('已開啟 {v1} 到 {v2} 的說明', launch ? { v1: to, v2: t('被追蹤的程式') } : { v1: t('被追蹤的程式'), v2: to }) : '')
-  }, [selEdge, ix])
-  // changes on the same page that a screen reader would not otherwise hear about
-  useEffect(() => { if (sel.id && ix.funcs[sel.id] && (view === 'flow' || view === 'impact')) UI.announce(t('已選取 {v1}', { v1: ix.funcs[sel.id].name })) }, [sel.id, ix])
-  useEffect(() => { if (fileAt) UI.announce(t('已開啟 {v1} 第 {v2} 行', { v1: fileAt.f.split('/').pop(), v2: fileAt.l })) }, [fileAt])
-  // Esc on the architecture page clears the selected box or line (dialogs handle their own Esc first)
-  useEffect(() => {
-    if (view !== 'arch') return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && !searchOpen && !tour.open) { setSelComp(''); setSelEdge('') } }
-    addEventListener('keydown', onKey)
-    return () => removeEventListener('keydown', onKey)
-  }, [view, searchOpen, tour.open])
-
-  const pick = (id: string, edge?: Sel['edge'], key?: string | null, reveal = false) => {
-    setFileAt(null); setSel({ id, edge: edge ?? null, key: key ?? null, reveal: reveal ? Date.now() : undefined })
-    // stacked layout (phones, tablets): the details sit below the list, out of sight; bring them up
-    if (key !== 'root' && matchMedia('(max-width: 959px)').matches) {
-      requestAnimationFrame(() => revealTop(document.querySelector('.body .detail:not(.pane)')))
-    }
-  }
-  // a page change made here (not by the search or the navigation, which move focus themselves): focus goes to the new page
-  const moved = (v: View) => { if (v !== view) requestAnimationFrame(() => UI.focusMain()) }
-  const [along, setAlong] = useState<{ start: string; keys: string[] } | null>(null)
-  const goFlow = (id: string, edge: Sel['edge'] = null) => { setFileAt(null); setAlong(null); setStart(id); setSel({ id, edge, key: 'root' }); setView('flow'); moved('flow') }
-  // a chain of calls from an entry point: the flow starts there, opened row by row down to the last one, which is selected
-  const goChain = (ids: string[]) => {
-    const keys = chainKeys(ix, ids, showExt)
-    if (!keys) return goFlow(ids[ids.length - 1])
-    setFileAt(null); setDirState('down'); setPredict(false); setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setStart(ids[0])
-    setSel({ id: ids[ids.length - 1], edge: null, key: keys[keys.length - 1] }); setView('flow'); moved('flow')
-  }
-  const goImpact = (id: string) => { setFileAt(null); setStart(id); setSel({ id, edge: null, key: null }); setView('impact'); moved('impact') }
-  // the impact page starts from the function the reader has open, not from where the flow began
-  // the name at the top of the sidebar goes home: the architecture overview, nothing chosen, no file open
-  const goHome = () => { setFileAt(null); setView('overview'); requestAnimationFrame(() => UI.focusMain()) }
-  // the name at the top of the sidebar: the mark alone while the sidebar is a strip of icons, the name beside it open
-  const brand: UI.NavBrand = { mark: <span className="brand-mark" />, name: 'codemap', href: '#overview', onClick: (e) => { e.preventDefault(); goHome() } }
-  const switchView = (v: View) => {
-    if (v === 'impact' && view !== 'impact' && ix.funcs[sel.id] && sel.id !== start) goImpact(sel.id)
-    else setView(v)
-  }
+  const tourStart = () => { setWelcome(false); setTourStep(0); setTourOpen(true) }
+  const tourClose = () => { seenTour.close(); setTourOpen(false) }
 
   function select(item: PaletteItem) {
     setRecent((r) => [item, ...r.filter((x) => x.id !== item.id)].slice(0, 6))
-    const t = item.target
-    // a new start from the search follows its calls downward, whatever direction was used last
-    if (t.type === 'func' || t.type === 'line') setDirState('down')
-    if (t.type === 'func') (view === 'impact' ? goImpact : goFlow)(t.id)
-    else if (t.type === 'comp') { setSelComp(t.id); setSelEdge(''); setView('arch') }
-    else if (t.type === 'page') setView(t.id)
-    // on the impact page a hit stays there: the function it is in becomes the one whose impact is shown
-    else if (t.type === 'line') (view === 'impact' ? goImpact(t.fid) : goFlow(t.fid, { f: t.f, l: t.l }))
-    else if (t.type === 'ext') goImpact(t.id)
-    else if (t.type === 'overview') {
-      // what to check is on the check page; the rest of the overview on its own page
-      setFileAt(null); setView(t.sec && WORTH_SECTIONS.has(t.sec) ? 'check' : 'overview')
-      const sec = t.sec
-      if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)     // after the overview is drawn, and again once its lists have settled
-    }
-    else if (t.type === 'file' && ((hit) => !!hit && ix.funcs[hit.id].line === t.l)(ix.at(`${t.f}:${t.l}`))) (view === 'impact' ? goImpact : goFlow)(ix.at(`${t.f}:${t.l}`)!.id)   // the line that defines a function: the function, with its callers
-    else if (t.type === 'file') { setFileAt({ f: t.f, l: t.l, view: 'arch' }); setView('arch') }
-    // a function chosen in the search: focus its name in the detail panel, where a screen reader hears what was opened
-    // once, as soon as the panel shows the chosen function: a second focus later took the keyboard back from whoever
-    // had already pressed Tab (the panel is drawn again after the search closes)
-    if (t.type === 'func' || t.type === 'line' || t.type === 'file') {
-      const want = t.type === 'func' ? ix.funcs[t.id]?.name : t.type === 'line' ? ix.funcs[t.fid]?.name : undefined
-      const begun = performance.now()
-      const step = () => {
-        const el = document.getElementById('detail-title')
-        const open = document.querySelector('[role="dialog"]')
-        if (el && !open && (!want || el.textContent === want)) {
-          // only from where the search left it: the body, or the page's heading a change of page focuses
-          const at = document.activeElement
-          if (!at || at === document.body || at.tagName === 'H1') el.focus()
-          return
-        }
-        if (performance.now() - begun < 1500) requestAnimationFrame(step)
-      }
-      requestAnimationFrame(step)
+    const g = item.target
+    if (g.type === 'func') openFn(g.id)
+    else if (g.type === 'comp') openComp(g.id)
+    else if (g.type === 'page') { if (g.id === 'settings') setAt({ kind: 'settings' }); else if (g.id === 'overview' || g.id === 'arch') setAt({ kind: 'proj' }); else show(g.id as ViewId) }
+    else if (g.type === 'line' || g.type === 'file') openFile(g.f, g.l)
+    else if (g.type === 'ext') { setPin({ id: g.id, for: fn }); show('impact') }
+    else if (g.type === 'overview') {
+      // what to check is in 檢查; the rest of the overview is the project's page
+      if (g.sec && WORTH_SECTIONS.has(g.sec)) show('check')
+      else setAt({ kind: 'proj' })
+      const sec = g.sec
+      if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)
     }
   }
-  function tourGo(i: number) {
-    setTourStep(i)
-    const v = TOUR_VIEWS[i]
-    if (v) setView(v)
 
-  }
-  function tourStart() {
-    beforeTour.current = { view, comp: selComp, edge: selEdge }
-    tourGo(0)
-    tour.start()
-  }
-  function tourClose() {
-    tour.close()
-    const was = beforeTour.current
-    if (was) { setView(was.view); setSelComp(was.comp); setSelEdge(was.edge) }     // back where the reader was
-    beforeTour.current = null
-  }
-  // opened on its own on a first visit, maybe on a shared link to another page: show each step on its own page
-  useEffect(() => {
-    if (!tour.open || beforeTour.current !== null) return
-    beforeTour.current = { view, comp: selComp, edge: selEdge }
-    tourGo(tourStep)
-  }, [tour.open])
-  // a target below a phone's fold, inside the stacked panel's own scrolling: bring it up before the card points at it
-  useEffect(() => {
-    if (!tour.open) return
-    const id = setTimeout(() => {
-      const el = document.querySelector(`[data-tour="${TOUR_TARGETS[tourStep]}"]`)
-      const r = el?.getBoundingClientRect()
-      if (el && r && (r.top < 0 || r.bottom > innerHeight)) revealTop(el, 72)
-    }, 250)
-    return () => clearTimeout(id)
-  }, [tour.open, tourStep, view])
-
-  const caps = p.meta?.capabilities
-  const detail = start ? (
-    <Detail ix={ix} sel={sel} isLive={isLive} sourceId={p.sourceId} canMacro={!!caps?.macro} goFlow={goFlow} goChain={goChain} goImpact={goImpact} view={view} start={start} />
-  ) : null
   const empty = !p.graph.comps.length
-  const main = view === 'arch' && !empty ? <Arch ix={ix} sel={selComp} onSel={(c) => { setFileAt(null); setSelComp(c) }} edge={selEdge} onEdge={(e) => { setFileAt(null); setSelEdge(e) }} />
-    : view === 'flow' && start ? <Flow key={start + dir} ix={ix} start={start} dir={dir} setDir={setDir} dirMoved={dirMoved}
-        predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} along={along?.start === start ? along.keys : undefined} onSel={pick} openSearch={() => setSearchOpen(true)} />
-    : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={(id, at) => pick(id, at, null, !!at)} openSearch={() => setSearchOpen(true)} />
-    : view === 'check' ? <div className="pane check-page"><Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
-        <DescHealth ix={ix} />
-        <UI.Card className="worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={() => {}} onPick={goFlow} mode="bare" only={['ov-worth']} /></UI.Card></div>
-    : view === 'overview' && !empty ? <Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={(c) => { setSelComp(c); setSelEdge(''); setView('arch') }}
-        // a function named in the overview (a step of the reading route) is read in its file on the architecture page
-        onPick={(id) => { const f = ix.funcs[id]; if (f) { setFileAt({ f: f.file, l: f.line, view: 'arch' }); setView('arch') } else goFlow(id) }} mode="page" skip={['ov-worth']} />
-    : <UI.Card className="pane"><UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} /></UI.Card>
-  // an open file takes the whole page to be read (FileReader); going back returns to the page it was opened on
-  // the architecture page has one layout at every level: the breadcrumb, the stage (the diagram, or a file's code) and
-  // the detail column, whose width the reader drags and keeps
-  const frame = (a: ReactNode, b: ReactNode) => pr.panel !== 'below'
-    ? <UI.SplitPane className="split" a={a} b={b} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} />
-    : <div className="below-frame">{a}{b}</div>
-  const reading = fileAt && view === 'arch'
-    ? <FileReader ix={ix} at={fileAt} isLive={isLive} sourceId={p.sourceId} onFunc={goFlow} frame={frame} /> : null
-  const side = view === 'overview' ? null : view === 'arch' ? (empty ? null : selEdge ? <EdgeDetail ix={ix} id={selEdge} isLive={isLive} sourceId={p.sourceId} open={goFlow} onBack={() => setSelEdge('')} /> : <CompDetail ix={ix} comp={selComp} isLive={isLive} sourceId={p.sourceId} onPick={goFlow} onComp={(id) => { setSelEdge(''); setSelComp(id) }} />) : view === 'check' ? null : detail
+  const isFile = at.kind === 'file'
+  const flowStart = start && (ix.funcs[start] || ix.inn.has(start)) ? start : null
+  const views: WbView<ViewId>[] = [
+    { id: 'info', title: t('說明'), render: () => edge
+      ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
+      : <Info ix={ix} at={at} fn={fn} isLive={isLive} sourceId={p.sourceId} openFn={openFn} chain={(ids) => {
+          // the chain opens in the call tree from its entry point, the last function selected; the code stays here
+          const keys = chainKeys(ix, ids, showExt)
+          setPin({ id: ids[0], for: fn }); setDirState('down'); setPredict(false)
+          if (keys) { setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setFlowSel({ start: ids[0], key: keys[keys.length - 1] }) }
+          show('flow')
+        }} /> },
+    { id: 'flow', title: t('呼叫流程'), render: () => flowStart && ix.funcs[flowStart]
+      ? <Flow key={flowStart + dir} ix={ix} start={flowStart} dir={dir} setDir={setDir} dirMoved={dirMoved} predict={predict} setPredict={setPredict}
+          showExt={showExt} setShowExt={setShowExt} selKey={selKey} along={along?.start === flowStart ? along.keys : undefined} openSearch={() => setPalette(true)}
+          onSel={(id, e, key) => {
+            const moved = key !== selKey
+            setFlowSel({ start: flowStart, key })
+            // a row picked in the tree opens that function above; the tree keeps its start
+            if (moved && key !== 'root') fromPanel(placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
+            else if (moved && key === 'root' && flowStart !== fn) openFn(flowStart)
+          }} />
+      : <Relations ix={ix} at={at} mode="flow" openFile={(f) => openFile(f, 1)} openComp={openComp} /> },
+    { id: 'impact', title: t('影響範圍'), render: () => flowStart
+      ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
+          onSel={(id, e) => fromPanel(e ? { kind: 'file', f: e.f, l: e.l } : placeOf(id))} />
+      : <Relations ix={ix} at={at} mode="impact" openFile={(f) => openFile(f, 1)} openComp={openComp} /> },
+    { id: 'check', title: t('檢查'), render: () => <div className="check-view">
+      <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
+      <DescHealth ix={ix} />
+      <UI.Card className="worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} /></UI.Card>
+    </div> },
+  ]
+
+  const comp = at.kind === 'comp' ? p.graph.comps.find((c) => c.id === at.id) : undefined
+  const stage = at.kind === 'settings'
+    ? <div className="stage-scroll"><Settings graph={p.graph} meta={p.meta} cat={cat} setCat={setCat} snapName={p.snapName} hasLive={p.hasLive}
+        backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
+        onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} resetLayout={resetLayout}
+        openAt={(f, l) => openFile(f, l)} /></div>
+    : empty ? <UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} />
+    : at.kind === 'proj' ? <div className="stage-scroll"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="page" skip={['ov-worth']} /></div>
+    : at.kind === 'comp' ? (comp?.lang
+      ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
+      : <Arch ix={ix} sel={at.id} onSel={openComp} edge={edge} onEdge={(e) => { setEdge(e); if (e) show('info') }} />)
+    : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare
+        onLine={(n) => setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a))} />
+
+  // where the open thing is: each step up is a link (the address handles it, like a step back)
+  const crumbs: UI.BreadcrumbItem[] = [{ label: p.graph.repo, href: '#overview' }]
+  if (at.kind === 'settings') crumbs.push({ label: t('設定') })
+  const cid = at.kind === 'comp' ? at.id : isFile ? compOfFile(ix, at.f) : undefined
+  if (cid) crumbs.push({ label: cid === TRACED ? t('被追蹤的程式') : cid, href: hashOf({ kind: 'comp', id: cid }, null, 'down') })
+  if (isFile) crumbs.push({ label: at.f.split('/').pop()!, href: hashOf({ kind: 'file', f: at.f, l: 1 }, null, 'down') })
+  if (fn) crumbs.push({ label: ix.funcs[fn].name })
+  delete crumbs[crumbs.length - 1].href
 
   const snapAlert = !isLive && alertOpen ? (
-    <div className="alert-wrap">
-      <UI.Alert tone="info" title={t('目前開啟的是快照')}
-        actionLabel={p.hasLive ? t('回到即時') : undefined} onAction={p.hasLive ? () => p.setSource('live') : undefined}
-        onDismiss={() => setAlertOpen(false)}>
-        {t('commit {v1} 的快照，僅供瀏覽。重新檢查筆記需執行 codemap serve。', { v1: p.graph.commit ?? t('（無）') })}
-      </UI.Alert>
-    </div>
+    <UI.Alert tone="info" title={t('目前開啟的是快照')}
+      actionLabel={p.hasLive ? t('回到即時') : undefined} onAction={p.hasLive ? () => p.setSource('live') : undefined}
+      onDismiss={() => setAlertOpen(false)}>
+      {t('commit {v1} 的快照，僅供瀏覽。重新檢查筆記需執行 codemap serve。', { v1: p.graph.commit ?? t('（無）') })}
+    </UI.Alert>
+  ) : null
+  // an address that points at test code while test code is hidden: say so, rather than showing something else
+  const testAlert = init.s && !ix.funcs[init.s] && p.graph.funcs[init.s]?.scope === 'test' ? (
+    <UI.Alert tone="info" title={t('{v1} 是測試程式碼', { v1: p.graph.funcs[init.s].name })} actionLabel={t('包含測試程式碼')} onAction={() => prefs.set('tests', true)}>
+      {t('流程、影響範圍與搜尋預設不含測試程式碼，因此這裡顯示其他函式。開啟後即可查看。')}
+    </UI.Alert>
+  ) : init.s && !known(init.s) && !p.graph.funcs[init.s] ? (
+    <UI.Alert tone="warning" title={t('找不到「{v1}」', { v1: init.s })} actionLabel={t('搜尋')} onAction={() => setPalette(true)}>
+      {t('網址指定的函式不在索引中。')}
+    </UI.Alert>
   ) : null
 
-  // a file is read on the architecture page, whichever page it was opened from
-  const openFile = (f: string, l: number) => { setFileAt({ f, l, view: 'arch' }); setView('arch') }
   return (
-    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={goFlow}>
-    {/* the design system's frame: the sidebar (a strip of icons that opens on hover until pinned, a drawer from 600 to
-        1024 px, tabs on phones), the top bar and the main area */}
-    <UI.AppShell className="cm-shell" nav={[{ items: navItems() }, { items: [nav('settings')] }]} value={view}
-      onNavigate={(v) => switchView(v as View)} brand={brand} title={t(PAGES[view].title)} onSearch={() => setSearchOpen(true)}
+    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}>
+    <Workbench views={views} layout={layout} setLayout={setLayout} picked={picked}
+      brand={<a className="wb-brand" href="#overview" onClick={(e) => { e.preventDefault(); setAt({ kind: 'proj' }) }}><span className="brand-mark" /><span className="wb-brand-name">codemap</span></a>}
+      crumbs={<UI.Breadcrumb className="wb-crumb" items={crumbs} />}
+      explorer={<Explorer ix={ix} at={at} fn={fn} open={explorerOpen} />}
+      explorerFoot={<button type="button" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} onClick={() => setAt({ kind: 'settings' })}><UI.Icon name="gear" />{t('設定')}</button>}
+      notice={snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
+      stage={<div className="stage" data-tour="stage">{stage}</div>}
       actions={<>
+        <UI.IconButton icon="magnifying-glass" label={t('搜尋（Ctrl K）')} onClick={() => setPalette(true)} data-tour="search" />
         {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
         <UI.IconButton icon="question" label={t('重看導覽')} onClick={tourStart}
-          hint={welcome && view !== 'settings' ? { text: t('導覽：五個步驟介紹各頁。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
+          hint={welcome ? { text: t('導覽：六個步驟介紹這個版面。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
         <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
           value={p.sourceId} onChange={p.setSource} options={p.sources}
-          footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setView('settings') }}>{t('所有資料來源設定')}</a>} />
-      </>}>
-      <div className="shell-page">
-        {snapAlert}
-        {/* an address or a choice that points at test code while test code is hidden: say so, rather than showing main */}
-        {((id) => id && !ix.funcs[id] && p.graph.funcs[id]?.scope === 'test' ? (
-          <div className="alert-wrap">
-            <UI.Alert tone="info" title={t('{v1} 是測試程式碼', { v1: p.graph.funcs[id].name })} actionLabel={t('包含測試程式碼')} onAction={() => prefs.set('tests', true)}>
-              {t('流程、影響範圍與搜尋預設不含測試程式碼，因此這裡顯示其他函式。開啟後即可查看。')}
-            </UI.Alert>
-          </div>
-        ) : id && !known(alias(id) ?? '') && !p.graph.funcs[id] && (view === 'flow' || view === 'impact') ? (
-          // an address that names no function: say so, rather than showing main as if it were the one asked for
-          <div className="alert-wrap">
-            <UI.Alert tone="warning" title={t('找不到「{v1}」', { v1: id })} actionLabel={t('搜尋')} onAction={() => setSearchOpen(true)}>
-              {t('網址指定的函式不在索引中，這裡改顯示 {v1}。', { v1: start ? ix.funcs[start]?.name ?? start : '' })}
-            </UI.Alert>
-          </div>
-        ) : null)(chosenStart ?? '')}
-        {view === 'settings'
-          ? <Settings graph={p.graph} meta={p.meta} cat={cat} setCat={setCat} snapName={p.snapName} hasLive={p.hasLive}
-              backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
-              onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()}
-              openAt={(f, l) => select({ id: `t:${f}:${l}`, label: `${f}:${l}`, target: { type: 'file', f, l } })} />
-          : reading ? <div className="body split-body">{reading}</div>
-          : view === 'arch' && side ? <div className="body split-body"><div className="arch-frame">
-              <Crumbs ix={ix} comp={selComp && !selComp.startsWith('file:') ? selComp : undefined} file={selComp.startsWith('file:') ? selComp.slice(5) : undefined} />
-              {frame(main, side)}</div></div>
-          : side && pr.panel !== 'below'
-            // the side panel's width is the reader's: drag the divider, arrow keys, double-click to reset
-            ? <div className="body split-body"><UI.SplitPane className="split" a={main} b={side} defaultB={440} minA={420} minB={320} storageKey="codemap-side" label={t('調整面板寬度')} /></div>
-            : <div className={'body' + (pr.panel === 'below' && side ? ' below' : '')}>{main}{side}</div>}
-        <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
-          noResultsText={(q) => noResults(q)}
-          placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
-          kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
-        <UI.Tour open={tour.open} onClose={tourClose} step={tourStep} onStepChange={tourGo} steps={[
-          { target: 'arch', title: t('總覽'), text: t('專案在做什麼、從哪裡讀起，以及它的對外介面。左側章節可跳到該段；架構頁是元件、檔案與程式碼的地圖。') },
-          { target: 'search', title: t('搜尋'), text: COARSE ? t('點選畫面上方的放大鏡，搜尋函式、檔案、元件與環境變數。') : t('Ctrl K：搜尋函式、檔案、元件與環境變數。') },
-          { target: 'tree', title: t('流程樹'), text: t('標有「推測（規則：…）」的關係由括號中的規則推得，點選標籤可查看依據。') },
-          { target: 'desc', title: t('函式說明'), text: t('右側面板說明函式的作用：作者的註解、AI 的說明，或 codemap 知道的事實。沒有說明的函式可以用 codemap describe 請 AI 補上；說明的順序在設定裡改。') },
-          { target: 'impact', title: t('影響範圍'), text: t('列出修改一個函式後會受影響的函式。') },
-          { target: 'notes', title: t('檢查筆記'), text: t('比對筆記裡的引用與目前的程式碼。錯誤的引用附有修正建議，可直接複製。') },
-        ]} />
-      </div>
-    </UI.AppShell>
+          footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</a>} />
+      </>} />
+    <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
+      noResultsText={(q) => noResults(q)}
+      placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
+      kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
+    <UI.Tour open={tourOpen} onClose={tourClose} step={tourStep} onStepChange={setTourStep} steps={[
+      { target: TOUR_TARGETS[0], title: t('檔案總管'), text: t('專案、元件、檔案與函式。點一個就在中間打開；有圓點的地方有值得注意的事。上方可以篩選名稱。') },
+      { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('點這裡搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
+      { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案是總覽，元件是架構圖，檔案與函式是程式碼。程式碼裡藍色的名稱可以點。') },
+      { target: TOUR_TARGETS[3], title: t('說明'), text: t('打開的東西是什麼、值得注意什麼。沒有說明的函式可以用 codemap describe 請 AI 補上。') },
+      { target: TOUR_TARGETS[4], title: t('呼叫流程與影響範圍'), text: t('目前函式的呼叫樹與修改它會影響誰；點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
+      { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
+    ]} />
     </OpenFunc.Provider></OpenFile.Provider>
   )
 }
@@ -678,49 +559,51 @@ const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束
 
 let lastCat = 'source'
 
-interface Loc { view: View | null; c?: string; e?: string; s?: string; f?: string; k?: string; d?: string; o?: string }
+interface Loc { at: At | null; s?: string; d?: string; v?: ViewId }
 
-/** The file open in the side panel, from the address's o=path:line. */
-function fileOf(o: string | undefined, view: View): { f: string; l: number; view: View } | null {
-  const m = o ? /^(.+):(\d+)$/.exec(o) : null
-  return m ? { f: m[1], l: +m[2], view } : null
-}
-
-/** The page and the choice on it, from the address: #arch?c=src/ibmon, #flow?s=main&k=root/x@12&d=up,
- *  #impact?s=emit&f=ibt_ring_claim. #notes is another name for the notes page. */
-function parseHash(): Loc {
+/** What the address opens. #overview, #comp?c=harness, #code?f=harness/controller.py&l=698, #settings; v= a view
+ *  (info, flow, impact, check), s= the function the panel starts from when it is not the open one, d=up.
+ *  Older addresses still open: #arch?c=…, #arch?o=path:line, #flow?s=…&f=…, #impact?s=…, #check, #notes; and one typed
+ *  by hand, #harness/routing.py:108 or #parse_fib, opens that function. */
+function readHash(ix: Index): Loc {
   const [page, query = ''] = location.hash.slice(1).split('?')
-  const v = page === 'notes' ? 'check' : page
   const q = new URLSearchParams(query)
   const get = (k: string) => q.get(k) ?? undefined
-  return { view: Object.hasOwn(PAGES, v) ? (v as View) : null, c: get('c'), e: get('e'), s: get('s'), f: get('f'), k: get('k'), d: get('d'), o: get('o') }
-}
-
-/** The address, also when typed by hand: #harness/routing.py:108 or #parse_fib opens that function's flow. */
-function typedHash(ix: Index): Loc {
-  const h = parseHash()
-  const raw = decodeURIComponent(location.hash.slice(1))
-  if (h.view || !raw) return h
-  const m = /^(.+?):(\d+)$/.exec(raw)
-  const id = m ? Object.keys(ix.funcs).filter((k) => ix.funcs[k].file === m[1] && ix.funcs[k].line <= +m[2] && +m[2] <= ix.funcs[k].end)
-    .sort((a, b) => ix.funcs[b].line - ix.funcs[a].line)[0]
-    : ix.funcs[raw] ? raw : Object.keys(ix.funcs).find((k) => ix.funcs[k].name === raw || ix.funcs[k].name.split('.').pop() === raw)
-  return id ? { view: 'flow', s: id } : h
-}
-
-/** The address for a page and its choice; only what that page uses goes in. */
-function hashOf(l: Required<Omit<Loc, 'view'>> & { view: View }): string {
-  const q = new URLSearchParams()
-  if (l.view === 'arch') { if (l.c) q.set('c', l.c); if (l.e) q.set('e', l.e) }
-  if (l.view === 'flow' || l.view === 'impact') {
-    if (l.s) q.set('s', l.s)
-    if (l.f && l.f !== l.s) q.set('f', l.f)
-    if (l.view === 'flow' && l.k && l.k !== 'root') q.set('k', l.k)
-    if (l.view === 'flow' && l.d === 'up') q.set('d', 'up')
+  const place = (id: string | undefined): At | null => (id && ix.funcs[id] ? { kind: 'file', f: ix.funcs[id].file, l: ix.funcs[id].line } : null)
+  const view = (v: string | undefined) => (VIEW_IDS as string[]).includes(v ?? '') ? v as ViewId : undefined
+  const o = /^(.+):(\d+)$/.exec(get('o') ?? '')
+  const base = { d: get('d'), v: view(get('v')) }
+  switch (page) {
+    case '': case 'overview': return { at: { kind: 'proj' }, ...base }
+    case 'settings': return { at: { kind: 'settings' }, ...base }
+    case 'comp': return { at: get('c') ? { kind: 'comp', id: get('c')! } : { kind: 'proj' }, s: get('s'), ...base }
+    case 'code': return { at: get('f') ? { kind: 'file', f: get('f')!, l: Number(get('l') ?? 1) || 1 } : null, s: get('s'), ...base }
+    case 'arch': {
+      const c = get('c')
+      return { at: o ? { kind: 'file', f: o[1], l: +o[2] } : c?.startsWith('file:') ? { kind: 'file', f: c.slice(5), l: 1 } : c ? { kind: 'comp', id: c } : { kind: 'proj' }, ...base }
+    }
+    case 'flow': case 'impact': {
+      const s = get('s'), f = get('f')
+      return { at: o ? { kind: 'file', f: o[1], l: +o[2] } : place(f ?? s), s: f && f !== s ? s : undefined, d: get('d'), v: page }
+    }
+    case 'check': case 'notes': return { at: null, v: 'check' }
   }
-  if (l.o) q.set('o', l.o)
+  const raw = decodeURIComponent(location.hash.slice(1))
+  const m = /^(.+?):(\d+)$/.exec(raw)
+  if (m) return { at: { kind: 'file', f: m[1], l: +m[2] } }
+  const id = ix.funcs[raw] ? raw : Object.keys(ix.funcs).find((k) => ix.funcs[k].name === raw || ix.funcs[k].name.split('.').pop() === raw)
+  return { at: place(id) }
+}
+
+/** The address of what is open; s when the panel starts elsewhere, d when the flow goes up. */
+function hashOf(at: At, s: string | null, d: 'down' | 'up'): string {
+  const q = new URLSearchParams()
+  if (at.kind === 'comp') q.set('c', at.id)
+  if (at.kind === 'file') { q.set('f', at.f); q.set('l', String(at.l)) }
+  if (s) q.set('s', s)
+  if (d === 'up') q.set('d', 'up')
   const qs = q.toString()
-  return '#' + l.view + (qs ? '?' + qs : '')
+  return '#' + ({ proj: 'overview', comp: 'comp', file: 'code', settings: 'settings' } as const)[at.kind] + (qs ? '?' + qs : '')
 }
 
 /** A value that follows v after it has stopped changing for ms. */

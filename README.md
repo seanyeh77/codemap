@@ -27,17 +27,24 @@ summary; every number and message goes to `.codemap/index.log` (`-v` prints them
 too). Piped, in CI or with `CODEMAP_PLAIN=1` it prints plain `==> step` lines;
 `NO_COLOR` turns colours off.
 
-In the map: 總覽 (the home page) is what the project does, where to start
-reading, its terms and documents, and how it meets the world (entry points,
-commands, environment variables, files read and written). 架構 is the map:
-project › component › file › function, one layout all the way down (the
-diagram, or a file's code with its functions beside it, and a detail column that
-answers the same three questions at every level: what it is, what it is tied
-to, what is worth a note). 流程 shows the calls down or up from a function,
-影響範圍 what a change reaches, 檢查筆記 whether notes still match the code and
-what the checks found worth checking. Click any function for what it does: its
-author's comment, an AI's description, or the facts codemap knows. The **?** in the top bar
-walks through the pages; `codemap` alone lists every command.
+The map is laid out like a code editor. On the left, the explorer: the project,
+its components, their files and each file's functions, with a filter on top and
+a dot wherever something is worth a note. In the middle, what is open: the
+project opens as its overview (what it does, where to start reading, its terms
+and documents, and how it meets the world: entry points, commands, environment
+variables, files read and written), a component as the architecture diagram,
+a file or a function as its code. On the right, 說明: what the open thing is and
+what is worth a note. Below, three tabs follow the open function: 呼叫流程 (its
+calls down or up; a name clicked there opens that function above while the tree
+keeps its start), 影響範圍 (what a change to it reaches) and 檢查 (whether the
+notes still match the code, and what the checks found worth checking). With a
+file or a component open, 呼叫流程 and 影響範圍 list the files or components
+instead. Every border can be dragged, every tab can be dragged between the side
+bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer, the panel
+and the side bar; the layout is kept in the browser (設定 › 版面 puts it back).
+Narrower screens draw the side bar and then the explorer over the code, and
+phones pull the panel up from below. Ctrl K or Ctrl P searches. The **?** in the
+top bar walks through the layout; `codemap` alone lists every command.
 
 ## How it works
 

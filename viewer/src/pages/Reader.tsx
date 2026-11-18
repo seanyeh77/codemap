@@ -35,7 +35,11 @@ export function compOfFile(ix: Index, file: string): string | undefined {
  *  file's functions, which fold away, and its code) and the detail column (the function being read, in the same three
  *  parts as every other level). Clicking or moving to a line in the code makes its function the one in the detail. */
 export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive: boolean; sourceId: string
-  onFunc: (id: string) => void; frame: (stage: ReactNode, detail: ReactNode) => ReactNode }) {
+  onFunc: (id: string) => void; frame?: (stage: ReactNode, detail: ReactNode) => ReactNode
+  /** The workbench: only the code, without the file's function list (the explorer has it) or the detail column. */
+  bare?: boolean
+  /** The line the reader clicked or moved to. */
+  onLine?: (n: number) => void }) {
   const src = useFileSource(p.at.f, p.isLive, p.sourceId)
   const view = useRef<UI.CodeViewHandle>(null)
   const refs = useCodeRefs(p.ix)
@@ -61,7 +65,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   const follow = (e: React.SyntheticEvent) => {
     const row = (e.target as HTMLElement).closest?.('.ui-cv-line')
     const n = Number(row?.querySelector('.ui-cv-num')?.textContent)
-    if (n && n !== cur) setCur(n)
+    if (n && n !== cur) { setCur(n); p.onLine?.(n) }
   }
   const local = (href: string) => {
     if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return null
@@ -71,8 +75,8 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
     return out.join('/')
   }
   const stage = (
-    <div className={'reader-stage' + (rail ? '' : ' no-rail')}>
-      {rail ? <nav className="reader-toc" aria-label={t('{v1} 的函式', { v1: p.at.f.split('/').pop() })}>
+    <div className={'reader-stage' + (rail && !p.bare ? '' : ' no-rail') + (p.bare ? ' is-bare' : '')}>
+      {p.bare ? null : rail ? <nav className="reader-toc" aria-label={t('{v1} 的函式', { v1: p.at.f.split('/').pop() })}>
         <div className="reader-toc-head"><span className="reader-label">{t('函式')}</span>
           <UI.IconButton icon="caret-left" label={t('收起函式清單')} onClick={toggleRail} /></div>
         {fns.length ? <ul>
@@ -99,6 +103,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
       </section>
     </div>
   )
+  if (p.bare || !p.frame) return stage
   const detail = (
     <UI.Card className="detail level-detail" title={<span className="mono">{inFn ? p.ix.funcs[inFn].name : p.at.f.split('/').pop()}</span>}
       actions={<EditorButton ix={p.ix} file={p.at.f} line={cur} />}>
@@ -206,7 +211,7 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
 }
 
 /** 值得注意: whether people may change the file, and what the checks found in this function (or this file). */
-export function Notes(p: { ix: Index; f: string; id?: string; why?: string }) {
+export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extra?: string[] }) {
   const g = p.ix.g
   const role = roleOf(g, p.f)
   const found = worthAt(g, (x) => (p.id ? x.fid === p.id : x.f === p.f))
@@ -217,6 +222,7 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string }) {
     role ? <li key="role">{role === 'editable' ? t('可修改：專案允許修改這個檔案。') : t('請勿修改：專案不希望修改這個檔案。')}</li> : null,
     ...found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>),
     stale ? <li key="stale">{t('AI 說明寫好之後程式碼改過了，可能不準。')}</li> : null,
+    ...(p.extra ?? []).map((x) => <li key={x}>{x}</li>),
   ].filter(Boolean)
   return <Q title={t('值得注意')}>
     {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('沒有發現。')}</p>}
