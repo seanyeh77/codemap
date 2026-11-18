@@ -77,7 +77,7 @@ function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
   const labels = useMemo(() => fileLabels([...fg.files.keys()]), [fg])
   // the mark is the box's tag, never cut off on a narrow box (受保護 in the warning colors, with a lock)
   const nodes = useMemo(() => [...fg.files].map(([f, x]) => ((r) => ({ id: 'file:' + f, name: labels.get(f)!,
-    ...(r ? { tag: r === 'editable' ? t('可修改') : t('受保護'), tagTone: r === 'protected' ? 'warning' as const : 'neutral' as const } : {}),
+    ...(r ? { tag: r === 'editable' ? t('可修改') : t('請勿修改'), tagTone: r === 'protected' ? 'warning' as const : 'neutral' as const } : {}),
     layer: fg.layer.get(f), size: x.funcs, shared: fg.shared.has(f) }))(roleOf(p.ix.g, f))), [fg, labels, p.ix])
   const edges = useMemo(() => fg.links.map((l) => ({ id: `file:${l.a}->${l.b}`, from: 'file:' + l.a, to: 'file:' + l.b, count: l.es.length })), [fg])
   return (
@@ -381,7 +381,6 @@ function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
       </Q>
       <Q title={t('值得注意')}>
         {found.length ? <ul className="level-notes">{found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul> : <p className="small muted">{t('沒有發現。')}</p>}
-        <DescCoverage ix={p.ix} />
         {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
       </Q>
       </Parts>
@@ -391,13 +390,13 @@ function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
 
 /** A file's box: what it is for, whether people may change it, which files it calls and is called by, and its functions. */
 /** How many functions say what they do (an author's comment, an AI's description), and how to have the rest said. */
-function DescCoverage(p: { ix: Index }) {
+export function DescCoverage(p: { ix: Index }) {
   const fs = Object.values(p.ix.funcs).filter((f) => f.kind !== 'module' && !f.comp.endsWith('(tests)'))
   if (!fs.length) return null
   const doc = fs.filter((f) => f.doc).length
   const ai = fs.filter((f) => f.ai && f.ai.state !== 'wrong').length
   const none = fs.filter((f) => !f.doc && !(f.ai && f.ai.state !== 'wrong')).length
-  return <p className="small muted">{t('函式說明：{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。', { v1: fs.length, v2: doc, v3: ai })}
+  return <p className="small muted">{t('{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。', { v1: fs.length, v2: doc, v3: ai })}
     {none ? ' ' + t('其餘 {v1} 個可以用 codemap describe 請 AI 補上。', { v1: none }) : ''}</p>
 }
 
@@ -866,7 +865,6 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
           <h1 className="ov-title">{g.repo}</h1>
           <UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} />
         </header>
-        <DescCoverage ix={p.ix} />
         <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
       </article>
     </div>

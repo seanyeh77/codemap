@@ -229,3 +229,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* a name written as a Markdown link (the reading route, the overview) looks like the other names: accent, no underline */
 .ui-md-link[href^="#flow"] { color: var(--accent-text); text-decoration: none; }
 .ui-md-link[href^="#flow"]:hover { text-decoration: underline; }
+/* no description yet: the function's signature, in the code's own words */
+.reader-sig { margin: 0; padding: var(--space-3); background: var(--surface-sub); border-radius: var(--radius-sm); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.desc-health { flex: 0 0 auto; }

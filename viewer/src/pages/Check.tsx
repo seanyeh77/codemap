@@ -6,6 +6,7 @@ import { countUnit, dateTime, list, t } from '../i18n'
 import type { Index } from '../data/graph'
 import { live } from '../data/load'
 import type { CheckFile, CheckItem, Sel } from '../data/types'
+import { DescCoverage } from './Arch'
 
 /** A Markdown line without its list marker (「- 」), as the suggestion shows it; the copy keeps the line whole. */
 const unlisted = (md: string) => md.replace(/^\s*[-*+]\s+/, '')
@@ -112,5 +113,25 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
         </UI.Card>
       ) : null}
     </div>
+  )
+}
+
+/** The map's descriptions: how many functions say what they do, and which AI descriptions the code has moved away from
+ *  (stale) or that name places or names the code does not have (wrong). Here because it is about the map, not the code. */
+export function DescHealth(p: { ix: Index }) {
+  const openFile = useContext(OpenFile)
+  const fs = Object.entries(p.ix.funcs).filter(([, f]) => f.kind !== 'module' && f.scope !== 'test')
+  const bad = fs.filter(([, f]) => f.ai && (f.ai.state === 'stale' || f.ai.state === 'wrong'))
+  if (!fs.length) return null
+  return (
+    <UI.Card className="desc-health" title={t('函式說明')}>
+      <DescCoverage ix={p.ix} />
+      {bad.length ? <>
+        <p className="small">{t('{v1} 個 AI 說明需要重寫（執行 codemap describe 會重寫）：', { v1: bad.length })}</p>
+        <ul className="level-list">{bad.map(([id, f]) => (
+          <li key={id}><UI.InlineCode href={'#' + id} onClick={(e) => { e.preventDefault(); openFile(f.file, f.line) }}>{f.name}</UI.InlineCode>{' '}
+            <span className="small muted">{f.ai!.state === 'stale' ? t('程式碼在說明寫好之後改過') : t('提到的位置或名稱與程式碼不符')}</span></li>))}</ul>
+      </> : <p className="small muted">{t('AI 說明都和目前的程式碼相符。')}</p>}
+    </UI.Card>
   )
 }

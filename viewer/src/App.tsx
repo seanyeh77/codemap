@@ -17,7 +17,7 @@ import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, edgeId, jump } from './pages/Arch'
 import { Flow, chainKeys } from './pages/Flow'
 import { Impact } from './pages/Impact'
-import { Check } from './pages/Check'
+import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
 import { Crumbs, FileReader } from './pages/Reader'
@@ -509,6 +509,7 @@ function Shell(p: ShellProps) {
         predict={predict} setPredict={setPredict} showExt={showExt} setShowExt={setShowExt} selKey={sel.key} along={along?.start === start ? along.keys : undefined} onSel={pick} openSearch={() => setSearchOpen(true)} />
     : view === 'impact' && start ? <Impact ix={ix} start={start} sourceId={p.sourceId} onSel={(id, at) => pick(id, at, null, !!at)} openSearch={() => setSearchOpen(true)} />
     : view === 'check' ? <div className="pane check-page"><Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={goFlow} />
+        <DescHealth ix={ix} />
         <UI.Card className="worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={() => {}} onPick={goFlow} mode="bare" only={['ov-worth']} /></UI.Card></div>
     : view === 'overview' && !empty ? <Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={(c) => { setSelComp(c); setSelEdge(''); setView('arch') }}
         // a function named in the overview (a step of the reading route) is read in its file on the architecture page

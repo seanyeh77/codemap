@@ -102,7 +102,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   const detail = (
     <UI.Card className="detail level-detail" title={<span className="mono">{inFn ? p.ix.funcs[inFn].name : p.at.f.split('/').pop()}</span>}
       actions={<EditorButton ix={p.ix} file={p.at.f} line={cur} />}>
-      {inFn ? <NowReading ix={p.ix} id={inFn} f={p.at.f} l={cur} onFunc={p.onFunc} open={open} />
+      {inFn ? <NowReading ix={p.ix} id={inFn} f={p.at.f} l={cur} onFunc={p.onFunc} open={open} sig={signature(src.data?.lines, p.ix.funcs[inFn].line)} />
         : <FileLevel ix={p.ix} f={p.at.f} l={cur} />}
     </UI.Card>
   )
@@ -110,6 +110,20 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
     <Crumbs ix={p.ix} file={p.at.f} fn={inFn ? p.ix.funcs[inFn].name : undefined} />
     {p.frame(stage, detail)}
   </div>
+}
+
+/** A function's signature from its first lines: up to the line that ends it (a Python def's colon, a C body's
+ *  brace), at most 8 lines, the brace left out. */
+function signature(lines: string[] | undefined, line: number): string | undefined {
+  if (!lines || !lines[line - 1]) return undefined
+  const out: string[] = []
+  for (let i = line - 1; i < Math.min(lines.length, line + 7); i++) {
+    const s = lines[i]
+    out.push(s)
+    if (/[:{]\s*(#.*|\/\/.*)?$/.test(s) || /\)\s*;\s*$/.test(s)) break
+  }
+  const pad = Math.min(...out.filter((s) => s.trim()).map((s) => s.length - s.trimStart().length))
+  return out.map((s) => s.slice(pad)).join('\n').replace(/\s*\{\s*$/, '').trimEnd()
 }
 
 /** One of the three parts every level of the architecture page answers: 是什麼, 和誰有關, 值得注意. Inside Parts it is
@@ -154,10 +168,11 @@ function FileLevel(p: { ix: Index; f: string; l: number }) {
 
 /** The function being read: what it is, who it is tied to (what this line calls, who calls it, what it calls) and what
  *  is worth a note. A function in this file moves the code to it; one in another file opens that file there. */
-function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (id: string) => void; open: (f: string, l: number) => void }) {
+function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (id: string) => void; open: (f: string, l: number) => void; sig?: string }) {
   const order = useDescOrder()
   const fn = p.ix.funcs[p.id]
-  const ds = descriptions(p.ix, p.id, order)
+  // what it is: what its author or an AI wrote. The facts (who calls it, what it calls) are 和誰有關, with the names
+  const ds = descriptions(p.ix, p.id, order).filter((d) => d.kind !== 'facts')
   const called = [...new Set(p.ix.g.edges.filter((e) => e.f === p.f && e.l === p.l && p.ix.funcs[e.d] && e.d !== p.id).map((e) => e.d))]
   const callers = [...new Set(p.ix.callers(p.id).map((e) => e.s).filter((s) => p.ix.funcs[s]))]
   const callees = [...new Set(p.ix.callees(p.id, false).map((e) => e.d).filter((d) => p.ix.funcs[d] && d !== p.id))]
@@ -172,8 +187,10 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
     <p className="small muted">{t('第 {v1} 行', { v1: p.l })} · {p.f}</p>
     <Parts>
     <Q title={t('是什麼')}>
-      {ds.length ? ds.map((d, i) => <p key={i} className="reader-desc"><DescText d={d} tag full /></p>)
-        : <p className="small muted">{t('沒有註解或 AI 說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
+      {ds.map((d, i) => <p key={i} className="reader-desc"><DescText d={d} tag full /></p>)}
+      {/* no description: its signature says what goes in and comes out, in the code's own words */}
+      {!ds.length && p.sig ? <pre className="reader-sig mono">{p.sig}</pre> : null}
+      {!ds.length ? <p className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p> : null}
     </Q>
     <Q title={t('和誰有關')}>
       <UI.DetailList items={[
@@ -197,7 +214,7 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string }) {
   const ai = p.id ? p.ix.funcs[p.id]?.ai : aiItem(p.ix, 'file:' + p.f, order)
   const stale = !!ai && ai.state === 'stale'
   const items = [
-    role ? <li key="role"><UI.Tag>{role === 'editable' ? t('可修改') : t('受保護')}</UI.Tag> {role === 'editable' ? t('專案允許修改這個檔案。') : t('專案不希望修改這個檔案。')}</li> : null,
+    role ? <li key="role">{role === 'editable' ? t('可修改：專案允許修改這個檔案。') : t('請勿修改：專案不希望修改這個檔案。')}</li> : null,
     ...found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>),
     stale ? <li key="stale">{t('AI 說明寫好之後程式碼改過了，可能不準。')}</li> : null,
   ].filter(Boolean)
