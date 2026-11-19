@@ -1032,4 +1032,10 @@ export const EN: Record<string, string> = {
   "同名的還有 {v1}": "Others of the same name: {v1}",
   "另有 {v1} 處呼叫在條件編譯中，本次 build 未編入，因此未計入。": "{v1} more calls are in conditional code this build leaves out, so they are not counted.",
   "此檔案的型別檢查不完整，可能漏掉部分呼叫。": "Type checking of this file was incomplete: some calls may be missing.",
+  "往下：它呼叫誰。按一下改成往上：誰呼叫它": "Down: what it calls. Click for up: what calls it",
+  "往上：誰呼叫它。按一下改成往下：它呼叫誰": "Up: what calls it. Click for down: what it calls",
+  "呼叫流程選項": "Call flow options",
+  "隱藏外部函式": "Hide functions outside the repo",
+  "結束自我測驗": "End the self-test",
+  "開始自我測驗": "Start a self-test",
 }

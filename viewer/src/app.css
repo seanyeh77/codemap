@@ -221,7 +221,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .stage { flex: 1; min-width: 0; min-height: 0; display: flex; padding: var(--space-3) var(--space-4) var(--space-4); box-sizing: border-box; }
 /* the key help under the code takes two lines of the stage; the keys stay (aria-keyshortcuts names them) */
 .stage .ui-cv-keys, .ui-cv:focus-within .ui-cv-keys { display: none; }
-.flow-bar { flex-wrap: wrap; row-gap: var(--space-2); }
+.flow-acts { display: inline-flex; align-items: center; gap: 2px; }
 .stage > * { flex: 1; min-width: 0; min-height: 0; }
 .stage-scroll { overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); }
 .reader-stage.is-bare > .reader-code { flex: 1; }

@@ -165,11 +165,12 @@ export function Flow(p: FlowProps) {
   // guesses that are functions outside the repo, left out of the tree while 外部函式 is off
   const hidden = res && cur && p.dir === 'down' && !p.showExt
     ? res.miss.filter((m) => p.ix.callees(cur.fid, true).some((e) => !p.ix.funcs[e.d] && p.ix.bareName(e.d, e) === m)) : []
-  const cardRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     if (!p.dirMoved.current) return
     p.dirMoved.current = false
-    cardRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus()
+    // the tree is drawn again in the other direction: the direction button keeps the focus
+    cardRef.current?.querySelector<HTMLElement>('button')?.focus()
   }, [p.dirMoved])
   // guess mode keeps even the start closed until its level is revealed
   const openKeys = [...(p.predict ? [] : ['root', ...(p.along ?? [])]), ...Object.keys(revealed)]
@@ -184,14 +185,6 @@ export function Flow(p: FlowProps) {
 
   return (
     <UI.Card className="pane">
-      {/* one row: the direction, then the switches; the start follows the code above (or the search, Ctrl K) */}
-      <div className="row flow-bar" ref={cardRef}>
-        <UI.Tabs label={t('方向')} items={[{ id: 'down', label: t('往下：callee') }, { id: 'up', label: t('往上：caller') }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
-        <div className="grow" />
-        {/* self-test last, so its field follows it in the Tab order */}
-        <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label={t('顯示外部函式')} disabled={p.dir !== 'down'} /><span>{t('外部函式')}</span></label>
-        <label className="row nowrap"><UI.Switch checked={p.predict} onChange={(v) => { setRevealed({}); p.setPredict(v) }} label={t('自我測驗')} /><UI.Term text={t('先寫下下一層的函式，再按「揭曉」比對。此功能用於練習讀程式，並非工具的推測。')}>{t('自我測驗')}</UI.Term></label>
-      </div>
       {p.predict && cur ? (
         <div className="predict">
           {needGuess ? (
@@ -214,7 +207,17 @@ export function Flow(p: FlowProps) {
       <div id="flow-tree">
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
           items={tree.items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
-          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />
+          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }}
+          // no toolbar above the tree: the direction and the options sit at the end of the start's row
+          rowActions={(n) => n.id !== 'root' ? null : <span className="flow-acts" ref={cardRef}>
+            <UI.IconButton variant="quiet" icon={p.dir === 'down' ? 'arrow-down' : 'arrow-up'}
+              label={p.dir === 'down' ? t('往下：它呼叫誰。按一下改成往上：誰呼叫它') : t('往上：誰呼叫它。按一下改成往下：它呼叫誰')}
+              onClick={(e) => { e.stopPropagation(); p.setDir(p.dir === 'down' ? 'up' : 'down') }} />
+            <UI.Menu label={t('呼叫流程選項')} items={[
+              { label: p.showExt ? t('隱藏外部函式') : t('顯示外部函式'), icon: 'eye', disabled: p.dir !== 'down', onSelect: () => p.setShowExt(!p.showExt) },
+              { label: p.predict ? t('結束自我測驗') : t('開始自我測驗'), icon: 'pencil-simple', onSelect: () => { setRevealed({}); p.setPredict(!p.predict) } },
+            ]} />
+          </span>} />
       </div>
       {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api
