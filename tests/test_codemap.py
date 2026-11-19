@@ -630,3 +630,11 @@ def test_units_gcc_cannot_compile_are_read_by_tree_sitter(tmp_path, monkeypatch)
     idx = backends.build(tmp_path)
     names = {n["name"] for n in idx["nodes"].values() if n.get("defined")}
     assert {"f", "g"} <= names and "syntax-c" in idx["backends"]
+
+
+def test_files_an_empty_compile_database_leaves_out_are_read_by_tree_sitter(tmp_path):
+    from codemap import backends
+    (tmp_path / "a.c").write_text("int f(void) { return 1; }\n")
+    (tmp_path / "compile_commands.json").write_text("[]")
+    idx = backends.build(tmp_path)
+    assert any(n["name"] == "f" and n.get("defined") for n in idx["nodes"].values())

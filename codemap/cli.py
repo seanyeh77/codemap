@@ -125,6 +125,9 @@ def cmd_index(a):
     print()
     for ln in index_summary(idx, time.time() - t).splitlines():
         print(term.fit(ln))
+    if "gcc" in idx["backends"] and not idx["backends"]["gcc"].get("units"):
+        ui.say("compile_commands.json lists no file, so tree-sitter read the C/C++ files: bear records only what make "
+               "compiles, so run make clean first, then bear -- make", "warn")
     failed = [u for u in idx["units"] if u["status"] == "failed"]
     if failed:
         errors = " ".join(u.get("error") or "" for u in failed)

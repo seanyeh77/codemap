@@ -76,17 +76,19 @@ def build(root, scope=None, jobs=None, cc=None, config=None):
             name, part = _one(root, name, files, scope, jobs, cc, config, parts)
             st.done(_result(name, part), "warn" if _trouble(part) else "ok")
         parts.append((name, part))
-        if name == "gcc" and part["stats"].get("failed"):
-            # the units GCC could not compile (no GCC: macOS's gcc is clang; a missing header): their files are
-            # read by tree-sitter instead, so their functions are on the map, their calls matched by name
+        if name == "gcc":
+            # what GCC did not read: the units it could not compile (no GCC: macOS's gcc is clang; a missing
+            # header) and the files compile_commands.json does not list (bear records only what make rebuilt).
+            # Tree-sitter reads them, so their functions are on the map, their calls matched by name
             done = {n.get("file") for n in part["nodes"].values() if n.get("defined")}
-            rest = [f for f in files if f not in done]
+            listed = {u["file"] for u in part.get("units", []) if u.get("status") != "failed"}
+            rest = [f for f in files if f not in done and f not in listed]
             if rest:
                 from . import syntax
-                with ui().step(f"tree-sitter, for what GCC could not compile ({len(rest)} file{'s' * (len(rest) != 1)})") as st:
+                with ui().step(f"tree-sitter, for the C/C++ files GCC did not read ({len(rest)} file{'s' * (len(rest) != 1)})") as st:
                     p2 = syntax.build(root, rest, others=[p for _, p in parts])
                     p2["stats"]["fallback"] = "tree-sitter"
-                    st.done(_result("syntax", p2), "warn")
+                    st.done(_result("syntax-c", p2), "warn" if part["stats"].get("failed") or not part["stats"].get("units") else "ok")
                 parts.append(("syntax-c", p2))
     from .. import scope
     idx = schema.merge(parts)
@@ -142,6 +144,8 @@ def _result(name, part):
         if st.get("failed"):
             bits.append(f'{st["failed"]} failed')
         return f"{defs} functions ({', '.join(bits)})"
+    if name == "syntax-c":
+        return f"{defs} definitions, calls matched by name"
     if "fallback" in st:
         return f"{defs} definitions, read by tree-sitter (no {'Go toolchain' if name == 'syntax-go' else 'Node or TypeScript'})"
     return f"{defs} definitions"
