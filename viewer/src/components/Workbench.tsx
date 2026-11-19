@@ -203,9 +203,9 @@ export function Workbench<V extends string>(p: Props<V>) {
         })}
       </div>
       <span className="grow" />
-      {on ? <UI.IconButton icon={area === 'side' ? 'arrow-down' : 'arrow-right'} label={t('把「{v1}」移到{v2}', { v1: byId.get(on)!.title, v2: areaName(other(area)) })}
+      {on ? <UI.IconButton variant="quiet" icon={area === 'side' ? 'arrow-down' : 'arrow-right'} label={t('把「{v1}」移到{v2}', { v1: byId.get(on)!.title, v2: areaName(other(area)) })}
         onClick={() => { move(on, other(area)); if (area === 'side' && !docked.side) setOver((o) => ({ ...o, side: false })) }} /> : null}
-      <UI.IconButton icon={area === 'side' ? 'x' : 'caret-down'} label={area === 'side' ? t('關閉右側欄') : t('收起下方面板')} onClick={close} />
+      <UI.IconButton variant="quiet" icon={area === 'side' ? 'x' : 'caret-down'} label={area === 'side' ? t('關閉右側欄') : t('收起下方面板')} onClick={close} />
     </div>
   }
   const body = (area: Area) => {
@@ -242,13 +242,13 @@ export function Workbench<V extends string>(p: Props<V>) {
   return (
     <div className={'wb wb-' + fit}>
       <header className="wb-top">
-        <UI.IconButton icon="sidebar-simple" label={treeShown ? t('收起檔案總管（Ctrl B）') : t('打開檔案總管（Ctrl B）')} onClick={toggle.tree} />
+        <UI.IconButton variant="quiet" icon="sidebar-simple" label={treeShown ? t('收起檔案總管（Ctrl B）') : t('打開檔案總管（Ctrl B）')} onClick={toggle.tree} />
         {p.brand}
         <div className="wb-crumbs">{p.crumbs}</div>
         <span className="grow" />
         {p.actions}
-        {fit !== 'phone' ? <UI.IconButton icon={panelIcon(panelShown)} label={panelShown ? t('收起下方面板（Ctrl J）') : t('打開下方面板（Ctrl J）')} onClick={toggle.panel} /> : null}
-        {l.side.length ? <UI.IconButton icon={sideIcon(sideShown)} label={sideShown ? t('收起右側欄（Ctrl Alt B）') : t('打開右側欄（Ctrl Alt B）')} onClick={toggle.side} data-tour="side-toggle" /> : null}
+        {fit !== 'phone' ? <UI.IconButton variant="quiet" icon={panelIcon(panelShown)} label={panelShown ? t('收起下方面板（Ctrl J）') : t('打開下方面板（Ctrl J）')} onClick={toggle.panel} /> : null}
+        {l.side.length ? <UI.IconButton variant="quiet" icon={sideIcon(sideShown)} label={sideShown ? t('收起右側欄（Ctrl Alt B）') : t('打開右側欄（Ctrl Alt B）')} onClick={toggle.side} data-tour="side-toggle" /> : null}
       </header>
       <div className="wb-row">
         {tree}

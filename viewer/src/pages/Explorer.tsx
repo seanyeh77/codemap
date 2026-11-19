@@ -31,7 +31,7 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; open: (id: s
   const { ix } = p
   const [q, setQ] = useState('')
   const flags = useMemo(() => flagged(ix.g, ix), [ix])
-  const dot = (id: string) => (flags.has(id) ? [<span key="dot" className="ex-dot" title={t('有值得注意的地方')} />] : undefined)
+  const mark = (id: string) => (flags.has(id) ? { label: t('有值得注意的地方') } : undefined)
   const files = useMemo(() => {
     const by = new Map<string, string[]>()
     for (const [f, ids] of ix.byFile()) {
@@ -43,10 +43,8 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; open: (id: s
     return by
   }, [ix])
   // a method by its own name: the file's tree already says where it is
-  const fnNode = (id: string) => ({ id: 'fn:' + id, name: ix.funcs[id].name.split('.').pop()!, icon: 'brackets-curly' as const, tags: dot('fn:' + id),
-    ariaLabel: flags.has('fn:' + id) ? t('{v1}，有值得注意的地方', { v1: ix.funcs[id].name }) : undefined })
-  const fileNode = (f: string) => ({ id: 'file:' + f, name: f.split('/').pop()!, icon: 'file-text' as const, tags: dot('file:' + f),
-    ariaLabel: flags.has('file:' + f) ? t('{v1}，有值得注意的地方', { v1: f.split('/').pop() }) : undefined,
+  const fnNode = (id: string) => ({ id: 'fn:' + id, name: ix.funcs[id].name.split('.').pop()!, icon: 'brackets-curly' as const, mark: mark('fn:' + id) })
+  const fileNode = (f: string) => ({ id: 'file:' + f, name: f.split('/').pop()!, icon: 'file-text' as const, mark: mark('file:' + f),
     children: (ix.byFile().get(f) ?? []).filter((id) => ix.funcs[id].kind !== 'module' && ix.funcs[id].scope !== 'test')
       .sort((a, b) => ix.funcs[a].line - ix.funcs[b].line).map(fnNode) })
   const items = useMemo(() => {
@@ -58,8 +56,8 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; open: (id: s
         .map(([id, f]) => ({ ...fnNode(id), name: f.name, path: `${f.file}:${f.line}` }))
       return [...fs, ...fns]
     }
-    return [{ id: 'proj', name: ix.g.repo, icon: 'house' as const, tags: dot('proj'),
-      children: ix.g.comps.map((c) => ({ id: 'comp:' + c.id, name: c.id, icon: 'squares-four' as const, tags: dot('comp:' + c.id),
+    return [{ id: 'proj', name: ix.g.repo, icon: 'house' as const, mark: mark('proj'),
+      children: ix.g.comps.map((c) => ({ id: 'comp:' + c.id, name: c.id, icon: 'squares-four' as const, mark: mark('comp:' + c.id),
         children: (files.get(c.id) ?? []).sort().map(fileNode) })) }]
   }, [q, files, ix, flags])   // eslint-disable-line react-hooks/exhaustive-deps
   const cur = nodeOf(p.at, p.fn)
@@ -82,7 +80,7 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; open: (id: s
     <div className="ex-head"><span className="ex-label">{t('檔案總管')}</span></div>
     <UI.SearchField className="ex-filter" value={q} onChange={setQ} label={t('篩選檔案與函式')} placeholder={t('篩選檔案與函式')} />
     <div className="ex-tree" data-tour="tree">
-      <UI.TreeList kind="plain" bare height="100%" label={t('專案的元件、檔案與函式')} items={items} selectedId={cur}
+      <UI.TreeList kind="plain" density="compact" bare height="100%" label={t('專案的元件、檔案與函式')} items={items} selectedId={cur}
         open={q.trim() ? [] : open} onToggle={(_, __, ids) => setOpen(ids)} onSelect={(n) => p.open(n.id)} />
     </div>
   </div>

@@ -241,7 +241,6 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .ex-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--ink-muted); }
 .ex-filter { margin: 0 var(--space-1); }
 .ex-tree { flex: 1; min-height: 0; }
-.ex-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warning, #d68710); vertical-align: middle; }
 
 .wb-side { flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
 .wb-panel { flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }

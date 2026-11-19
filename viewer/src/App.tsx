@@ -417,9 +417,9 @@ function Shell(p: ShellProps) {
       notice={snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
       stage={<div className="stage" data-tour="stage">{stage}</div>}
       actions={<>
-        <UI.IconButton icon="magnifying-glass" label={t('搜尋（Ctrl K）')} onClick={() => setPalette(true)} data-tour="search" />
+        <UI.IconButton variant="quiet" icon="magnifying-glass" label={t('搜尋（Ctrl K）')} onClick={() => setPalette(true)} data-tour="search" />
         {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
-        <UI.IconButton icon="question" label={t('重看導覽')} onClick={tourStart}
+        <UI.IconButton variant="quiet" icon="question" label={t('重看導覽')} onClick={tourStart}
           hint={welcome ? { text: t('導覽：六個步驟介紹這個版面。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
         <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
           value={p.sourceId} onChange={p.setSource} options={p.sources}
