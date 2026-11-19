@@ -60,7 +60,8 @@ export function Arch(p: { ix: Index; sel: string; onSel: (id: string) => void; e
   const pick = (v: 'comp' | 'file') => {
     setLevel(v)
     try { localStorage.setItem(key, v) } catch { /* storage off */ }
-    p.onSel(''); p.onEdge('')
+    // only the chosen line goes: what is open (this component) stays open, it is not a box of the other view
+    p.onEdge('')
   }
   // 依元件／依檔案 sits on the diagram's own row, left of 圖／清單
   const tabs = view.offered ? <div className="level-tabs"><UI.Tabs label={t('架構圖的方塊')} items={[{ id: 'comp', label: t('依元件') }, { id: 'file', label: t('依檔案') }]} value={shown} onChange={(v) => pick(v as 'comp' | 'file')} /></div> : null
