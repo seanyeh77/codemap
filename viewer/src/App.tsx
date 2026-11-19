@@ -374,8 +374,8 @@ function Shell(p: ShellProps) {
         if (moved && key !== 'root') fromPanel(id, placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
       }} />
     return { id: d, title, render: () => <div className="view">
-      {fn && trail.length > 1 && trail[trail.length - 1] === fn ? <nav className="trail small" aria-label={t('走過的路')}>
-        <span className="muted">{t('走過的路：')}</span>
+      {fn && trail.length > 1 && trail[trail.length - 1] === fn ? <nav className="trail small" aria-label={t('瀏覽路徑')}>
+        <span className="muted">{t('瀏覽路徑：')}</span>
         {trail.map((id, i) => <span key={id}>{i ? <span className="info-sep" aria-hidden="true">›</span> : null}
           {i === trail.length - 1 ? <span className="mono trail-here" aria-current="true">{ix.funcs[id]?.name.split('.').pop() ?? id}</span>
             : <button type="button" className="linklike mono" onClick={() => { const a = placeOf(id); if (a) { setTrail((tr) => tr.slice(0, i + 1)); setPin(null); setAt(a) } }}>{ix.funcs[id]?.name.split('.').pop() ?? id}</button>}</span>)}
