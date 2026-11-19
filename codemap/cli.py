@@ -128,9 +128,13 @@ def cmd_index(a):
     if failed:
         ui.say(f"{len(failed)} unit{'s' * (len(failed) != 1)} did not compile (their calls are missing): "
                + ", ".join(u["file"] for u in failed[:3]) + (" ..." if len(failed) > 3 else ""), "warn")
-    msgs = sum(len(b.get("errors", [])) for b in idx["backends"].values() if isinstance(b, dict))
-    if msgs:
-        ui.say(f"{msgs} message{'s' * (msgs != 1)} from the analyzers (the calls around them are still mapped)", "warn")
+    errs = [e for b in idx["backends"].values() if isinstance(b, dict) for e in b.get("errors", [])]
+    if errs:
+        ts = (idx["backends"].get("typescript") or {}).get("placeholders") or []
+        # what they are about, in a few words: most often packages that are not installed
+        why = (f"modules not installed: {', '.join(ts[:3])}{' ...' if len(ts) > 3 else ''} (npm install where their package.json is)"
+               if ts else errs[0].replace(str(root) + "/", "")[:100])
+        ui.say(f"{len(errs)} message{'s' * (len(errs) != 1)} from the analyzers, the calls around them still mapped: {why}", "warn")
     print(f"details: {log.relative_to(Path.cwd()) if log.is_relative_to(Path.cwd()) else log}"
           + ("" if a.verbose else "  (or codemap index -v)"))
     next_steps(root, idx)
@@ -145,6 +149,10 @@ def index_summary(idx, secs):
             res[k] = res.get(k, 0) + v
     calls = sum(1 for e in idx["edges"] if e.get("kind") in CALLISH)
     sure = [f"{res[k]} {k}" for k in ("exact", "inferred", "ambiguous") if res.get(k)]
+    # tree-sitter's calls are matched by name: counted apart, so the line adds up and says how sure they are
+    byname = (idx["backends"].get("syntax") or {}).get("edges", 0)
+    if byname:
+        sure.append(f"{byname} matched by name")
     tests = sum(1 for n in nodes if n.get("scope") == "test")
     head = f"{len(nodes)} functions" + (f" ({tests} in tests)" if tests else "") + f", {calls} calls, in {secs:.1f} s"
     how = ", ".join(sure) + (f"; {res['unresolved']} not resolved (left out, never guessed)" if res.get("unresolved") else "")
@@ -210,6 +218,12 @@ def next_steps(root, idx):
     ai = describe.load(root)
     told = sum(1 for nid, n in funcs if nid in ai or docs.func_doc(root, n["file"], n["line"], n.get("lang", "c")))
     print("\nnext:")
+    # C read without compile_commands.json: its calls are matched by name; a compilation database makes them exact
+    sx = idx["backends"].get("syntax") or {}
+    nc = sum(v for k, v in (sx.get("languages") or {}).items() if k in ("c", "cpp"))
+    if nc and "gcc" not in idx["backends"]:
+        print(term.fit(f"  bear -- make            optional: {nc} C/C++ files were read by name only; a compile_commands.json "
+                       "(bear, or cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON) makes their calls exact"))
     # descriptions first: the map shows them, and a snapshot keeps only what is there when it is written
     if funcs and told < len(funcs):
         print(term.fit(f"  codemap describe        optional: {len(funcs) - told} of {len(funcs)} functions say nothing about what they do"))

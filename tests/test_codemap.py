@@ -534,3 +534,13 @@ class Server(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_index_summary_counts_calls_matched_by_name():
+    """The summary's calls line adds up: tree-sitter's calls are counted, as matched by name."""
+    from codemap.cli import index_summary
+    idx = {"nodes": {}, "edges": [], "backends": {
+        "python": {"resolution": {"exact": 46, "inferred": 1, "unresolved": 20}},
+        "syntax": {"edges": 1012, "languages": {"c": 11, "css": 3}}}}
+    line = index_summary(idx, 0.3).splitlines()[1]
+    assert "46 exact, 1 inferred, 1012 matched by name; 20 not resolved" in line
