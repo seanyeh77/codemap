@@ -1,9 +1,11 @@
+import { useContext, useEffect } from 'react'
 import { UI } from '../ui'
 import { t } from '../i18n'
 import type { Index } from '../data/graph'
 import { roleOf } from '../data/files'
 import { aiItem, descriptions, useDescOrder } from '../data/describe'
 import { DescText } from '../components/DescText'
+import { PeekLine } from '../components/DocRefs'
 import { FnPanel, InfoTitle } from './FnPanel'
 import { TRACED } from './Arch'
 
@@ -55,6 +57,8 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
  *  order, each with what it does; a name moves the code to it. */
 function FileInfo(p: { ix: Index; f: string; openFn: (id: string) => void }) {
   const order = useDescOrder()
+  const peek = useContext(PeekLine)
+  useEffect(() => () => peek(null), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const ai = aiItem(p.ix, 'file:' + p.f, order)
   const doc = p.ix.g.files?.[p.f]
   const role = roleOf(p.ix.g, p.f)
@@ -70,7 +74,7 @@ function FileInfo(p: { ix: Index; f: string; openFn: (id: string) => void }) {
       <span className="fp-src">{byRules ? t('依據：.codemap/rules.json 的 roles') : t('依據：檔案開頭註解的第一個詞')}</span></p> : null}
     {fns.length ? <section className="info-notes" aria-label={t('函式')}>
       <h3 className="info-h">{t('函式')}</h3>
-      <ul className="info-outline">{fns.map((id) => <li key={id}>
+      <ul className="info-outline">{fns.map((id) => <li key={id} onPointerEnter={() => peek(p.ix.funcs[id].line, p.ix.funcs[id].end)} onPointerLeave={() => peek(null)}>
           <UI.InlineCode look="name" href={'#'} onClick={(e) => { e.preventDefault(); p.openFn(id) }}>{p.ix.funcs[id].name.split('.').pop()!}</UI.InlineCode>
           <OneLine ix={p.ix} id={id} />
         </li>)}</ul>

@@ -1,7 +1,7 @@
 import { SRC_LABEL, oneLine as descLine, useDescOrder, type DescOrder } from './data/describe'
 import { OpenCall, OpenFunc } from './components/CallLinks'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { UI } from './ui'
 import { early, stopEarly } from './early'
 import { t } from './i18n'
@@ -11,7 +11,7 @@ import { prefs } from './prefs'
 import { rank } from './data/search'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import { written, type Func, type Graph, type GrepHit, type Meta } from './data/types'
-import { OpenFile, PeekLine } from './components/DocRefs'
+import { OpenFile, PeekLine, type Peek } from './components/DocRefs'
 import { Defs } from './pages/Defs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
@@ -181,7 +181,8 @@ function Shell(p: ShellProps) {
   const [trail, setTrail] = useState<string[]>(() => init.p ?? [])
   const [mdMode, setMdMode] = useState<{ f: string; m: 'preview' | 'source' } | null>(null)
   // the line an item in 說明 points at while the pointer is on it
-  const [peekLine, setPeekLine] = useState<number | null>(null)
+  const [peekLine, setPeekState] = useState<Peek | null>(null)
+  const setPeekLine = useCallback((l: number | null, end?: number) => setPeekState(l == null ? null : { from: l, to: Math.max(l, end ?? l) }), [])
   const fromPanel = (id: string, a: At | null) => {
     if (!a) return
     setTrail((tr) => {

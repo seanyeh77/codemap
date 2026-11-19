@@ -29,7 +29,11 @@ def _line(n):
 
 
 def _end(n):
-    return n.end_point[0] + 1
+    """The last line of a node: a preprocessor line ends at the start of the next one."""
+    row = n.end_point[0]
+    if n.end_point[1] == 0 and row > n.start_point[0]:
+        row -= 1
+    return row + 1
 
 
 def _short(s, n=80):
@@ -105,9 +109,9 @@ def _c(tree, out):
             val = n.child_by_field_name("value")
             if val is None and re.fullmatch(r"\w+_H(_|PP)?_?|_+\w+_H_*", name):
                 continue                            # an include guard
-            out["consts"].append(dict(name=name, kind="macro", line=_line(n), value=_short(txt(val), 40) if val is not None else None))
+            out["consts"].append(dict(name=name, kind="macro", line=_line(n), end=_end(n), value=_short(txt(val), 40) if val is not None else None))
         elif t == "preproc_function_def":
-            out["consts"].append(dict(name=txt(n.child_by_field_name("name")), kind="macro", line=_line(n),
+            out["consts"].append(dict(name=txt(n.child_by_field_name("name")), kind="macro", line=_line(n), end=_end(n),
                                       params=txt(n.child_by_field_name("parameters")),
                                       value=_short(txt(n.child_by_field_name("value")), 40)))
         elif t == "type_definition":
@@ -144,11 +148,11 @@ def _c(tree, out):
                 rest = txt(inner).replace(name, "", 1).strip()
                 type_text = _short((txt(ty) + " " + rest).strip(), 40)
                 if "const" in quals and d.type == "init_declarator" and "*" not in rest:
-                    out["consts"].append(dict(name=name, kind="const", line=_line(n), type=type_text,
+                    out["consts"].append(dict(name=name, kind="const", line=_line(n), end=_end(n), type=type_text,
                                               value=_short(txt(d.child_by_field_name("value")), 40)))
                 else:
                     scope = "static" if "static" in quals else "extern" if "extern" in quals else "global"
-                    out["vars"].append(dict(name=name, scope=scope, type=type_text, line=_line(n)))
+                    out["vars"].append(dict(name=name, scope=scope, type=type_text, line=_line(n), end=_end(n)))
 
 
 def _tname(n):
@@ -216,9 +220,9 @@ def _python(tree, out):
                         if s.type == "string":
                             out["exports"].append(dict(name=txt(s).strip("'\"").strip(), line=_line(s)))
                 elif CONST_NAME.match(name):
-                    out["consts"].append(dict(name=name, kind="const", line=_line(n), value=_short(txt(a.child_by_field_name("right")), 40)))
+                    out["consts"].append(dict(name=name, kind="const", line=_line(n), end=_end(n), value=_short(txt(a.child_by_field_name("right")), 40)))
                 else:
-                    out["vars"].append(dict(name=name, scope="module", type=txt(a.child_by_field_name("type")), line=_line(n)))
+                    out["vars"].append(dict(name=name, scope="module", type=txt(a.child_by_field_name("type")), line=_line(n), end=_end(n)))
 
 
 # ---- Go ---------------------------------------------------------------------

@@ -59,9 +59,9 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
       more: x.fields.length ? <Fields id={'t' + x.name + x.line} fields={x.fields} enumLike={x.kind === 'enum' || x.of === 'enum'}
         open={!!openTypes['t' + x.name + x.line]} toggle={() => setOpenTypes({ ...openTypes, ['t' + x.name + x.line]: !openTypes['t' + x.name + x.line] })}
         go={(l) => p.file && p.open(p.file, l)} peek={peek} /> : null }))
-    items.vars = d.vars.map((x) => ({ key: 'v' + x.name + x.line, name: x.name, line: x.line, at: x.at, users: x.users, users_n: x.users_n,
+    items.vars = d.vars.map((x) => ({ key: 'v' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(VAR_KIND[x.scope] ?? [x.scope]), detail: x.type ? <span className="defs-type">{x.type}</span> : null }))
-    items.consts = d.consts.map((x) => ({ key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, at: x.at, users: x.users, users_n: x.users_n,
+    items.consts = d.consts.map((x) => ({ key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(CONST_KIND[x.kind] ?? [x.kind]), detail: x.value ? <span className="defs-type">= {x.value}</span> : null }))
     items.imports = d.imports.map((x) => ({ key: 'i' + x.line + x.text, name: x.text, line: x.line, at: x.at,
       kind: x.local === undefined ? null : kindText(x.local ? ['專案內的檔案', 'include'] : ['系統或程式庫', 'include']),
@@ -105,7 +105,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
       return <section key={k} className="fp-sec" aria-label={t(title)}>
         <h3 className="info-h">{t(title)}<span className="fp-cnt">{t('{v1} 項', { v1: xs.length })}</span></h3>
         <ul className="fp-rows">{shown.map((x) => <li key={x.key} className={'fp-it has-line' + (here(x) ? ' is-here' : '') + (defines(x) ? ' is-def' : '')}
-          onPointerEnter={() => peek(x.line)} onPointerLeave={() => peek(null)}>
+          onPointerEnter={() => peek(x.line, x.end)} onPointerLeave={() => peek(null)}>
           <div className="defs-head">
             <button type="button" className="defs-name" onClick={() => p.open(p.file!, x.line)}>{x.name}</button>
             <span className="small muted">{x.kind ? <>{x.kind}{t(' · ')}</> : null}{t('第 {v1} 行', { v1: x.line })}</span>

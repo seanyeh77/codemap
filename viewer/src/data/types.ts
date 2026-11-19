@@ -393,8 +393,8 @@ export interface FileWrite {
 interface DefUse { at?: number[]; users?: string[]; users_n?: number }
 export interface FileDefs {
   types: (DefUse & { name: string; kind: string; typedef?: boolean; line: number; end?: number; of?: string | null; fields: { name: string; type: string; line: number }[] })[]
-  vars: (DefUse & { name: string; scope: string; type?: string; line: number })[]
-  consts: (DefUse & { name: string; kind: 'macro' | 'const' | 'enum'; line: number; value?: string | null; params?: string; type?: string })[]
+  vars: (DefUse & { name: string; scope: string; type?: string; line: number; end?: number })[]
+  consts: (DefUse & { name: string; kind: 'macro' | 'const' | 'enum'; line: number; end?: number; value?: string | null; params?: string; type?: string })[]
   imports: { text: string; line: number; file?: string; names?: string[]; at?: number[]; local?: boolean }[]
   exports: { name: string; line: number }[]
 }
