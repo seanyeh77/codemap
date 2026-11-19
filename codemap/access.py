@@ -184,15 +184,35 @@ def _declares(n):
     return False
 
 
+_IDS = {}
+
+
+def _idents(body):
+    """(text, node) of every identifier in the body outside nested functions and classes, in no order;
+    kept for the run, since each function is read more than once."""
+    key = (body.id, body.start_byte, body.end_byte)
+    hit = _IDS.get(key)
+    if hit is None:
+        hit = []
+        stack = list(body.children)
+        while stack:
+            n = stack.pop()
+            if n.type in SCOPES:
+                continue
+            if n.type in ("identifier", "field_identifier"):
+                hit.append((txt(n), n))
+            stack.extend(n.children)
+        _IDS[key] = hit
+    return hit
+
+
 def _names(body, wanted):
     """Every identifier in the body (not in nested functions or classes) whose text is in wanted."""
     out = []
-    stack = list(body.children) if body is not None else []
-    while stack:
-        n = stack.pop()
-        if n.type in SCOPES:
-            continue
-        if n.type in ("identifier", "field_identifier") and txt(n) in wanted and not _declares(n):
+    if body is None or not wanted:
+        return out
+    for t, n in _idents(body):
+        if t in wanted and not _declares(n):
             if n.parent is not None and n.parent.type in ("field_expression", "selector_expression", "member_expression", "attribute", "field_access") \
                     and (n.parent.child_by_field_name("field") or n.parent.child_by_field_name("property")
                          or n.parent.child_by_field_name("attribute")) is not None \
@@ -201,12 +221,20 @@ def _names(body, wanted):
                 pass                                     # x.name: a field called like the parameter, not it
             else:
                 out.append(n)
-        stack.extend(n.children)
     return sorted(out, key=lambda n: n.start_byte)
 
 
 def _locals(body, lg):
     """Names the body declares itself (they shadow outside variables)."""
+    if body is None:
+        return set()
+    key = ("locals", body.id, body.start_byte, body.end_byte, lg)
+    if key not in _IDS:
+        _IDS[key] = _read_locals(body, lg)
+    return set(_IDS[key])
+
+
+def _read_locals(body, lg):
     out = set()
     stack = list(body.children) if body is not None else []
     while stack:
@@ -410,6 +438,7 @@ def of(root, file, line, end, lang, sig, outside=None, roles_of=None):
 def run(root, funcs, described=None):
     """{id: access} for the repository's functions in funcs ({id: {file, line, end, lang, sig, name}}): parameter
     roles follow calls into the repository's functions (two rounds) and into outside ones an AI described."""
+    _IDS.clear()
     from pathlib import Path
     vars_ = {}
     for f in {x["file"] for x in funcs.values()}:
@@ -457,6 +486,7 @@ def run(root, funcs, described=None):
         for nid, x in funcs.items():
             if x.get("sig"):
                 out[nid] = of(root, x["file"], x["line"], x.get("end"), x.get("lang"), x["sig"], seen.get(x["file"]), roles_of(x["file"]))
+    _IDS.clear()
     return {k: v for k, v in out.items() if v}
 
 

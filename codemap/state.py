@@ -40,17 +40,25 @@ def shared_state(root, funcs):
             by_file[f["file"]].append(fid)
     code = {file: [STRINGS.sub('""', ln) for ln in code_lines(root / file)] for file in by_file}
     decls = [(file, ln, name, static) for file in sorted(code) for ln, name, static in _file_scope(code[file])]
+    ident = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)")
+    wanted = {name for _, _, name, _ in decls}
+    # per file: name -> [[fid, first line using it], ...] in line order, one pass over each body
+    uses = {}
+    for f2 in code:
+        here = defaultdict(list)
+        for fid in sorted(by_file[f2], key=lambda x: funcs[x]["line"]):
+            fn = funcs[fid]
+            seen = set()
+            for k, t in enumerate(code[f2][fn["line"] - 1:fn["end"]]):
+                for m in ident.finditer(t):
+                    w = m.group(1)
+                    if w in wanted and w not in seen:
+                        seen.add(w)
+                        here[w].append([fid, fn["line"] + k])
+        uses[f2] = here
     out = []
     for file, line, name, static in decls:
-        word = re.compile(r"(?<![\w.>])" + re.escape(name) + r"\b")
-        users = []
-        for f2 in ([file] if static else sorted(code)):
-            for fid in sorted(by_file[f2], key=lambda x: funcs[x]["line"]):
-                fn = funcs[fid]
-                body = code[f2][fn["line"] - 1:fn["end"]]
-                hit = next((fn["line"] + k for k, t in enumerate(body) if word.search(t)), None)
-                if hit:
-                    users.append([fid, hit])
+        users = [u for f2 in ([file] if static else sorted(code)) for u in uses[f2].get(name, ())]
         if len(users) >= 2:
             out.append(dict(name=name, file=file, line=line, static=static, users=users))
     return out

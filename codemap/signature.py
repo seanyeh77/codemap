@@ -16,6 +16,7 @@ decl:   {"kw", "line"} for each keyword or property: static, extern, inline, vir
 statics: {"name", "line"}: static local variables (C, C++), which keep their value between calls
 """
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from .backends.syntax import EXT, language
@@ -32,6 +33,7 @@ PY_IMMUTABLE = {"int", "float", "str", "bool", "bytes", "tuple", "complex", "fro
 _trees = {}
 
 
+@lru_cache(maxsize=None)
 def _lang(file, lang):
     ext = Path(file).suffix.lower()
     lg = EXT.get(ext)
@@ -56,6 +58,8 @@ def _tree(root, file, lg):
         return None
     import tree_sitter as ts
     tree = ts.Parser(L).parse(p.read_bytes())
+    if hit:
+        _heads.clear()                      # node ids of the old tree may come back
     _trees[key] = (st.st_mtime_ns, tree)
     return tree
 
@@ -64,23 +68,33 @@ def txt(n):
     return n.text.decode("utf-8", "replace") if n is not None else ""
 
 
+_heads = {}
+
+
 def _find(node, line, end):
     """The innermost function node that starts at or just above line (decorators, comments) and holds it."""
+    # every function node by the lines of its head (start to body), built once per tree
+    key = (node.id, node.end_byte)
+    heads = _heads.get(key)
+    if heads is None:
+        heads = {}
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if n.type in FUNC_TYPES:
+                r0, r1 = n.start_point[0] + 1, n.end_point[0] + 1
+                body = n.child_by_field_name("body")
+                head_end = body.start_point[0] + 1 if body is not None else r1
+                for ln in range(r0, min(head_end, r1) + 1):
+                    heads.setdefault(ln, []).append(n)
+            stack.extend(n.children)
+        _heads[key] = heads
     best, best_key = None, None
-    stack = [node]
-    while stack:
-        n = stack.pop()
-        r0, r1 = n.start_point[0] + 1, n.end_point[0] + 1
-        if r1 < line or r0 > (end or line):
-            continue
-        if n.type in FUNC_TYPES and r0 <= line <= r1:
-            body = n.child_by_field_name("body")
-            head_end = body.start_point[0] + 1 if body is not None else r1
-            # the closest start wins; on the same line the outer one (a callback default is not the function)
-            key = (r0, n.end_byte - n.start_byte)
-            if line <= head_end and (best is None or key > best_key):
-                best, best_key = n, key
-        stack.extend(n.children)
+    for n in heads.get(line, ()):
+        # the closest start wins; on the same line the outer one (a callback default is not the function)
+        k = (n.start_point[0], n.end_byte - n.start_byte)
+        if best is None or k > best_key:
+            best, best_key = n, k
     return best
 
 

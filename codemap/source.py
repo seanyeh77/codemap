@@ -52,6 +52,9 @@ def walk(root, exts=None):
     return sorted(p for p in found if (exts is None or p.suffix in exts) and not skip(p) and p.is_file())
 
 
+_PLAIN = re.compile(r"[^/\"']*")
+
+
 def strip_c_comments(text_lines):
     """Blank out comments and string contents, keeping line and column positions."""
     out, in_block = [], False
@@ -78,8 +81,9 @@ def strip_c_comments(text_lines):
                 res.append(q + " " * (min(j, n) - i - 1) + (q if j < n else ""))
                 i = j + 1
             else:
-                res.append(line[i])
-                i += 1
+                m = _PLAIN.match(line, i + 1)          # copy up to the next / or quote in one step
+                res.append(line[i:m.end()])
+                i = m.end()
         out.append("".join(res))
     return out
 

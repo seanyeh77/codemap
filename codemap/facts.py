@@ -5,6 +5,8 @@ program stops, fixed-size global arrays, environment values used unchecked).
 Everything here is read from the repository as it is; nothing is judged. A
 name that is only known when the program runs is reported as such."""
 
+import hashlib
+import json
 import os
 import re
 import shlex
@@ -17,10 +19,66 @@ from .source import code_lines, lines, walk
 # ---- build products --------------------------------------------------------
 
 
+MAKE_FILES = re.compile(r"^(GNUmakefile|[Mm]akefile.*|.*\.(mk|mak|make))$")
+MAKE_ENV = ("CC", "CXX", "CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS", "LDLIBS", "MAKEFLAGS", "PREFIX")
+
+
+def _make_stamp(root):
+    """What `make -n` output depends on that can change: the makefiles (path, size, mtime) and the build variables
+    in the environment. The output is kept in .codemap/cache/make.json under this stamp."""
+    parts = []
+    for d, dirs, files in os.walk(root):
+        dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in ("node_modules", "__pycache__"))
+        for f in sorted(files):
+            if MAKE_FILES.match(f):
+                try:
+                    st = os.stat(os.path.join(d, f))
+                except OSError:
+                    continue
+                parts.append(f"{os.path.relpath(os.path.join(d, f), root)}:{st.st_size}:{st.st_mtime_ns}")
+    parts += [f"{k}={os.environ.get(k, '')}" for k in MAKE_ENV]
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+_MAKE_MEMO = {}
+
+
 def _make(root, *args, timeout=30):
     """`make -n` output with continuation lines joined; '' when there is no make or it fails."""
     if not (Path(root) / "Makefile").is_file() and not (Path(root) / "GNUmakefile").is_file():
         return ""
+    stamp = _MAKE_MEMO.get(("stamp", str(root)))
+    if stamp is None:
+        stamp = _MAKE_MEMO[("stamp", str(root))] = _make_stamp(root)
+    cache_file = Path(root) / ".codemap" / "cache" / "make.json"
+    cache = _MAKE_MEMO.get(("cache", str(root)))
+    if cache is None:
+        try:
+            cache = json.loads(cache_file.read_text())
+        except (OSError, ValueError):
+            cache = {}
+        if cache.get("stamp") != stamp:
+            cache = {"stamp": stamp, "runs": {}}
+        _MAKE_MEMO[("cache", str(root))] = cache
+    key = " ".join(args)
+    if key in cache["runs"]:
+        return cache["runs"][key]
+    out = _run_make(root, *args, timeout=timeout)
+    cache["runs"][key] = out
+    # make may rewrite a makefile itself (redis regenerates src/Makefile.dep): the stamp is taken after the run
+    after = _make_stamp(root)
+    if after != stamp:
+        cache["stamp"] = _MAKE_MEMO[("stamp", str(root))] = after
+    try:
+        if cache_file.parent.parent.is_dir():
+            cache_file.parent.mkdir(exist_ok=True)
+            cache_file.write_text(json.dumps(cache))
+    except OSError:
+        pass
+    return out
+
+
+def _run_make(root, *args, timeout=30):
     try:
         r = subprocess.run(["make", "-C", str(root), "--no-print-directory", *args], capture_output=True,
                            text=True, timeout=timeout, env=dict(os.environ, LC_ALL="C"))
@@ -90,6 +148,7 @@ def products(root, config=None):
     or None when the repository has no Makefile make can read."""
     root = Path(root)
     config = config or {}
+    _MAKE_MEMO.clear()                    # read the makefiles' stamp again for this build
     default, rules, phony = _database(root)
     if not default:
         return None
@@ -305,15 +364,32 @@ def _with_strings(code, raw):
     return out
 
 
+_CODE = {}
+
+
+def _file_code(path):
+    """_with_strings of a file, kept while the file is unchanged: several checks read the same bodies."""
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        stamp = None
+    hit = _CODE.get(str(path))
+    if hit and hit[0] == stamp:
+        return hit[1]
+    out = _with_strings(code_lines(path), lines(path))
+    _CODE[str(path)] = (stamp, out)
+    return out
+
+
 def _bodies(root, funcs):
     """(fid, function, text of its body, offset -> line) for each function, comments removed."""
-    cache = {}
+    last = (None, None)
     for fid, f in sorted(funcs.items(), key=lambda x: (x[1]["file"], x[1]["line"])):
         if not f.get("end"):
             continue
-        if f["file"] not in cache:
-            cache[f["file"]] = _with_strings(code_lines(Path(root) / f["file"]), lines(Path(root) / f["file"]))
-        body = cache[f["file"]][f["line"] - 1:f["end"]]
+        if f["file"] != last[0]:
+            last = (f["file"], _file_code(Path(root) / f["file"]))
+        body = last[1][f["line"] - 1:f["end"]]
         starts, pos = [], 0
         for ln in body:
             starts.append(pos)
@@ -789,15 +865,22 @@ def plain_writes(root, funcs, files):
             decls.setdefault(name, dict(name=name, file=file, line=i, static=static, writes=[]))
     if not decls:
         return []
-    names = "|".join(map(re.escape, sorted(decls, key=len, reverse=True)))
-    store = re.compile(r"(?<![\w.>])(?:\+\+|--)\s*(" + names + r")\b|(?<![\w.>])(" + names + r")\s*(?:\[[^\]]*\]\s*)*"
-                       r"(?:\+\+|--|(?:[-+*/%&|^]|<<|>>)?=(?!=))")
+    ident = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)")
+    after = re.compile(r"\s*(?:\[[^\]]*\]\s*)*(?:\+\+|--|(?:[-+*/%&|^]|<<|>>)?=(?!=))")
     for fid, f, text, at in _bodies(root, funcs):
         if not f["file"].endswith(".c"):
             continue
-        for m in store.finditer(text):
-            name = m.group(1) or m.group(2)
-            d = decls[name]
+        for m in ident.finditer(text):
+            name = m.group(1)
+            d = decls.get(name)
+            if d is None:
+                continue
+            j = m.start()
+            while j > 0 and text[j - 1].isspace():
+                j -= 1
+            pre = j >= 2 and text[j - 2:j] in ("++", "--") and not (j >= 3 and (text[j - 3].isalnum() or text[j - 3] in "_.>"))
+            if not pre and not after.match(text, m.end()):
+                continue
             if d["static"] and d["file"] != f["file"]:
                 continue                                  # another file's static of the same name
             start = text.rfind("\n", 0, m.start()) + 1
@@ -993,10 +1076,13 @@ def silent_limits(root, funcs):
     -> {silent: [{fid, f, l, cond, limit}], said: [the same]}"""
     root = Path(root)
     out = dict(silent=[], said=[])
+    src_of = {}
     for fid, f in sorted(funcs.items(), key=lambda kv: (kv[1]["file"], kv[1]["line"])):
         if not f["file"].endswith((".c", ".h")):
             continue
-        src = lines_text(root / f["file"]).splitlines()
+        if f["file"] not in src_of:
+            src_of[f["file"]] = lines_text(root / f["file"]).splitlines()
+        src = src_of[f["file"]]
         text = "\n".join(src[f["line"] - 1:f["end"]])
         text = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), text, flags=re.S)
         text = re.sub(r"//[^\n]*", "", text)
@@ -1033,13 +1119,16 @@ def uncompiled_calls(root, funcs, edges):
     if not ids:
         return {}
     seen = {(e.get("f"), e.get("l"), e["d"]) for e in edges}
-    pat = re.compile(r"\b(" + "|".join(sorted(map(re.escape, ids), key=len, reverse=True)) + r")\s*\(")
-    files = sorted({f["file"] for f in funcs.values() if f["file"].endswith((".c", ".h"))})
+    pat = re.compile(r"\b([A-Za-z_]\w*)\s*\(")       # any call; only indexed names are kept
+    in_file = {}
+    for f in funcs.values():
+        in_file.setdefault(f["file"], []).append(f)
+    files = sorted(f for f in in_file if f.endswith((".c", ".h")))
     out = {}
     for rel in files:
         src = lines_text(root / rel).splitlines()
         stack, in_comment = [], False
-        owner = sorted((f for f in funcs.values() if f["file"] == rel), key=lambda f: f["line"])
+        owner = sorted(in_file[rel], key=lambda f: f["line"])
         for n, ln in enumerate(src, 1):
             code = ln
             if in_comment:
@@ -1066,6 +1155,8 @@ def uncompiled_calls(root, funcs, edges):
                 continue
             code = re.sub(r"\"(\\.|[^\"\\])*\"", "\"\"", code)
             for m in pat.finditer(code):
+                if m.group(1) not in ids:
+                    continue
                 if not ln[:1].isspace() and not ln.rstrip().endswith(";"):
                     continue                    # the line defines the name (a second definition under #ifdef)
                 by = next((f["name"] for f in reversed(owner) if f["line"] <= n <= f["end"]), None)
@@ -1184,6 +1275,9 @@ def data_loss(root, funcs, edges):
     root = Path(root)
     out = []
     bodies = list(_bodies(root, funcs))
+    prints = None                     # (fid, file, line, argument text) of every printf call, read once
+    told = {}                         # leaf -> where it is printed
+    src_of = {}
     for fid, f, text, at in bodies:
         for m in re.finditer(r"([A-Za-z_][\w.>\-\[\]]*?)\s*(\+=|\+\+)|\+\+\s*([A-Za-z_][\w.>\-\[\]]*)", text):
             var = m.group(1) or m.group(3)
@@ -1191,15 +1285,18 @@ def data_loss(root, funcs, edges):
             if not LOSS.search(leaf):
                 continue
             line = at(m.start())
-            src_line = lines_text(root / f["file"]).splitlines()[line - 1].strip()
+            if f["file"] not in src_of:
+                src_of[f["file"]] = lines_text(root / f["file"]).splitlines()
+            src_line = src_of[f["file"]][line - 1].strip()
             via = sorted({(e["s"], e["f"], e["l"]) for e in edges if e.get("d") == fid and e.get("src", "compiler") == "compiler"
                           and e["s"] in funcs and e.get("f")}, key=lambda x: (x[1], x[2]))
-            said = []
-            for gid, g, gtext, gat in bodies:
-                for p in re.finditer(r"\b\w*printf\w*\s*\(", gtext):
-                    args = gtext[p.end():p.end() + 400].split(";", 1)[0]
-                    if re.search(r"\b" + re.escape(leaf) + r"\b", args):
-                        said.append(dict(fid=gid, f=g["file"], l=gat(p.start())))
+            if prints is None:
+                prints = [(gid, g["file"], gat(p.start()), gtext[p.end():p.end() + 400].split(";", 1)[0])
+                          for gid, g, gtext, gat in bodies for p in re.finditer(r"\b\w*printf\w*\s*\(", gtext)]
+            if leaf not in told:
+                word = re.compile(r"\b" + re.escape(leaf) + r"\b")
+                told[leaf] = [dict(fid=gid, f=gf, l=gl) for gid, gf, gl, args in prints if leaf in args and word.search(args)]
+            said = [dict(x) for x in told[leaf]]
             out.append(dict(fid=fid, f=f["file"], l=line, var=var, text=src_line,
                             via=[dict(fid=s, f=a, l=b) for s, a, b in via], said=said))
     # one row per counter and function

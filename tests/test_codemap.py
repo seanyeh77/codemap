@@ -646,3 +646,18 @@ def test_access_lists_the_objects_own_fields(tmp_path):
     sig = signature.of(tmp_path, "a.py", 2, 5, "python")
     shared = access.of(tmp_path, "a.py", 2, 5, "python", sig, {})["shared"]
     assert {s["name"]: (s["reads"], s["writes"]) for s in shared} == {"self.items": ([3], [3]), "self.n": ([4], [4])}
+
+
+def test_shared_state_and_plain_writes_find_each_use(tmp_path):
+    from codemap import facts, state
+    (tmp_path / "a.c").write_text(
+        "int n;\nint buf[8];\nstatic int hits;\n"
+        "void put(int x) {\n    buf[n++] = x;\n    hits += 1;\n}\n"
+        "int get(void) {\n    return buf[--n] + s.n;\n}\n")
+    (tmp_path / "b.c").write_text("extern int n;\nint size(void) {\n    return n;\n}\n")
+    funcs = {"a.c:put": dict(file="a.c", line=4, end=7, name="put"), "a.c:get": dict(file="a.c", line=8, end=10, name="get"),
+             "b.c:size": dict(file="b.c", line=2, end=4, name="size")}
+    shared = {s["name"]: [u[0] for u in s["users"]] for s in state.shared_state(tmp_path, funcs)}
+    assert shared == {"n": ["a.c:put", "a.c:get", "b.c:size"], "buf": ["a.c:put", "a.c:get"]}
+    writes = {d["name"]: [w["l"] for w in d["writes"]] for d in facts.plain_writes(tmp_path, funcs, ["a.c", "b.c"])}
+    assert writes == {"buf": [5], "n": [5, 9], "hits": [6]}     # buf[n++] = x writes buf and n
