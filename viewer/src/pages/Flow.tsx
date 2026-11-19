@@ -1,4 +1,4 @@
-import { KIND_LABEL, oneLine as descLine, plain as plainText, useDescOrder, type DescOrder } from '../data/describe'
+import { SRC_LABEL, oneLine as descLine, plain as plainText, useDescOrder, type DescOrder } from '../data/describe'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from '../ui'
 import { local, t } from '../i18n'
@@ -23,7 +23,7 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
     const n: TreeNode = { id: key, name: ix.nameOf(nid, e), path: at }
     // what it does, when someone wrote it, before where the call is (cut at the end, the place is the least loss)
     const d = f ? descLine(ix, nid, order) : null
-    if (d && d.kind !== 'facts') { n.meta = `${t(KIND_LABEL[d.kind])}：${plainText(d.text)}${at ? ' · ' + at : ''}`; delete n.path }
+    if (d && d.kind !== 'facts') { n.meta = `${plainText(d.text)} · ${t(SRC_LABEL[d.kind])}${at ? ' · ' + at : ''}`; delete n.path }
     if (sites.length > 1) n.tags = [<UI.Tag key="n">{`×${sites.length}`}</UI.Tag>]
     if (e) {
       // the call is in the parent (looking down) or in this node's function (looking up)

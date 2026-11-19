@@ -152,14 +152,3 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   )
 }
 
-/** 被呼叫's first line: how far a change to the function reaches, and the switch between the caller tree and the
- *  table of everything reached (each place it is called, the relation, the distance). */
-export function ImpactSummary(p: { ix: Index; start: string; table: boolean; setTable: (v: boolean) => void }) {
-  const rows = useMemo(() => affected(p.ix, p.start), [p.ix, p.start])
-  const n = new Set(rows.map((r) => r.fid)).size
-  const far = rows.reduce((m, r) => Math.max(m, r.depth), 0)
-  return <p className="small impact-sum">
-    {n ? t('修改它可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫它。')}
-    {n ? <button type="button" className="linklike" onClick={() => p.setTable(!p.table)}>{p.table ? t('改為呼叫樹') : t('列成表')}</button> : null}
-  </p>
-}

@@ -11,7 +11,7 @@ import { codeSpans, descriptions, useDescOrder } from '../data/describe'
 import { DescText } from '../components/DescText'
 import { conceptEx, conceptText, keywordText } from '../data/glossary'
 import { affected } from './Impact'
-import { worthIn } from './Reader'
+import { worthIn, worthLists } from './Reader'
 
 type Src = 'sure' | 'guess' | 'ai'
 interface Row { key: string; line?: number; lines?: number[]; src: Src; body: ReactNode }
@@ -171,4 +171,27 @@ export function InfoTitle(p: { kind: string; name: string; where?: string; code?
     <h2 className={'info-title' + (p.code === false ? '' : ' mono')}>{p.name}</h2>
     {p.where ? <span className="small muted mono">{p.where}</span> : null}
   </header>
+}
+
+/** The check tab's part about an open file, component or the project: each finding of the checks there, with its
+ *  function and line, and the functions whose AI description is older than their code. */
+export function ScopeChecks(p: { ix: Index; title: string; inside: (fid: string, f: string) => boolean
+  open: (f: string, l: number) => void; openFn: (id: string) => void }) {
+  const groups = worthLists(p.ix.g).map(([label, xs]) => [label, xs.filter((x) => p.inside(x.fid, x.f))] as const).filter(([, xs]) => xs.length)
+  const stale = Object.entries(p.ix.funcs).filter(([id, f]) => f.ai?.state === 'stale' && p.inside(id, f.file)).map(([id]) => id)
+  const name = (id: string) => p.ix.funcs[id]?.name.split('.').pop() ?? id
+  return <section className="chk-sec">
+    <h3 className="info-h">{p.title}</h3>
+    {!groups.length && !stale.length ? <p className="small muted">{t('未發現問題。')}</p> : null}
+    {groups.map(([label, xs]) => <div key={label} className="fp-sec">
+      <h4 className="small">{t(label)}<span className="fp-cnt">{t('{v1} 處', { v1: xs.length })}</span></h4>
+      <ul className="fp-rows">{xs.slice(0, 20).map((x, i) => <li key={i} className="fp-it small">
+        <button type="button" className="linklike mono" onClick={() => p.openFn(x.fid)}>{name(x.fid)}</button>
+        {(x as { l?: number }).l ? <>{' · '}<button type="button" className="linklike muted" onClick={() => p.open(x.f, (x as { l?: number }).l!)}>{`${x.f}:${(x as { l?: number }).l}`}</button></> : null}
+      </li>)}{xs.length > 20 ? <li className="small muted">{t('另有 {v1} 處', { v1: xs.length - 20 })}</li> : null}</ul>
+    </div>)}
+    {stale.length ? <div className="fp-sec"><h4 className="small">{t('說明撰寫後已修改的函式')}<span className="fp-cnt">{t('{v1} 個', { v1: stale.length })}</span></h4>
+      <ul className="fp-rows">{stale.slice(0, 20).map((id) => <li key={id} className="fp-it small"><button type="button" className="linklike mono" onClick={() => p.openFn(id)}>{name(id)}</button></li>)}</ul>
+      <p className="small muted">{t('執行 codemap describe 以重新撰寫。')}</p></div> : null}
+  </section>
 }

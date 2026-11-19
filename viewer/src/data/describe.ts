@@ -109,6 +109,8 @@ export function oneLine(ix: Index, id: string, order: DescOrder): Desc | null {
 }
 
 export const KIND_LABEL: Record<DescKind, string> = { ai: 'AI', author: '註解', facts: '事實' }
+/** Where a description came from, as the gray words after it: one style everywhere (the function panel's too). */
+export const SRC_LABEL: Record<DescKind, string> = { ai: 'AI 撰寫', author: '作者註解', facts: '' }
 
 /** Text with `names` in code font, as React parts. */
 export function codeSpans(text: string): (string | { code: string })[] {

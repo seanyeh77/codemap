@@ -1,5 +1,5 @@
-import { KIND_LABEL, oneLine as descLine, useDescOrder, type DescOrder } from './data/describe'
-import { OpenFunc } from './components/CallLinks'
+import { SRC_LABEL, oneLine as descLine, useDescOrder, type DescOrder } from './data/describe'
+import { OpenCall, OpenFunc } from './components/CallLinks'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { UI } from './ui'
@@ -14,12 +14,12 @@ import { written, type Func, type Graph, type GrepHit, type Meta } from './data/
 import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
-import { Impact, ImpactSummary } from './pages/Impact'
+import { Impact } from './pages/Impact'
 import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { FileReader, compOfFile } from './pages/Reader'
 import { Info, fnAt, type At } from './pages/Info'
-import { FnChecks } from './pages/FnPanel'
+import { FnChecks, ScopeChecks } from './pages/FnPanel'
 import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
 import { Explorer, flagged } from './pages/Explorer'
@@ -177,7 +177,7 @@ function Shell(p: ShellProps) {
   /** Opens a place from the panel: the panel stays on its start. */
   // a function picked in callee or caller becomes what everything shows (code, 說明, both trees); the way there is
   // kept as a trail above the trees, each step a way back
-  const [trail, setTrail] = useState<string[]>([])
+  const [trail, setTrail] = useState<string[]>(() => init.p ?? [])
   const [mdMode, setMdMode] = useState<{ f: string; m: 'preview' | 'source' } | null>(null)
   const fromPanel = (id: string, a: At | null) => {
     if (!a) return
@@ -204,14 +204,16 @@ function Shell(p: ShellProps) {
     else if (id.startsWith('file:')) openFile(id.slice(5), 1)
     else if (id.startsWith('fn:')) {
       openFn(id.slice(3))
-      // a function with a dot: what was found is in 檢查, so it opens there
-      if (flags.has(id)) show('check')
     }
+    // a dot: what was found is in 檢查, so it opens there too
+    if (flags.has(id)) show('check')
     // 文件 is a folder: choosing it only opens it
   }
 
   // the address: what is open (each a step back can return to) and the panel's view (replaced, not a new step)
-  const base = hashOf(at, start !== fn ? start : null)
+  // the browsing path is part of the address while it leads to what is open: a reload or a link keeps it
+  const shownTrail = fn && trail.length > 1 && trail[trail.length - 1] === fn ? trail : undefined
+  const base = hashOf(at, start !== fn ? start : null, shownTrail)
   const here = base + (layout?.open.panel && layout.active.panel ? (base.includes('?') ? '&' : '?') + 'v=' + layout.active.panel : '')
   const placed = useRef(false)
   const lastBase = useRef(base)
@@ -227,6 +229,7 @@ function Shell(p: ShellProps) {
     const onPop = () => {
       const h = readHash(ix)
       if (h.at) { setEdge(''); setPicked(false); setAtState(h.at) }
+      setTrail(h.p ?? [])
       setPin(h.s ? { id: h.s, for: h.at?.kind === 'file' ? fnAt(ix, h.at.f, h.at.l) : null } : null)
       if (h.v) show(h.v)
     }
@@ -383,7 +386,7 @@ function Shell(p: ShellProps) {
         if (moved && key !== 'root') fromPanel(id, placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
       }} />
     return { id: d, title, render: () => <div className="view">
-      {fn && trail.length > 1 && trail[trail.length - 1] === fn ? <nav className="trail small" aria-label={t('瀏覽路徑')}>
+      {shownTrail ? <nav className="trail small" aria-label={t('瀏覽路徑')}>
         <span className="muted">{t('瀏覽路徑：')}</span>
         {trail.map((id, i) => <span key={id}>{i ? <span className="info-sep" aria-hidden="true">›</span> : null}
           {i === trail.length - 1 ? <span className="mono trail-here" aria-current="true">{ix.funcs[id]?.name.split('.').pop() ?? id}</span>
@@ -392,7 +395,8 @@ function Shell(p: ShellProps) {
       {!flowStart ? <Relations ix={ix} at={at} mode={d} openFile={(f) => openFile(f, 1)} openComp={openComp} />
         : d === 'down' ? (ix.funcs[flowStart] ? tree(flowStart) : <p className="small muted">{t('repo 外的函式：只看得到誰呼叫它。')}</p>)
         : <>
-          <ImpactSummary ix={ix} start={flowStart} table={upTable} setTable={setUpTable} />
+          {/* how far a change reaches is said once, in 檢查; here only the two ways to list it */}
+          <p className="small impact-sum"><button type="button" className="linklike" onClick={() => setUpTable(!upTable)}>{upTable ? t('改為呼叫樹') : t('列成表')}</button></p>
           {upTable ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
               onSel={(id, e) => fromPanel(id, placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))} />
             : ix.funcs[flowStart] ? tree(flowStart) : null}
@@ -418,10 +422,12 @@ function Shell(p: ShellProps) {
     </div> },
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <div className="check-cols">
-      {fn ? <FnChecks ix={ix} id={fn} open={openFile} /> : null}
+      {fn ? <FnChecks ix={ix} id={fn} open={openFile} />
+        : at.kind === 'file' ? <ScopeChecks ix={ix} title={t('{v1} 的檢查', { v1: at.f.split('/').pop()! })} inside={(_, f) => f === at.f} open={openFile} openFn={openFn} />
+        : at.kind === 'comp' ? <ScopeChecks ix={ix} title={t('{v1} 的檢查', { v1: at.id })} inside={(id) => ix.funcs[id]?.comp === at.id} open={openFile} openFn={openFn} /> : null}
       <Check compact ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
       <DescHealth compact ix={ix} />
-      <section className="chk-sec chk-worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} compact /></section>
+      {at.kind === 'proj' || at.kind === 'settings' ? <section className="chk-sec chk-worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} compact /></section> : null}
       </div>
     </div> },
   ]
@@ -468,7 +474,7 @@ function Shell(p: ShellProps) {
   ) : null
 
   return (
-    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}><TermsCtx.Provider value={termsCtx}>
+    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}><OpenCall.Provider value={(id) => (fn && ix.funcs[id] && id !== fn ? fromPanel(id, placeOf(id)) : openFn(id))}><TermsCtx.Provider value={termsCtx}>
     <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
       crumbs={crumbs}
@@ -498,11 +504,11 @@ function Shell(p: ShellProps) {
       { target: TOUR_TARGETS[0], title: t('檔案總管'), text: t('專案、元件、檔案與函式。選取項目即於中間開啟；圓點：有值得注意之處。上方可篩選名稱。') },
       { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
       { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案：總覽；元件：架構圖；檔案與函式：程式碼。程式碼中的藍色名稱為連結。') },
-      { target: TOUR_TARGETS[3], title: t('說明'), text: t('開啟項目的說明與值得注意之處。缺少說明的函式可執行 codemap describe 由 AI 補上。') },
-      { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee：目前函式呼叫的函式。caller：呼叫目前函式的函式，以及修改後的影響範圍。選取名稱即開啟該函式；分頁可拖曳至右側欄或下方面板。') },
-      { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
+      { target: TOUR_TARGETS[3], title: t('說明'), text: t('開啟項目的說明；函式另列 Parameters、Contract 等資料。選取程式碼中的一行，即標示與該行相關的資料。') },
+      { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee：目前函式呼叫的函式。caller：呼叫目前函式的函式。選取名稱即開啟該函式，上方列出瀏覽路徑；分頁可拖曳至右側欄或下方面板。') },
+      { target: TOUR_TARGETS[5], title: t('檢查'), text: t('自動檢查的結果、說明與程式碼不一致之處，以及修改的影響範圍。檔案總管中有圓點的項目會開啟此分頁。') },
     ]} />
-    </TermsCtx.Provider></OpenFunc.Provider></OpenFile.Provider>
+    </TermsCtx.Provider></OpenCall.Provider></OpenFunc.Provider></OpenFile.Provider>
   )
 }
 
@@ -527,7 +533,7 @@ function paletteItems(ix: Index, order: DescOrder): PaletteItem[] {
     const twins = sameName.get(f.name)! - 1
     // what it does, when someone wrote it: shown first, and its words find the function (「同步路由」 finds _sync_as)
     const d = descLine(ix, id, order)
-    const what = d && d.kind !== 'facts' ? `${t(KIND_LABEL[d.kind])}：${d.text} · ` : ''
+    const what = d && d.kind !== 'facts' ? `${d.text} · ${t(SRC_LABEL[d.kind])} · ` : ''
     items.push({ id: 'f:' + id, kind: ({ method: '方法', class: '類別', module: '模組', page: '頁面', stylesheet: '樣式表' } as Record<string, string>)[f.kind ?? ''] ?? '函式', label: f.name, code: true,
       keywords: [f.file, ...(f.doc ? [f.doc] : []), ...Object.values(f.ai?.text ?? {})],
       // functions of the same name differ only by their path: shown in full, never shortened
@@ -629,7 +635,7 @@ const OVERVIEW_SECTIONS = [['ov-comps', '元件'], ['ov-entry', '進入與結束
 
 let lastCat = 'source'
 
-interface Loc { at: At | null; s?: string; d?: string; v?: ViewId }
+interface Loc { at: At | null; s?: string; d?: string; v?: ViewId; p?: string[] }
 
 /** What the address opens. #overview, #comp?c=harness, #code?f=harness/controller.py&l=698, #settings; v= a view
  *  (info, flow, impact, check), s= the function the panel starts from when it is not the open one, d=up.
@@ -646,12 +652,12 @@ function readHash(ix: Index): Loc {
     return (VIEW_IDS as string[]).includes(w ?? '') ? w as ViewId : undefined
   }
   const o = /^(.+):(\d+)$/.exec(get('o') ?? '')
-  const base = { d: get('d'), v: view(get('v')) }
+  const base = { d: get('d'), v: view(get('v')), p: get('p')?.split(',').filter((x) => ix.funcs[x]) }
   switch (page) {
     case '': case 'overview': return { at: { kind: 'proj' }, ...base }
     case 'settings': return { at: { kind: 'settings' }, ...base }
     case 'comp': return { at: get('c') ? { kind: 'comp', id: get('c')! } : { kind: 'proj' }, s: get('s'), ...base }
-    case 'code': return { at: get('f') ? { kind: 'file', f: get('f')!, l: Number(get('l') ?? 1) || 1 } : null, s: get('s'), ...base }
+    case 'code': return { ...base, at: get('f') ? { kind: 'file', f: get('f')!, l: Number(get('l') ?? 1) || 1 } : null, s: get('s') }
     case 'arch': {
       const c = get('c')
       return { at: o ? { kind: 'file', f: o[1], l: +o[2] } : c?.startsWith('file:') ? { kind: 'file', f: c.slice(5), l: 1 } : c ? { kind: 'comp', id: c } : { kind: 'proj' }, ...base }
@@ -670,11 +676,12 @@ function readHash(ix: Index): Loc {
 }
 
 /** The address of what is open; s when the panel starts elsewhere. */
-function hashOf(at: At, s: string | null): string {
+function hashOf(at: At, s: string | null, trail?: string[]): string {
   const q = new URLSearchParams()
   if (at.kind === 'comp') q.set('c', at.id)
   if (at.kind === 'file') { q.set('f', at.f); q.set('l', String(at.l)) }
   if (s) q.set('s', s)
+  if (trail && trail.length > 1) q.set('p', trail.join(','))
   const qs = q.toString()
   return '#' + ({ proj: 'overview', comp: 'comp', file: 'code', settings: 'settings' } as const)[at.kind] + (qs ? '?' + qs : '')
 }

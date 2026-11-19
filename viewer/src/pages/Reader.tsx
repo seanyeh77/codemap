@@ -264,7 +264,7 @@ export function worthIn(g: Graph, fid: string): [string, number | undefined][] {
   return worthLists(g).flatMap(([label, xs]) => xs.filter((x) => x.fid === fid).map((x) => [label, (x as { l?: number }).l] as [string, number | undefined]))
 }
 
-function worthLists(g: Graph): [string, { fid: string; f: string }[]][] {
+export function worthLists(g: Graph): [string, { fid: string; f: string }[]][] {
   const w = g.worth
   if (!w) return []
   return [

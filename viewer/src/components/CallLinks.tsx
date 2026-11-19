@@ -8,6 +8,8 @@ import { DescText } from './DescText'
 
 /** Opens a function's flow page; App provides it. */
 export const OpenFunc = createContext<(id: string) => void>(() => {})
+/** Opens a function from a call in the code: App extends the browsing path with it, like a pick in callee. */
+export const OpenCall = createContext<((id: string) => void) | null>(null)
 
 type CallLink = { line: number; col: number; text: string; href: string; label: string; ids: string[] }
 
@@ -61,7 +63,8 @@ export function callLinks(ix: Index, file: string, start: number, lines: string[
 
 /** The props that make the calls in a CodeView links: open the function, and a card with where it is defined. */
 export function useCallLinks(ix: Index, file: string | undefined, start: number, lines: string[] | undefined) {
-  const open = useContext(OpenFunc)
+  const openFn = useContext(OpenFunc)
+  const open = useContext(OpenCall) ?? openFn
   const order = useDescOrder()
   const links = useMemo(() => (file && lines ? callLinks(ix, file, start, lines) : []), [ix, file, start, lines])
   if (!links.length) return {}

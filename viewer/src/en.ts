@@ -1114,4 +1114,12 @@ export const EN: Record<string, string> = {
   "自動檢查": "Automatic check",
   "顯示原始碼": "Show the source",
   "顯示預覽": "Show the preview",
+  "說明撰寫後已修改的函式": "Functions changed since their description",
+  "執行 codemap describe 以重新撰寫。": "Run codemap describe to write them again.",
+  "可修改：專案允許修改此檔案。": "Editable: the project lets people change this file.",
+  "請勿修改：專案不希望修改此檔案。": "Do not edit: the project does not want this file changed.",
+  "開啟項目的說明；函式另列 Parameters、Contract 等資料。選取程式碼中的一行，即標示與該行相關的資料。": "What is open; for a function also its Parameters, Contract and the rest. Select a line in the code to mark what is about it.",
+  "callee：目前函式呼叫的函式。caller：呼叫目前函式的函式。選取名稱即開啟該函式，上方列出瀏覽路徑；分頁可拖曳至右側欄或下方面板。": "callee: what the function calls. caller: what calls it. Select a name to open that function; the browsing path is listed above. Tabs can be dragged to the side bar or the panel.",
+  "自動檢查的結果、說明與程式碼不一致之處，以及修改的影響範圍。檔案總管中有圓點的項目會開啟此分頁。": "What the checks found, where descriptions disagree with the code, and how far a change reaches. Items with a dot in the explorer open this tab.",
+  "作者註解": "author's comment",
 }
