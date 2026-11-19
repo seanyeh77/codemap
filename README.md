@@ -34,8 +34,16 @@ its components, their files and each file's functions, then its documents
 worth a note. In the middle, what is open: the project opens as its overview
 (what it does, where to start reading, its components), a component as the
 architecture diagram, a file or a function as its code. On the right, 說明: what
-the open thing is and what is worth a note; for a file, also its functions in line
-order with what each does. With the code inside a function, 說明 is that function
+the open thing is; for a file, also its functions in line order with what each
+does. Beside it, 定義: what the open file defines besides its functions, read with
+tree-sitter for C, C++, Python, Go, TypeScript, JavaScript and Java. Types (struct,
+union, enum, typedef, class, interface; their fields on request), file-level
+variables, constants and macros (with their values), includes and imports (a
+project file opens on click), and exports. Each item gives its line and the
+functions that use it, found by name in the file and in the files that include or
+import it, so marked as inferred. It follows the code as 說明 does: the items a line
+defines or uses are marked, and pointing at one marks its line. Files with more
+than 30 items get a filter. With the code inside a function, 說明 is that function
 for reading it: Execution context, Shared state, Parameters (each one's role, in,
 out or in-out, and how the language passes it), Return value, Side effects,
 Declaration (static, async, virtual ...) and Contract. Clicking a line in the code

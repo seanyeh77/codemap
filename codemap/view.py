@@ -11,7 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import access, signature, arch, check, describe, docs, facts, rules, state
+from . import defs, access, signature, arch, check, describe, docs, facts, rules, state
 from .arch import in_repo, repo_func
 from .source import c_body_end, code_lines, lines
 from .schema import CALL_SOURCES
@@ -349,7 +349,7 @@ def build(root, index, config=None):
                files={f: d for f, d in fdocs.items() if any(g["file"] == f for g in funcs.values())},
                env=index.get("env", {}), env_info=facts.env_meaning(root, funcs, index.get("env", {}), config),
                uncompiled=facts.uncompiled_calls(root, funcs, edges), uncompiled_funcs=facts.uncompiled_funcs(root, funcs),
-               readable=readable, symbols=syms,
+               readable=readable, symbols=syms, defs=defs.run(root, funcs, readable),
                docs=doc_summaries(root, readable, readable),
                phases={k: [ph for ph in v if isinstance(ph, dict) and ph.get("name") and ph.get("from")]
                        for k, v in config.get("phases", {}).items() if isinstance(v, list)},

@@ -35,6 +35,28 @@ export const CONCEPTS: Record<string, Concept> = {
   'ownership': { text: { 'zh-TW': '資源的釋放責任，例如由誰 free 記憶體、由誰 close 檔案或 socket。', en: 'Who releases a resource: who frees the memory, who closes the file or socket.' } },
   'static local': { text: { 'zh-TW': '宣告為 static 的區域變數：在多次呼叫之間保留其值，因此並行或遞迴呼叫時須留意。', en: 'A local variable declared static: it keeps its value between calls, so concurrent or recursive calls share it.' },
     ex: { c: 'int next(void) { static int n = 0; return ++n; }   /* 1, 2, 3 ... */' } },
+  // the kinds of definition the 定義 view lists
+  'struct': { text: { 'zh-TW': '將多個欄位組成一個型別，各欄位有各自的記憶體位置。', en: 'A type made of several fields, each with its own place in memory.' },
+    ex: { c: 'struct ring { int head; char buf[64]; };\nstruct ring r;\nr.head = 0;', go: 'type Ring struct { Head int; Buf []byte }' } },
+  'union': { text: { 'zh-TW': '多個欄位共用同一塊記憶體，同一時間只有一個欄位的值有意義。', en: 'Fields that share one piece of memory: only one of them holds a meaningful value at a time.' },
+    ex: { c: 'union val { int i; float f; };\nunion val v;\nv.i = 1;   /* 此後讀取 v.f 無意義 */' } },
+  'enum': { text: { 'zh-TW': '一組具名的常數，用名稱取代數字。', en: 'A set of named constants that stand for numbers.' },
+    ex: { c: 'enum color { RED, GREEN = 3 };   /* RED 為 0 */', ts: 'enum Dir { Up, Down }', java: 'enum E { A, B }' } },
+  'typedef': { text: { 'zh-TW': '為既有型別另取名稱，不產生新的型別。', en: 'Another name for an existing type; it makes no new type.' },
+    ex: { c: 'typedef unsigned int u32;\nu32 n = 1;   /* 與 unsigned int 相同 */' } },
+  'macro': { text: { 'zh-TW': '前置處理器在編譯前做的文字替換，以 #define 定義。帶參數的巨集看似函式呼叫，但參數是直接代入文字。', en: 'Text the preprocessor substitutes before compiling, defined with #define. A macro with parameters looks like a call, but its arguments are pasted in as text.' },
+    ex: { c: '#define MAX_CTX 16\n#define SQ(x) ((x) * (x))\nSQ(a + 1)   /* 展開為 ((a + 1) * (a + 1)) */' } },
+  'extern': { text: { 'zh-TW': '宣告變數存在於其他檔案，本檔案只引用，不配置記憶體。', en: 'Says the variable lives in another file: this file only refers to it and allocates nothing.' },
+    ex: { c: '/* a.c */ int g_n;\n/* a.h */ extern int g_n;' } },
+  'static variable': { text: { 'zh-TW': '在函式外宣告為 static 的變數：只有本檔案的程式碼可以使用，整個程式執行期間只有一份。', en: 'A variable declared static outside any function: only this file can use it, and the program has one copy of it.' },
+    ex: { c: 'static int hits;   /* 其他 .c 檔案看不到 */' } },
+  'global variable': { text: { 'zh-TW': '在函式外宣告的變數：整個程式只有一份，其他檔案以 extern 宣告後也能使用。', en: 'A variable declared outside any function: the program has one copy, and other files can use it after an extern declaration.' } },
+  'module variable': { text: { 'zh-TW': '在模組最外層指定的變數：同一模組的函式都能讀取，以 global 宣告後才能重新指定。', en: 'A variable assigned at the top of a module: its functions can read it, and reassign it after a global statement.' },
+    ex: { py: 'count = 0\ndef hit():\n    global count\n    count += 1' } },
+  'include': { text: { 'zh-TW': '前置處理器將另一個檔案的內容插入此處。引號表示專案內的檔案，角括號表示系統或程式庫的標頭檔。', en: 'The preprocessor pastes another file in here. Quotes name a file of the project; angle brackets a system or library header.' },
+    ex: { c: '#include "ring.h"\n#include <stdio.h>' } },
+  'export': { text: { 'zh-TW': '模組開放給其他模組使用的名稱。', en: 'A name a module lets other modules use.' },
+    ex: { ts: 'export const MAX_N = 10', py: '__all__ = ["Ring"]', go: 'func Read() {}   // 大寫開頭即匯出' } },
 }
 
 /** What each declaration keyword means, keyed as signature.py names them. */

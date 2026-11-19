@@ -12,6 +12,7 @@ import { rank } from './data/search'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import { written, type Func, type Graph, type GrepHit, type Meta } from './data/types'
 import { OpenFile, PeekLine } from './components/DocRefs'
+import { Defs } from './pages/Defs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
 import { Impact } from './pages/Impact'
@@ -119,13 +120,13 @@ interface ShellProps {
 
 // 說明; 呼叫 (what it calls, down) and 被呼叫 (what calls it, up, with what a change reaches); 檢查
 // 對外介面: the commands, environment variables, files and entry points of what is open
-type ViewId = 'info' | 'down' | 'up' | 'world' | 'check'
+type ViewId = 'info' | 'defs' | 'down' | 'up' | 'world' | 'check'
 const VIEW_IDS: ViewId[] = ['info', 'down', 'up', 'world', 'check']
 // the overview's parts in 對外介面; the overview page keeps what the project is and its components
 const WORLD = ['ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads']
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
-const LAYOUT = { side: ['info'], panel: ['down', 'up', 'world', 'check'] }
+const LAYOUT = { side: ['info', 'defs'], panel: ['down', 'up', 'world', 'check'] }
 // the tour points at the explorer, the search, the stage and three of the views, wherever the reader moved them
 const TOUR_TARGETS = ['tree', 'search', 'stage', ...['info', 'down', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
 
@@ -415,6 +416,8 @@ function Shell(p: ShellProps) {
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
       : <Info ix={ix} at={at} fn={fn} openFn={openFn} line={picked && at.kind === 'file' ? at.l : null} />}</div> },
+    { id: 'defs', title: t('定義'), render: () => <div className="view">
+      <Defs ix={ix} file={at.kind === 'file' ? at.f : null} line={picked && at.kind === 'file' ? at.l : null} open={openFile} openFn={openFn} /></div> },
     flowView('down', 'callee'),
     flowView('up', 'caller'),
     { id: 'world', title: t('對外介面'), render: () => <div className="view world-view">

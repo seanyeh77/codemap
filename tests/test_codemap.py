@@ -661,3 +661,32 @@ def test_shared_state_and_plain_writes_find_each_use(tmp_path):
     assert shared == {"n": ["a.c:put", "a.c:get", "b.c:size"], "buf": ["a.c:put", "a.c:get"]}
     writes = {d["name"]: [w["l"] for w in d["writes"]] for d in facts.plain_writes(tmp_path, funcs, ["a.c", "b.c"])}
     assert writes == {"buf": [5], "n": [5, 9], "hits": [6]}     # buf[n++] = x writes buf and n
+
+
+def test_defs_lists_what_a_file_defines_besides_functions(tmp_path):
+    from codemap import defs
+    (tmp_path / "ring.h").write_text(
+        "#ifndef RING_H\n#define RING_H\n#include <stdio.h>\n#define MAX_CTX 16\n#define SQ(x) ((x) * (x))\n"
+        "typedef unsigned int u32;\ntypedef struct ring { int head; char *buf[8]; } ring;\n"
+        "enum color { RED, GREEN = 3 };\nextern int g_n;\n#endif\n")
+    (tmp_path / "ring.c").write_text(
+        '#include "ring.h"\nstatic int hits;\nint g_n;\n'
+        "int put(ring *r) {\n    hits++;\n    return r->head < MAX_CTX;\n}\n")
+    (tmp_path / "m.py").write_text("from pathlib import Path\n__all__ = ['Foo']\nMAX = 3\ncount = 0\nclass Foo:\n    x: int = 1\n")
+    funcs = {"ring.c:put": dict(file="ring.c", line=4, end=7, name="put", kind="function")}
+    out = defs.run(tmp_path, funcs, ["ring.h", "ring.c", "m.py"])
+    h = out["ring.h"]
+    assert [(t["name"], t["kind"]) for t in h["types"]] == [("u32", "typedef"), ("ring", "struct"), ("color", "enum")]
+    assert [f["name"] for f in h["types"][1]["fields"]] == ["head", "buf"] and h["types"][1]["typedef"]
+    assert h["types"][1]["users"] == ["ring.c:put"]
+    consts = {c["name"]: c for c in h["consts"]}
+    assert consts["MAX_CTX"]["value"] == "16" and consts["SQ"]["params"] == "(x)" and consts["GREEN"]["kind"] == "enum"
+    assert consts["MAX_CTX"]["users"] == ["ring.c:put"] and "RING_H" not in consts       # the include guard is not a constant
+    assert [(v["name"], v["scope"]) for v in h["vars"]] == [("g_n", "extern")]
+    c = out["ring.c"]
+    assert c["imports"][0]["file"] == "ring.h" and [(v["name"], v["scope"]) for v in c["vars"]] == [("hits", "static"), ("g_n", "global")]
+    assert c["vars"][0]["at"] == [5]
+    py = out["m.py"]
+    assert [x["name"] for x in py["consts"]] == ["MAX"] and [x["name"] for x in py["vars"]] == ["count"]
+    assert py["exports"] == [{"name": "Foo", "line": 2}] and py["types"][0]["fields"][0]["name"] == "x"
+    assert py["imports"][0]["names"] == ["Path"]

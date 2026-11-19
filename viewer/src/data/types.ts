@@ -237,6 +237,9 @@ export interface Graph {
   /** Macros and file-scope variables, to search by name. */
   symbols?: { name: string; kind: 'macro' | 'var'; file: string; line: number; text: string }[]
   state?: { name: string; file: string; line: number; static: boolean; users: [string, number][] }[]
+  /** What each file defines besides its functions (codemap/defs.py): types, file-level variables, constants and
+   *  macros, imports and exports. at: the lines of the file that use the name; users: functions that use it, found by name. */
+  defs?: Record<string, FileDefs>
   /** Stages of a long function's calls, from .codemap/rules.json: function name -> [{name, from}]. */
   /** How the C code reads each variable: flag, number, text or presence; its value when unset; where it is stored.
    *  purpose and default with own: written in .codemap/rules.json (env). */
@@ -385,4 +388,13 @@ export interface FileWrite {
   expr?: string
   /** a name that comes in as a parameter: what each caller passes */
   via?: { fid: string; f: string; l: number; name: string }[]
+}
+
+interface DefUse { at?: number[]; users?: string[]; users_n?: number }
+export interface FileDefs {
+  types: (DefUse & { name: string; kind: string; typedef?: boolean; line: number; end?: number; of?: string | null; fields: { name: string; type: string; line: number }[] })[]
+  vars: (DefUse & { name: string; scope: string; type?: string; line: number })[]
+  consts: (DefUse & { name: string; kind: 'macro' | 'const' | 'enum'; line: number; value?: string | null; params?: string; type?: string })[]
+  imports: { text: string; line: number; file?: string; names?: string[]; at?: number[]; local?: boolean }[]
+  exports: { name: string; line: number }[]
 }
