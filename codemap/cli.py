@@ -428,7 +428,15 @@ def cmd_check(a):
     files = a.files or ["CODEMAP.md"]
     bad = 0
     for f in files:
-        r = check.check(root, root / f, idx)
+        p = Path(f) if Path(f).is_absolute() else root / f
+        if not p.is_file():
+            if a.files:                              # a file named on the command line: a mistake to say
+                print(f"{f}: no such file")
+                bad += 1
+            else:                                    # no notes yet: only the descriptions are checked
+                print("CODEMAP.md: none yet (codemap arch writes one), so only the descriptions are checked")
+            continue
+        r = check.check(root, p, idx)
         for p in r["problems"]:
             print(p)
         print(f'{f}: {r["refs"]} references, {r["claims"]} call claims, {len(r["problems"])} problems')

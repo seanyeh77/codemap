@@ -603,3 +603,15 @@ def test_access_reads_roles_and_shared_state(tmp_path):
     assert "in" not in u["step"]["params"]                         # const: the language settles it
     assert u["add"]["params"]["xs"]["role"] == "in-out"
     assert u["add"]["shared"][0]["name"] == "WINDOW" and u["add"]["shared"][0]["reads"] == [4]
+
+
+def test_check_without_notes_checks_the_descriptions(tmp_path, capsys):
+    from codemap import cli
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n")
+    cli.main(["-C", str(tmp_path), "index"])
+    capsys.readouterr()
+    try:
+        cli.main(["-C", str(tmp_path), "check"])
+    except SystemExit:
+        pass
+    assert "CODEMAP.md: none yet" in capsys.readouterr().out
