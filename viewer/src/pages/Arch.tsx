@@ -1,4 +1,3 @@
-import { Masonry } from '../components/Masonry'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { OpenFile, useCodeRefs } from '../components/DocRefs'
 import { Notes, Parts, Q, worthAt } from './Reader'
@@ -866,17 +865,15 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   )
   if (p.mode === 'bare') return <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
   if (p.mode === 'page') return (
-    // no contents column beside it: the two columns show most of the overview at once, and the search finds a section
+    // no contents column beside it: the card takes the stage's width, and the search finds a section
     <div className="ov-page">
       <article className="ov-doc" data-tour="arch">
         <header className="ov-doc-head">
           <h1 className="ov-title">{g.repo}</h1>
           <UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} />
         </header>
-        {/* on a wide stage the sections fill two columns, each where a column ends first, so no column runs on alone */}
-        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>
-          <Masonry className="ov-flow">{shownParts.map(body)}</Masonry>
-        </MdLinksCtx.Provider></RepoKey.Provider>
+        {/* one column, read top to bottom, as wide as the card: text up to 120 characters a line, tables the full width */}
+        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
       </article>
     </div>
   )
