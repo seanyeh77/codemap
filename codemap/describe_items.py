@@ -2,7 +2,7 @@
 variables, the data files the code reads and writes, a glossary of the project's terms, and a reading route.
 
 They are written in rounds, each resting on the one below it (describe.py has round 1, the functions):
-  2  files, commands, argument values, environment variables, data files
+  2  files, commands, argument values, environment variables, data files, functions outside the repository
   3  components (from their files)
   4  the project, the reading route and the glossary (from the components and the commands)
 
@@ -19,9 +19,11 @@ from pathlib import Path
 
 from . import describe
 
-LEVELS = {1: "functions", 2: "files, commands, values, environment variables, data files", 3: "components",
+LEVELS = {1: "functions", 2: "files, commands, values, environment variables, data files, outside functions", 3: "components",
           4: "the project, its reading route and glossary"}
-KIND_LEVEL = {"file": 2, "cmd": 2, "value": 2, "env": 2, "data": 2, "comp": 3, "project": 4, "route": 4, "term": 4}
+KIND_LEVEL = {"file": 2, "cmd": 2, "value": 2, "env": 2, "data": 2, "ext": 2, "comp": 3, "project": 4, "route": 4, "term": 4}
+# info an outside function's description may carry (it has no body here: no lines, no checks)
+EXT_INFO = ("context", "params", "returns", "effects", "contract")
 
 
 def kind(key):
@@ -88,6 +90,17 @@ def items(root, idx, g, tests=False):
                 d["files"].add(r["f"]); d["funcs"].add(r["fid"]); d["lines"].append(f'{r["f"]}:{r["l"]}'); d["ways"].add(kind_)
     for name, d in data.items():
         out["data:" + name] = dict(d, files=sorted(d["files"]), funcs=sorted(d["funcs"]), ways=sorted(d["ways"]))
+    # the functions outside the repository it calls (libc, a library): what they do and what their parameters are
+    # for, from the AI's knowledge of them, with the lines that call them
+    calls = {}
+    for e in idx["edges"]:
+        d = e.get("dst", "")
+        if d.startswith("ext:") and e.get("src") in nodes and nodes[e["src"]].get("line") and e.get("file") and e.get("line") \
+                and (tests or nodes[e["src"]].get("scope") != "test"):
+            calls.setdefault(d, []).append((e["src"], f'{e["file"]}:{e["line"]}'))
+    for d, cs in calls.items():
+        lines = sorted({r for _, r in cs}, key=lambda r: (_at(r)[0], _at(r)[1]))
+        out[d] = dict(level=2, title=d[4:], files=sorted({_at(r)[0] for r in lines}), funcs=sorted({s for s, _ in cs}), lines=lines[:6])
     for c in g.get("comps") or []:
         if c["id"].endswith("(tests)"):
             continue
@@ -112,6 +125,8 @@ def basis(root, idx, info, key, entry=None):
         return _h(*(describe.digest(root, idx["nodes"][s]) for s in steps if s in idx["nodes"]))
     if k == "term":
         return _h(*(_line(root, *_at(r)) for r in (entry or {}).get("evidence", [])))
+    if k == "ext":
+        return _h(key)
     lines = [_line(root, *_at(r)) for r in info.get("lines", [])]
     return _h(*lines, *(describe.digest(root, idx["nodes"][x]) for x in info.get("funcs", []) if x in idx["nodes"]))
 
@@ -146,6 +161,28 @@ def problems(root, idx, info, key, entry):
         for a, b in zip(steps, steps[1:]):
             if (a.get("id"), b.get("id")) not in pairs and (b.get("id"), a.get("id")) not in pairs and not entry(b.get("id")):
                 out.append(f"{a.get('id')} and {b.get('id')}: neither calls the other, and {b.get('id')} is not where the program starts")
+        return out
+    if k == "ext":
+        info_ = entry.get("info") or {}
+        params = {str(p.get("name", "")) for p in info_.get("params") or [] if isinstance(p, dict)}
+        for part, its_ in info_.items() if isinstance(info_, dict) else []:
+            if part not in EXT_INFO:
+                out.append(f"info: unknown part {part!r} for an outside function (one of {', '.join(EXT_INFO)})")
+                continue
+            for i, it in enumerate(its_ if isinstance(its_, list) else []):
+                where = f"info.{part}[{i}] "
+                if not isinstance(it, dict):
+                    out.append(where + "is not an object")
+                    continue
+                for lang in describe.LANGS:
+                    if not str(it.get(lang, "")).strip():
+                        out.append(where + f"has no {lang} text")
+                if part == "params" and it.get("role") not in describe.ROLES:
+                    out.append(where + f"role must be one of {', '.join(describe.ROLES)}")
+                if part == "params" and not str(it.get("name", "")).strip():
+                    out.append(where + "has no name")
+                if part == "contract" and it.get("kind") not in describe.CONTRACT:
+                    out.append(where + f"kind must be one of {', '.join(describe.CONTRACT)}")
         return out
     # where the evidence may be: the item's files (the project: any file of the repository)
     files = info.get("files")
@@ -267,6 +304,10 @@ def prompt(root, idx, g, level, keys):
             parts.append(head + f"- a file the program {' and '.join(info.get('ways', []))}: {info['title']}\n- where:\n"
                          + "".join(f"  {r}: {_line(root, *_at(r))}\n" for r in info["lines"])
                          + "- by:\n" + "".join(f"  - {fn(x)}\n" for x in info["funcs"]))
+        elif k == "ext":
+            lang = nodes[info["funcs"][0]].get("lang", "c") if info["funcs"] else "c"
+            parts.append(head + f"- a function outside the repository ({lang}): {info['title']}\n- where the project calls it:\n"
+                         + "".join(f"  {r}: {_line(root, *_at(r))}\n" for r in info["lines"]))
         elif k == "project":
             comps = [x for x in its if kind(x) == "comp"]
             cmds = [x for x in its if kind(x) == "cmd"]
@@ -299,7 +340,13 @@ Then save it to a file and run: codemap describe --apply <that file>
 HEAD = {
     2: "Describe, in one sentence each (zh-TW at most 60 characters, en at most 30 words): what each file is "
        "responsible for; what each command does for the person who types it; what each allowed value of an argument "
-       "does; what each environment variable controls; what each data file holds and why it is read or written.\n\n",
+       "does; what each environment variable controls; what each data file holds and why it is read or written.\n"
+       "For a function outside the repository (ids ext:...), say what it does from what you know of it (its manual, "
+       "its library's documentation), and add \"info\" as in the form below: every parameter with its name and type "
+       "as declared, its role (in, out, in-out) and what it holds; what its return values mean; its side effects; "
+       "whether it blocks or which thread it needs (context); its contract (kind pre, post, error, ownership). Its "
+       "evidence is the lines that call it. Leave a part out when you are not sure of it; do not describe a "
+       "function you do not know.\n\n",
     3: "Describe each component in one or two sentences: what it is responsible for in the program, "
        "from what its files do.\n\n",
     4: "Describe the project as a whole, then give a reading route and a glossary.\n"
@@ -312,7 +359,10 @@ HEAD = {
 }
 
 FORM = {
-    2: '{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}]}',
+    2: '{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]},\n'
+       ' {"id": "ext:...", "zh-TW": "...", "en": "...", "evidence": ["file:line"],\n'
+       '  "info": {"params": [{"name": "addrlen", "type": "socklen_t *", "role": "in-out", "zh-TW": "...", "en": "..."}],\n'
+       '           "returns": [{"zh-TW": "...", "en": "..."}], "contract": [{"kind": "ownership", "zh-TW": "...", "en": "..."}]}}]}',
     3: '{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}]}',
     4: '{"descriptions": [{"id": "project", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}],\n'
        ' "route": {"zh-TW": "one line on the route", "en": "...", "steps": [{"id": "function id", "zh-TW": "...", "en": "..."}]},\n'
@@ -339,8 +389,17 @@ def apply(root, idx, g, data, by="ai"):
     for it in data.get("descriptions", []) if isinstance(data, dict) else []:
         key = str(it.get("id", ""))
         if key in its and kind(key) not in ("route", "term"):
-            keep(key, {"text": {l: str(it.get(l, "")).strip() for l in describe.LANGS},
-                       "evidence": [str(x) for x in it.get("evidence", [])], "by": by, "at": today}, its[key])
+            entry = {"text": {l: str(it.get(l, "")).strip() for l in describe.LANGS},
+                     "evidence": [str(x) for x in it.get("evidence", [])], "by": by, "at": today}
+            if kind(key) == "ext" and it.get("info") is not None:
+                entry["info"] = it["info"]
+            keep(key, entry, its[key])
+            if key in have["items"] and "info" in have["items"][key]:
+                inf = describe.clean_info(have["items"][key]["info"], keep=("type",))
+                if inf:
+                    have["items"][key]["info"] = inf
+                else:
+                    del have["items"][key]["info"]
     r = data.get("route") if isinstance(data, dict) else None
     if isinstance(r, dict):
         keep("route", {"text": {l: str(r.get(l, "")).strip() for l in describe.LANGS},
@@ -370,6 +429,8 @@ def described(root, idx, g):
         out[key] = {"text": e.get("text", {}), "state": st, "by": e.get("by")}
         if kind(key) == "route":
             out[key]["steps"] = e.get("steps", [])
+        if e.get("info"):
+            out[key]["info"] = e["info"]
         if kind(key) == "term":
             out[key]["term"] = e.get("term")
             out[key]["evidence"] = e.get("evidence", [])

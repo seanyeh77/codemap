@@ -2,7 +2,7 @@
 import { createContext, useContext, useMemo } from 'react'
 import * as UI from '@seanyeh77/ui'
 import type { Index } from '../data/graph'
-import { t } from '../i18n'
+import { local, t } from '../i18n'
 import { oneLine, useDescOrder } from '../data/describe'
 import { DescText } from './DescText'
 
@@ -26,7 +26,8 @@ export function callLinks(ix: Index, file: string, start: number, lines: string[
   const end = start + lines.length - 1
   const byLine = new Map<number, string[]>()
   for (const e of ix.g.edges) {
-    if (e.f !== file || e.l < start || e.l > end || !ix.funcs[e.d]) continue
+    // a function of the repository, or one outside it an AI described (ext:accept)
+    if (e.f !== file || e.l < start || e.l > end || !(ix.funcs[e.d] || (e.d.startsWith('ext:') && ix.g.described?.[e.d]))) continue
     const ids = byLine.get(e.l) ?? []
     if (!ids.includes(e.d)) ids.push(e.d)
     byLine.set(e.l, ids)
@@ -37,7 +38,7 @@ export function callLinks(ix: Index, file: string, start: number, lines: string[
     // targets that share one written call (one of several candidates) become one link
     const at = new Map<number, CallLink>()
     for (const id of ids) {
-      const n = calledName(ix.funcs[id].name)
+      const n = calledName(ix.funcs[id]?.name ?? id.slice(4))
       if (!/^[A-Za-z_$][\w$]*$/.test(n)) continue
       const re = new RegExp(`(?<![\\w$.])((?:[A-Za-z_$][\\w$]*\\s*\\.\\s*)*${esc(n)})(?![\\w$])(?=\\s*\\()`, 'g')
       for (const m of text.matchAll(re)) {
@@ -49,7 +50,7 @@ export function callLinks(ix: Index, file: string, start: number, lines: string[
     }
     for (const l of at.values()) {
       const f = ix.funcs[l.ids[0]]
-      l.label = l.ids.length > 1
+      l.label = !f ? t('{v1}，在 repo 外', { v1: l.ids[0].slice(4) }) : l.ids.length > 1
         ? t('{v1}：{v2} 個可能的目標', { v1: l.text, v2: l.ids.length })
         : t('{v1}，定義在 {v2}', { v1: f.name, v2: `${f.file}:${f.line}` })
       out.push(l)
@@ -68,7 +69,7 @@ export function useCallLinks(ix: Index, file: string | undefined, start: number,
     links,
     onLink: (l: { line: number; text: string; col?: number; href?: string }) => {
       const hit = links.find((x) => x.line === l.line && x.col === l.col) ?? links.find((x) => x.line === l.line && x.text === l.text)
-      if (hit) open(hit.ids[0])
+      if (hit && ix.funcs[hit.ids[0]]) open(hit.ids[0])
     },
     preview: (l: { line: number; text: string; col?: number }) => {
       const hit = links.find((x) => x.line === l.line && x.col === l.col)
@@ -76,6 +77,7 @@ export function useCallLinks(ix: Index, file: string | undefined, start: number,
       return (
         <div className="call-preview">
           {hit.ids.map((id) => {
+            if (!ix.funcs[id]) return <ExtPreview key={id} ix={ix} id={id} />
             const f = ix.funcs[id]
             return (
               <div key={id}>
@@ -89,4 +91,20 @@ export function useCallLinks(ix: Index, file: string | undefined, start: number,
       )
     },
   }
+}
+
+
+/** A function outside the repository, as an AI described it: what it does, and each parameter's role. */
+function ExtPreview(p: { ix: Index; id: string }) {
+  const d = p.ix.g.described?.[p.id]
+  if (!d) return null
+  const say = (x: { 'zh-TW'?: string; en?: string }) => local({ 'zh-TW': x['zh-TW'] ?? '', en: x.en ?? '' })
+  const ps = d.info?.params ?? []
+  return <div>
+    <span className="mono">{p.id.slice(4)}</span> <span className="small muted">{t('repo 外的函式')}</span>
+    <div className="small">{say(d.text)} <span className="fp-src">{t('AI 撰寫')}</span></div>
+    {ps.length ? <dl className="fp-prm-d small">{ps.map((x) => <div key={x.name} style={{ display: 'contents' }}>
+      <dt className="mono">{x.name}</dt><dd>{x.role}{x.type ? <span className="muted"> · {x.type}</span> : null}{say(x) ? ' · ' + say(x) : ''}</dd></div>)}</dl> : null}
+    {(d.info?.returns ?? []).map((x, i) => <div key={i} className="small">{t('回傳：')}{say(x)}</div>)}
+  </div>
 }

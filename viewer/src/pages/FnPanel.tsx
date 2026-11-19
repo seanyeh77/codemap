@@ -13,7 +13,7 @@ import { conceptEx, conceptText, keywordText } from '../data/glossary'
 import { affected } from './Impact'
 
 type Src = 'sure' | 'guess' | 'ai'
-interface Row { key: string; line?: number; src: Src; body: ReactNode }
+interface Row { key: string; line?: number; lines?: number[]; src: Src; body: ReactNode }
 
 const SECTIONS = ['Execution context', 'Shared state', 'Parameters', 'Return value', 'Side effects', 'Declaration', 'Contract'] as const
 const CONTRACT: Record<string, string> = { pre: 'precondition', post: 'postcondition', error: '', ownership: 'ownership' }
@@ -26,6 +26,9 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
   const order = useDescOrder()
   const info = f.ai?.state === 'wrong' ? undefined : f.ai?.info
   const sig = f.sig
+  const analyzed = new Set((f.use?.shared ?? []).map((v) => v.name))
+  const covered = (it?: InfoItem) => { const ns = it ? codeSpans(say(it)).filter((x) => typeof x !== 'string').map((x) => (x as { code: string }).code) : []
+    return ns.some((n) => analyzed.has(n.split(/[.\->[]/)[0])) }
   // a term is underlined where it first appears in the panel, plain text after that
   const seen = new Set<string>()
   const term = (k: string, shown?: string) => {
@@ -48,7 +51,12 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
         body: <>{term('static local', t('static 區域變數'))} <code className="desc-code">{s.name}</code>{t('：呼叫之間保留它的值。')}</> })),
       ...(sig?.params ?? []).filter((x) => x.default_mutable).map((x) => ({ key: 'dm' + x.name, line: x.line, src: 'sure' as Src,
         body: <>{t('參數')} <code className="desc-code">{x.name}</code>{t(' 的預設值在定義時只建立一次，所有不傳它的呼叫共用同一個物件。')}</> })),
-      ...ai('shared'),
+      ...(f.use?.shared ?? []).map((v) => ({ key: 'sh' + v.name, line: (v.writes[0] ?? v.reads[0]), lines: [...v.writes, ...v.reads], src: 'guess' as Src,
+        body: <>{v.writes.length ? (v.reads.length ? t('讀寫') : t('寫入')) : t('讀取')} <code className="desc-code">{v.name}</code>
+          {t('（{v1}）', { v1: SCOPE[v.scope] ?? v.scope })}{v.atomic ? t('，atomic 操作') : v.writes.length ? t('，不是 atomic 操作') : ''}
+          <span className="small muted">{' · '}{lineList(v.writes, v.reads)}</span></> })),
+      // the AI's lines about the same variables are left out: the code already says it
+      ...ai('shared').filter((_, i) => !covered(info?.shared?.[i])),
     ],
     'Parameters': (sig?.params ?? []).filter((x) => x.name !== '...').map((x) => paramRow(x, info?.params?.find((y) => y.name === x.name.replace(/^[*.]+|\?$/g, '')))),
     'Return value': ai('returns'),
@@ -60,20 +68,22 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
   function paramRow(x: SigParam, a?: InfoItem): Row {
     // the role the language settles: const, a plain value, an object that cannot change; the rest is the AI's
     const sure = x.ro || (x.mech === 'value' && !x.note) || x.note === 'immutable' ? 'in' : undefined
-    const role = sure ?? a?.role
+    const used = f.use?.params?.[x.name.replace(/^[*.]+|\?$/g, '')]
+    const role = sure ?? used?.role ?? a?.role
+    const roleSrc: Src = sure ? 'sure' : used?.role ? 'guess' : 'ai'
     const mech = x.mech === 'value' ? 'Pass by Value' : x.mech === 'reference' ? 'Pass by Reference' : x.mech === 'sharing' ? 'Pass by Sharing' : 'move'
     const note = x.note === 'address' ? t('，複製位址') : x.note === 'slice' ? t('，複製 slice header，底層陣列共用') : x.note === 'map' || x.note === 'chan' ? t('，底層資料共用')
       : x.note === 'immutable' ? t('，物件不可變') : ''
-    return { key: 'p' + x.name, line: x.line, src: 'sure', body: <>
+    return { key: 'p' + x.name, line: x.line, lines: [x.line, ...(used?.writes ?? [])], src: 'sure', body: <>
       <div className="fp-prm-h"><span className="fp-prm-n">{x.name}</span>{x.type ? <span className="fp-prm-t">{x.type}</span> : null}{x.recv ? <span className="small muted">{t('receiver')}</span> : null}</div>
       <dl className="fp-prm-d">
-        <dt>{t('用途')}</dt><dd>{role ? <>{term(role)}{!sure ? <Src s="ai" /> : null}</> : <span className="muted">{t('未知')}</span>}</dd>
+        <dt>{t('用途')}</dt><dd>{role ? <>{term(role)}{used?.writes.length ? <span className="small muted">{t('（寫入：第 {v1} 行）', { v1: used.writes.slice(0, 4).join(t('、')) })}</span> : null}<Src s={roleSrc} /></> : <span className="muted">{t('未知')}</span>}</dd>
         <dt>{t('傳遞方式')}</dt><dd>{term(mech)}{note}{x.ro ? t('，唯讀') : ''}</dd>
         {a && say(a) ? <><dt>{t('說明')}</dt><dd>{text(say(a))}<Src s="ai" /></dd></> : null}
       </dl></> }
   }
 
-  const here = (r: Row) => p.line != null && r.line === p.line
+  const here = (r: Row) => p.line != null && (r.line === p.line || !!r.lines?.includes(p.line))
   const n = SECTIONS.reduce((k, s) => k + rows[s].filter(here).length, 0)
   const d = descriptions(p.ix, p.id, order).find((x) => x.kind !== 'facts')
 
@@ -86,6 +96,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     el?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }, [p.line, p.id])   // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => () => peek(null), [])
   const empty = useMemo(() => SECTIONS.every((s) => !rows[s].length), [rows])   // eslint-disable-line react-hooks/exhaustive-deps
   return <div className="info fp" ref={box} onPointerEnter={() => setBusy(true)} onPointerLeave={() => setBusy(false)}
     onFocus={() => setBusy(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setBusy(false) }}>
@@ -94,11 +105,30 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     {d ? <p><DescText d={d} full />{d.kind === 'ai' ? <Src s="ai" /> : null}</p> : <p className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
     {SECTIONS.map((s) => rows[s].length ? <section key={s} className="fp-sec" aria-label={s}>
       <h3 className="info-h">{term(s)}<span className="fp-cnt">{t('{v1} 項', { v1: rows[s].length })}</span></h3>
-      <ul className="fp-rows">{rows[s].map((r) => <li key={r.key} className={'fp-it' + (here(r) ? ' is-here' : '')}>{r.body}{r.src !== 'sure' && s !== 'Parameters' ? <Src s={r.src} /> : null}</li>)}</ul>
+      <ul className="fp-rows">{rows[s].map((r) => <li key={r.key} className={'fp-it' + (here(r) ? ' is-here' : '') + (r.line ? ' has-line' : '')}
+        onPointerEnter={r.line ? () => peek(r.line!) : undefined} onPointerLeave={r.line ? () => peek(null) : undefined}>{r.body}{r.src !== 'sure' && s !== 'Parameters' ? <Src s={r.src} /> : null}</li>)}</ul>
     </section> : null)}
     {empty && !info ? <p className="small muted">{t('執行環境、參數用途、回傳值與 contract 由 AI 撰寫：在 repo 執行 codemap describe。')}</p> : null}
     <p className="fp-legend small muted">{t('沒有標註的資料來自程式碼或語言規則。標「推測」的只從寫法推得，可能不準；標「AI 撰寫」的是 AI 讀程式碼後寫成，可能有誤。')}</p>
   </div>
+}
+
+/** Marks a line in the code beside the panel while its item is pointed at (null clears it). The code view has no
+ *  call for it, so the line is found by its number, as Reader finds the clicked one. */
+const SCOPE: Record<string, string> = { global: '全域變數', extern: '全域變數', static: '檔案內的 static 變數', module: '模組變數', package: 'package 變數', field: 'static 欄位' }
+
+function lineList(writes: number[], reads: number[]) {
+  const n = (xs: number[]) => xs.slice(0, 4).join(t('、')) + (xs.length > 4 ? t(' 等') : '')
+  return [writes.length ? t('寫入：第 {v1} 行', { v1: n(writes) }) : '', reads.length ? t('讀取：第 {v1} 行', { v1: n(reads) }) : ''].filter(Boolean).join(t('；'))
+}
+
+function peek(line: number | null) {
+  document.querySelectorAll('.ui-cv-line.cm-peek').forEach((x) => x.classList.remove('cm-peek'))
+  if (line == null) return
+  const row = [...document.querySelectorAll('.ui-wb-main .ui-cv-line')].find((x) => Number(x.querySelector('.ui-cv-num')?.textContent) === line)
+  if (!row) return
+  row.classList.add('cm-peek')
+  row.scrollIntoView({ block: 'nearest' })
 }
 
 function Src(p: { s: Src }) {

@@ -39,9 +39,14 @@ for reading it: Execution context, Shared state, Parameters (each one's role, in
 out or in-out, and how the language passes it), Return value, Side effects,
 Declaration (static, async, virtual ...) and Contract. Clicking a line in the code
 marks what is about that line and brings it into view, except while the pointer
-is in 說明. Only facts are there; what may be wrong is in 檢查. The declaration and
-how each parameter is passed are read from the code with tree-sitter, so they are
-certain; the rest is written by `codemap describe` and marked as the AI's, and
+is in 說明; pointing at an item in 說明 marks its line in the code. Only facts are
+there; what may be wrong is in 檢查. The declaration and how each parameter is
+passed are read from the code with tree-sitter, so they are certain. What the body
+does is read from it too, and marked as inferred: which parameters it writes
+through (following calls into the repository's functions, and into outside ones
+an AI described), and which globals, statics, module or package variables it
+reads or writes, on which lines, atomically or not. The rest is written by
+`codemap describe` and marked as the AI's, and
 the words it uses (Pass by Sharing, precondition) are explained where they first
 appear. The project's own words (its terms)
 are explained where they appear, and the search finds them. Below, four tabs
@@ -285,6 +290,10 @@ is not done. Name files to take only their functions: `codemap describe
 src/client.c -o prompt.md`. After the code changes, the same `codemap describe`
 asks again for just what changed.
 
+Hovering a call to a function outside the repository (`accept`, `memcpy`) shows
+what it does and each parameter's role, from round 2, where the AI describes the
+outside functions the project calls from what it knows of them.
+
 A function's description comes with `info`, short facts a reader needs to use or
 change it, each about one line where it can be: what runs it and what that
 forbids, the data outside it it reads or writes, each parameter's role (in, out,
@@ -292,7 +301,8 @@ in-out) and meaning, what each return value means, its side effects, its
 contract (pre, post, error, ownership), and, apart, the pitfalls and mismatches
 it falls into, which the viewer shows under 檢查. An `info` item is not kept
 where its line is outside the function, it names a parameter the function does
-not have, or a part or kind is not one of these.
+not have, or a part or kind is not one of these. A description written before
+`info` was asked for is asked for again by the next `codemap describe`.
 
 Each description is in Traditional Chinese and English, cites the lines it rests
 on, and is kept in `.codemap/descriptions.json` with a hash of what it describes

@@ -11,7 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import signature, arch, check, describe, docs, facts, rules, state
+from . import access, signature, arch, check, describe, docs, facts, rules, state
 from .arch import in_repo, repo_func
 from .source import c_body_end, code_lines, lines
 from .schema import CALL_SOURCES
@@ -226,6 +226,10 @@ def build(root, index, config=None):
                 funcs[nid]["top"] = top
             if at := docs.atomics(root, n["file"], n["line"], end):
                 funcs[nid]["atomics"] = at
+    # what each function reads and writes through its parameters and outside itself, from its body
+    described_ext = {k: v for k, v in describe.load_all(root)["items"].items() if k.startswith("ext:")}
+    for nid, u in access.run(root, funcs, described_ext).items():
+        funcs[nid]["use"] = u
     edges = []
     for e in raw:
         if e["source"] in CALL_SOURCES and e["src"] not in funcs:

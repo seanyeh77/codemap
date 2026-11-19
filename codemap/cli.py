@@ -286,7 +286,7 @@ def cmd_describe(a):
                 bad_total += 1
                 continue
             ds = data.get("descriptions", []) if isinstance(data, dict) else data if isinstance(data, list) else []
-            fs = [d for d in ds if isinstance(d, dict) and d.get("id") in idx["nodes"]]
+            fs = [d for d in ds if isinstance(d, dict) and d.get("id") in idx["nodes"] and idx["nodes"][d["id"]].get("line")]
             kept, rejected = describe.apply(root, idx, {"descriptions": fs}, by=a.by) if fs else ([], {})
             rest = dict(data, descriptions=[d for d in ds if d not in fs]) if isinstance(data, dict) else {"descriptions": []}
             if rest.get("descriptions") or rest.get("route") or "terms" in rest:
@@ -320,6 +320,10 @@ def cmd_describe(a):
         total = len([n for f in describe.project_files(idx, a.tests) for n in describe.funcs_in(idx, f)])
         print(f"round 1, functions: {len(r['ok'])} up to date, {len(r['stale'])} stale, {len(r['wrong'])} wrong, "
               f"{max(0, total - sum(map(len, r.values())))} without one")
+        have = describe.load(root)
+        n_old = sum(1 for nid in r["ok"] if describe.old(have[nid]))
+        if n_old:
+            print(f"  {n_old} of them written before parameters, return values and contracts were asked for: codemap describe asks for those again")
         ri, missing = describe_items.report(root, idx, g())
         for st in ("stale", "wrong"):
             for key in ri[st]:

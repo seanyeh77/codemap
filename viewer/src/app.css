@@ -309,3 +309,5 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .fp-prm-d dt { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
 .fp-prm-d dd { margin: 0; min-width: 0; }
 .fp-legend { padding-top: var(--space-3); border-top: 1px solid var(--line); margin: var(--space-2) 0 0; }
+.fp-it.has-line:hover { background: var(--surface-sub); }
+.ui-cv-line.cm-peek { background: var(--surface-sub); box-shadow: inset 2px 0 0 var(--accent); }

@@ -583,3 +583,23 @@ def test_describe_keeps_info_that_fits_the_function(tmp_path):
     kept, bad = describe.apply(tmp_path, idx, {"descriptions": [wrong]})
     msgs = " ".join(bad["a.c:read_frame"])
     assert not kept and "unknown part 'mood'" in msgs and "no parameter 'buf'" in msgs and "role must be" in msgs and "not in the function" in msgs
+
+
+def test_access_reads_roles_and_shared_state(tmp_path):
+    from codemap import access, signature
+    (tmp_path / "a.c").write_text(
+        "static int hits;\n"
+        "static void fill(short *dst, int n)\n{\n    short *d = dst;\n    for (int i = 0; i < n; i++)\n        d[i] = 0;\n    hits++;\n}\n"
+        "void step(short *buf, const short *in, int *len)\n{\n    fill(buf, *len);\n    *len = in[0];\n}\n")
+    (tmp_path / "b.py").write_text("WINDOW = 3\ndef add(xs, x):\n    xs.append(x)\n    return len(xs) > WINDOW\n")
+    funcs = {}
+    for nid, f, l, e, lang, name in [("fill", "a.c", 2, 8, None, "fill"), ("step", "a.c", 9, 13, None, "step"), ("add", "b.py", 2, 4, "python", "add")]:
+        funcs[nid] = dict(file=f, line=l, end=e, name=name, sig=signature.of(tmp_path, f, l, e, lang), **({"lang": lang} if lang else {}))
+    u = access.run(tmp_path, funcs)
+    assert u["fill"]["params"]["dst"]["role"] == "out" and u["fill"]["params"]["dst"]["writes"] == [6]
+    assert u["fill"]["shared"] == [{"name": "hits", "scope": "static", "reads": [], "writes": [7], "atomic": False}]
+    assert u["step"]["params"]["buf"]["role"] == "out"          # followed into fill
+    assert u["step"]["params"]["len"]["role"] == "in-out"
+    assert "in" not in u["step"]["params"]                         # const: the language settles it
+    assert u["add"]["params"]["xs"]["role"] == "in-out"
+    assert u["add"]["shared"][0]["name"] == "WINDOW" and u["add"]["shared"][0]["reads"] == [4]

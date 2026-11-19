@@ -32,6 +32,12 @@ export interface Func {
   ai?: { text: Record<string, string>; state?: 'ok' | 'stale' | 'wrong'; info?: FuncInfo }
   /** What its declaration says, read from the code: parameters, how each is passed, keywords, static locals */
   sig?: Signature
+  /** What its body does with its parameters and with variables outside it, read from the code (inferred) */
+  use?: Access
+}
+export interface Access {
+  params?: Record<string, { reads: number[]; writes: number[]; passes: [number, string][]; role: 'in' | 'out' | 'in-out' | null }>
+  shared?: { name: string; scope: 'global' | 'static' | 'extern' | 'module' | 'package' | 'field'; reads: number[]; writes: number[]; atomic: boolean }[]
 }
 
 /** One fact an AI wrote about a function (codemap describe), in each language, with the line it is about. */
@@ -317,6 +323,8 @@ export interface Meta {
 export interface Described {
   text: Record<string, string>; state?: 'ok' | 'stale' | 'wrong'; by?: string
   steps?: ({ id: string } & Record<string, string>)[]; term?: string; evidence?: string[]
+  /** a function outside the repository (ext:...): its parameters (with their declared type), returns, contract */
+  info?: Omit<FuncInfo, 'params'> & { params?: (InfoItem & { type?: string })[] }
 }
 export interface CliArg { name: string; opt: boolean; choices?: string[]; choices_from?: string; choices_at?: number; handled?: Record<string, [string, number]>; default?: string; help?: string; action?: string; nargs?: string; metavar?: string; required?: boolean }
 export interface CliCommand { name: string; l: number; help?: string; args?: CliArg[]; run: string[]; at?: [number, number] }

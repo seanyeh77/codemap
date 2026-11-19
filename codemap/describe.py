@@ -169,8 +169,9 @@ def info_problems(root, node, info, code_names):
     return out
 
 
-def clean_info(info):
-    """The info as kept: only its known parts, each item's languages, line, and name, role or kind."""
+def clean_info(info, keep=()):
+    """The info as kept: only its known parts, each item's languages, line, and name, role or kind (and the
+    fields in keep: an outside function's parameter types)."""
     if not isinstance(info, dict):
         return None
     out = {}
@@ -182,7 +183,7 @@ def clean_info(info):
             x = {lang: str(it.get(lang, "")).strip() for lang in LANGS}
             if it.get("line") is not None:
                 x["line"] = int(it["line"])
-            for k in ("name", "role", "kind"):
+            for k in ("name", "role", "kind", *keep):
                 if it.get(k):
                     x[k] = str(it[k]).lstrip("*.") if k == "name" else str(it[k])
             items.append(x)
@@ -199,6 +200,15 @@ def state(root, idx, nid, entry):
     return "ok" if entry.get("hash") == digest(root, node) else "stale"
 
 
+# 2: written with the prompt that asks for info as well; an older description is asked for again
+VERSION = 2
+
+
+def old(entry):
+    """A description written before info was asked for: up to date, but asked again to add its info."""
+    return entry.get("v", 1) < VERSION
+
+
 def funcs_in(idx, file):
     """The repository's own functions in a file (not call sites, outside functions or the file itself), in order."""
     from .arch import repo_func
@@ -213,7 +223,7 @@ def pending(root, idx, files, only_missing=False):
     out = []
     for file in files:
         for nid in funcs_in(idx, file):
-            if not (nid in have and state(root, idx, nid, have[nid]) == "ok"):
+            if not (nid in have and state(root, idx, nid, have[nid]) == "ok" and not old(have[nid])):
                 out.append(nid)
     return out
 
@@ -328,7 +338,7 @@ def apply(root, idx, answer, by="ai"):
     for it in items if isinstance(items, list) else []:
         nid = str(it.get("id", ""))
         entry = {"text": {lang: str(it.get(lang, "")).strip() for lang in LANGS},
-                 "evidence": [str(x) for x in it.get("evidence", [])], "by": by, "at": today}
+                 "evidence": [str(x) for x in it.get("evidence", [])], "by": by, "at": today, "v": VERSION}
         if it.get("info") is not None:
             entry["info"] = it.get("info")
         bad = problems(root, idx, nid, entry)
