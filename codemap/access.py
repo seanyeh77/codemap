@@ -115,7 +115,8 @@ def _use(node, lg):
         if left is not None and _contains(left, top):
             op = txt(p.child_by_field_name("operator")) or ""
             compound = p.type.startswith("augmented") or (op not in ("", "=", ":="))
-            return ("readwrite" if compound else "write") if through else "bind", through, None
+            # the bare name assigned: a local rebinding for a parameter, a write for an outside variable
+            return ("readwrite" if compound else "write") if through else "bind", through, compound
         if lg == "go" and p.type == "assignment_statement":
             pass
         return "read", through, None
@@ -125,7 +126,7 @@ def _use(node, lg):
             return ("write" if through else "bind"), through, None
         return "read", through, None
     if p.type in UPDATE:
-        return ("readwrite" if through else "bind"), through, None
+        return ("readwrite" if through else "bind"), through, True
     if p.type in ("delete_statement",) or (p.type == "unary_expression" and txt(p.children[0]) == "delete"):
         return "write", through, None
     if p.type in ("init_declarator", "variable_declarator") and through is False:
@@ -366,6 +367,7 @@ def of(root, file, line, end, lang, sig, outside=None, roles_of=None):
         del r["open"]
     # the variables outside the function: not shadowed by a parameter or a local of the same name
     shared = []
+    mine = set()
     if outside:
         mine = set(_locals(body, lg)) | {p["name"].lstrip("*.").rstrip("?") for p in sig.get("params", [])}
         if lg == "python":
@@ -385,7 +387,7 @@ def of(root, file, line, end, lang, sig, outside=None, roles_of=None):
                 continue
             if kind in ("write", "readwrite", "bind"):
                 s["writes"].append(ln)
-            if kind in ("read", "readwrite", "pass", "alias", "addr"):
+            if kind in ("read", "readwrite", "pass", "alias", "addr") or (kind == "bind" and extra):
                 s["reads"].append(ln)
             if kind == "method":
                 (s["writes"] if extra in MUTATORS.get(lg, ()) else s["reads"]).append(ln)
@@ -393,6 +395,10 @@ def of(root, file, line, end, lang, sig, outside=None, roles_of=None):
             s["reads"], s["writes"] = sorted(set(s["reads"])), sorted(set(s["writes"]))
             del s["line"]
             shared.append(s)
+    # the object's own fields (self.x, this.x, a C++ or Java member, a Go receiver's field): state the methods share
+    members = _members(fn, body, lg, sig, mine if outside else set(_locals(body, lg)) | {p["name"] for p in sig.get("params", [])})
+    if members:
+        shared += members
     out = {}
     if params:
         out["params"] = params
@@ -452,3 +458,96 @@ def run(root, funcs, described=None):
             if x.get("sig"):
                 out[nid] = of(root, x["file"], x["line"], x.get("end"), x.get("lang"), x["sig"], seen.get(x["file"]), roles_of(x["file"]))
     return {k: v for k, v in out.items() if v}
+
+
+def _class_fields(fn, lg):
+    """The instance fields of the class a method belongs to (C++, Java): {name}. Out-of-class C++ definitions
+    (Ring::push) look the class up in the same file."""
+    cls = fn.parent
+    while cls is not None and cls.type not in ("class_specifier", "struct_specifier", "class_declaration", "class_body",
+                                               "field_declaration_list"):
+        cls = cls.parent
+    if cls is None and lg == "cpp":
+        d = fn.child_by_field_name("declarator")
+        while d is not None and d.type != "function_declarator":
+            d = d.child_by_field_name("declarator")
+        q = d.child_by_field_name("declarator") if d is not None else None
+        if q is not None and q.type == "qualified_identifier":
+            owner = txt(q.child_by_field_name("scope"))
+            root = fn
+            while root.parent is not None:
+                root = root.parent
+            cls = next((n for n in _walk(root, 6) if n.type in ("class_specifier", "struct_specifier")
+                        and txt(n.child_by_field_name("name")) == owner), None)
+    if cls is None:
+        return set()
+    body = cls.child_by_field_name("body") or cls
+    out = set()
+    for n in body.children:
+        if n.type == "field_declaration":
+            if lg == "java" and "static" in txt(next((c for c in n.children if c.type == "modifiers"), None)):
+                continue
+            if any(c.type == "function_declarator" for c in _walk(n, 3)):
+                continue
+            for d in n.children_by_field_name("declarator"):
+                name = txt(d.child_by_field_name("name")) if lg == "java" else signature._ident(d)
+                if name:
+                    out.add(name)
+    return out
+
+
+def _members(fn, body, lg, sig, mine):
+    """Reads and writes of the object's own fields in a method: [{name, scope: "member", reads, writes, atomic}]."""
+    if body is None:
+        return []
+    found = {}
+
+    def note(name, node):
+        kind, through, extra = _use(node, lg)
+        ln = node.start_point[0] + 1
+        s = found.setdefault(name, {"name": name, "scope": "member", "reads": [], "writes": [], "atomic": False})
+        if kind in ("write", "readwrite", "bind"):
+            s["writes"].append(ln)
+        if kind in ("read", "readwrite", "pass", "alias", "addr") or (kind == "bind" and extra is True):
+            s["reads"].append(ln)
+        if kind == "method":
+            s["reads"].append(ln)
+            if extra in MUTATORS.get(lg, ()):
+                s["writes"].append(ln)
+
+    selfname = {"python": ("self", "cls"), "javascript": ("this",), "typescript": ("this",), "tsx": ("this",),
+                "java": ("this",), "cpp": ("this",)}.get(lg, ())
+    recv = next((p["name"] for p in sig.get("params", []) if p.get("recv")), None) if lg == "go" else None
+    fields = _class_fields(fn, lg) - mine if lg in ("cpp", "java") else set()
+    stack = list(body.children)
+    while stack:
+        n = stack.pop()
+        if n.type in SCOPES:
+            continue
+        # self.x, this.x, this->x, m.x (a Go receiver)
+        if n.type in ("attribute", "member_expression", "field_access", "field_expression", "selector_expression"):
+            obj = n.child_by_field_name("object") or n.child_by_field_name("argument") or n.child_by_field_name("operand")
+            fld = n.child_by_field_name("attribute") or n.child_by_field_name("property") or n.child_by_field_name("field")
+            if obj is not None and fld is not None and (txt(obj) in selfname or (recv and txt(obj) == recv)) \
+                    and obj.type in ("identifier", "this", "self", "field_identifier"):
+                # a method call on the object itself (self.flush()) is not a field
+                par = n.parent
+                if not (par is not None and par.type in ("call", "call_expression", "method_invocation")
+                        and (par.child_by_field_name("function") or par.child_by_field_name("name")) is not None
+                        and (par.child_by_field_name("function") or par.child_by_field_name("name")).id in (n.id, fld.id)):
+                    # this.x and a bare x are the same member in C++ and Java: one name
+                    note(txt(fld) if lg in ("cpp", "java") else f"{txt(obj)}.{txt(fld)}", n)
+                    continue
+        # a bare member name in a C++ or Java method
+        if fields and n.type in ("identifier", "field_identifier") and txt(n) in fields and not _declares(n) \
+                and not (n.parent is not None and n.parent.type in ("field_expression", "field_access", "method_invocation", "call_expression")
+                         and (n.parent.child_by_field_name("field") or n.parent.child_by_field_name("name") or n.parent.child_by_field_name("function")) is not None
+                         and (n.parent.child_by_field_name("field") or n.parent.child_by_field_name("name") or n.parent.child_by_field_name("function")).id == n.id):
+            note(txt(n), n)
+            continue
+        stack.extend(n.children)
+    out = []
+    for v in found.values():
+        v["reads"], v["writes"] = sorted(set(v["reads"])), sorted(set(v["writes"]))
+        out.append(v)
+    return sorted(out, key=lambda v: (v["writes"] or v["reads"] or [0])[0])

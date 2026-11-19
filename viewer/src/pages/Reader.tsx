@@ -99,10 +99,10 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
             return <li key={id}><button type="button" className={'reader-toc-item mono' + (under ? ' is-member' : '') + (id === inFn ? ' is-on' : '')}
               aria-current={id === inFn ? 'location' : undefined} title={f.name} onClick={() => open(p.at.f, f.line)}>{under ? f.name.slice(dot + 1) : f.name}</button></li>
           })}
-        </ul> : <p className="small muted">{t('這個檔案沒有函式。')}</p>}
+        </ul> : <p className="small muted">{t('此檔案無函式。')}</p>}
       </nav> : <div className="reader-rail-closed"><UI.IconButton icon="list" label={t('打開函式清單')} onClick={toggleRail} /></div>}
       <section className="reader-code" aria-label={t('程式碼')} onClickCapture={follow} onFocusCapture={follow}>
-        {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
+        {!p.isLive ? <p className="small muted">{t('快照僅含函式的原始碼，無法顯示整個檔案：於 build 環境執行 codemap serve 查看。')}</p>
           : src.isPending ? <UI.Skeleton width="80%" height={16} />
           : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
           : <>{md && !p.mdMode ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
@@ -174,12 +174,12 @@ function FileLevel(p: { ix: Index; f: string; l: number }) {
   const ai = aiItem(p.ix, 'file:' + p.f, order)
   const doc = p.ix.g.files?.[p.f]
   return <>
-    <p className="small muted">{t('第 {v1} 行不在任何函式內。點選函式清單或程式碼裡的一行。', { v1: p.l })}</p>
+    <p className="small muted">{t('第 {v1} 行不在任何函式內：選取函式清單或程式碼中的一行。', { v1: p.l })}</p>
     <Parts>
-    <Q title={t('是什麼')}>
+    <Q title={t('說明')}>
       {ai ? <p><DescText d={ai} tag full /></p> : null}
       {doc ? <p>{doc.text.split('\n\n')[0]}</p> : null}
-      {!ai && !doc ? <p className="muted">{t('沒有說明註解。')}</p> : null}
+      {!ai && !doc ? <p className="muted">{t('無說明註解。')}</p> : null}
     </Q>
     <Notes ix={p.ix} f={p.f} />
     </Parts>
@@ -206,7 +206,7 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
   return <>
     <p className="small muted">{t('第 {v1} 行', { v1: p.l })} · {p.f}</p>
     <Parts>
-    <Q title={t('是什麼')}>
+    <Q title={t('說明')}>
       {ds.map((d, i) => <p key={i} className="reader-desc"><DescText d={d} tag full /></p>)}
       {/* no description: its signature says what goes in and comes out, in the code's own words */}
       {!ds.length && p.sig ? <pre className="reader-sig mono">{p.sig}</pre> : null}
@@ -215,7 +215,7 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
     <Q title={t('和誰有關')}>
       <UI.DetailList items={[
         ...(called.length ? [{ label: t('這一行呼叫'), value: list(called, '') }] : []),
-        { label: t('誰呼叫它'), value: fw ? <span>{t('由 {v1} 呼叫', { v1: fw })}{callers.length ? <> · {list(callers, '')}</> : null}</span> : list(callers, t('（repo 中沒有）')) },
+        { label: t('呼叫者'), value: fw ? <span>{t('由 {v1} 呼叫', { v1: fw })}{callers.length ? <> · {list(callers, '')}</> : null}</span> : list(callers, t('（repo 中無）')) },
         { label: t('呼叫'), value: list(callees, t('（無）')) },
       ]} />
       <div><UI.Button icon="share-network" onClick={() => p.onFunc(p.id)}>{t('看流程')}</UI.Button></div>
@@ -236,9 +236,9 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
   const ai = p.id ? p.ix.funcs[p.id]?.ai : aiItem(p.ix, 'file:' + p.f, order)
   const stale = !!ai && ai.state === 'stale'
   const items = [
-    role ? <li key="role">{role === 'editable' ? t('可修改：專案允許修改這個檔案。') : t('請勿修改：專案不希望修改這個檔案。')}</li> : null,
+    role ? <li key="role">{role === 'editable' ? t('可修改：專案允許修改這個檔案。') : t('請勿修改：專案不希望修改此檔案。')}</li> : null,
     ...found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>),
-    stale ? <li key="stale">{t('AI 說明寫好之後程式碼改過了，可能不準。')}</li> : null,
+    stale ? <li key="stale">{t('AI 說明撰寫後程式碼已修改，內容可能不準確。')}</li> : null,
     ...(p.extra ?? []).map((x) => <li key={x}>{x}</li>),
   ].filter(Boolean)
   if (p.flat) return items.length ? <section className="info-notes" aria-label={t('值得注意')}>
@@ -248,7 +248,7 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
     {p.why ? <p className="small muted">{p.why}</p> : null}
   </section> : null
   return <Q title={t('值得注意')}>
-    {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('沒有發現。')}</p>}
+    {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('未發現。')}</p>}
     {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
     {p.why ? <p className="small muted">{p.why}</p> : null}
   </Q>

@@ -125,7 +125,7 @@ export function Detail(p: Props) {
   return (
     // where to go next sits at the top: under a long list of callers it fell below the window (1440 x 900)
     <UI.Card className="detail" title={<span id="detail-title" tabIndex={-1} title={f.name}>{f.name}</span>} actions={<>
-      {p.view === 'flow' && here ? null : <UI.Button icon="share-network" onClick={() => p.goFlow(p.sel.id)}>{p.view === 'flow' ? t('從這裡追蹤流程') : t('追蹤流程')}</UI.Button>}
+      {p.view === 'flow' && here ? null : <UI.Button icon="share-network" onClick={() => p.goFlow(p.sel.id)}>{p.view === 'flow' ? t('從此處追蹤流程') : t('追蹤流程')}</UI.Button>}
       {p.view === 'impact' && here ? null : <UI.Button icon="pulse" onClick={() => p.goImpact(p.sel.id)}>{t('查看影響範圍')}</UI.Button>}
     </>}>
       {/* the panel is read first after a search; from here the tree is many Tab stops away */}
@@ -152,7 +152,7 @@ export function Detail(p: Props) {
         { label: t('元件'), value: f.comp },
         // a framework calls it by itself: no line of the repository does
         // the outside interfaces it implements: what may run it behind err.Error(), without a call edge per site
-        ...(p.ix.impls.get(p.sel.id)?.length ? [{ label: t('實作'), value: <span>{p.ix.impls.get(p.sel.id)!.map((e, i) => <span key={e.d}>{i ? t('、') : ''}<UI.InlineCode>{p.ix.bareName(e.d, e)}</UI.InlineCode></span>)}<span className="muted">{t('（經由這些 interface 的呼叫可能執行到它）')}</span></span> }] : []),
+        ...(p.ix.impls.get(p.sel.id)?.length ? [{ label: t('實作'), value: <span>{p.ix.impls.get(p.sel.id)!.map((e, i) => <span key={e.d}>{i ? t('、') : ''}<UI.InlineCode>{p.ix.bareName(e.d, e)}</UI.InlineCode></span>)}<span className="muted">{t('（經由這些 interface 的呼叫可能執行此函式）')}</span></span> }] : []),
         ...(f.types_incomplete ? [{ label: t('分析限制'), value: <span className="muted">{(f.lang === 'go' ? t('此檔案的型別檢查不完整（缺少 module 或需要較新的 Go），可能漏掉部分呼叫。')
           : t('此檔案的型別檢查不完整（常見原因是未安裝 node_modules），可能漏掉部分呼叫。'))}</span> }] : []),
         ...(f.scope === 'test' ? [{ label: t('範圍'), value: t('測試程式碼') }] : []),
@@ -172,7 +172,7 @@ export function Detail(p: Props) {
               <span key={g[0].s} className="entry-row"><FnLink id={g[0].s} go={p.goFlow}>{p.ix.funcs[g[0].s].name}</FnLink>{' '}
                 {g.map((c, i) => <span key={c.f + c.l}>{i ? t('、') : ''}{link(c.f, c.l)}</span>)}{g.every((c) => c.k === 'ref') ? <span className="muted">{t('（當作值傳出）')}</span> : null}</span>))}
               {callSites.length > 6 ? <span className="entry-row muted">{t('另有 {v1} 個，見流程頁的「往上」', { v1: callSites.length - 6 })}</span> : null}</span> : null}
-            {p.ix.g.hidden_callers?.[p.sel.id] ? <span className="entry-row muted">{t('另有 {v1} 個測試函式呼叫它，未列出；可在設定頁開啟「包含測試程式碼」。', { v1: p.ix.g.hidden_callers[p.sel.id] })}</span> : null}
+            {p.ix.g.hidden_callers?.[p.sel.id] ? <span className="entry-row muted">{t('另有 {v1} 個測試函式呼叫此函式，未列出；可於設定頁開啟「包含測試程式碼」。', { v1: p.ix.g.hidden_callers[p.sel.id] })}</span> : null}
             {who.main ? t('。程式的起點，由 C 執行環境在程式啟動時呼叫') : ''}{who.others.length ? t('。另有推測的來源：{v1}', { v1: who.others.slice(0, 2).join(t('、')) }) : ''}{who.load === 'constructor' ? t('。程式載入時自動執行（constructor）') : who.load === 'destructor' ? t('。程式結束時自動執行（destructor）') : ''}</span> },
         // other definitions of the same name: which one a reader landed on is not obvious from the name
         ...(twins.length ? [{ label: t('同名'), value: <span className="entry-list">{twins.map(([id, g]) => (
@@ -187,13 +187,13 @@ export function Detail(p: Props) {
             {/* the outside calls by name: subprocess.run, os.replace and the like say what the function does to the system */}
             {extNames.length ? <span className="entry-list">{extNames.slice(0, 10).map(([n, e]) => <span key={n} className="entry-row"><UI.InlineCode>{n}</UI.InlineCode>{' '}{link(e.f, e.l)}</span>)}
               {extNames.length > 10 ? <span className="entry-row muted">{t('另有 {v1} 個', { v1: extNames.length - 10 })}</span> : null}</span> : null}</span> },
-        ...(fromEntry && fromEntry.length > 1 && !(chain && chain[0].id === fromEntry[0].id) ? [{ label: t('從進入點到這裡'), value: <span className="entry-list">
-          <span className="entry-row muted">{t('{v1}：repo 內沒有呼叫者的進入點。以下是從它到這裡最短的呼叫鏈。', { v1: p.ix.funcs[fromEntry[0].id].name })}</span>
+        ...(fromEntry && fromEntry.length > 1 && !(chain && chain[0].id === fromEntry[0].id) ? [{ label: t('從進入點至此'), value: <span className="entry-list">
+          <span className="entry-row muted">{t('{v1}：repo 內無呼叫者的進入點。以下為從該處至此的最短呼叫鏈。', { v1: p.ix.funcs[fromEntry[0].id].name })}</span>
           <span className="entry-row"><button type="button" className="linklike" onClick={() => p.goChain(fromEntry.map((c) => c.id))}>{t('在流程樹展開這條呼叫鏈')}</button></span>
           {fromEntry.map((c, i) => (
           <span key={i} className="entry-row">{i ? '→ ' : ''}<FnLink id={c.id} go={p.goFlow}>{p.ix.funcs[c.id]?.name ?? c.id}</FnLink>{c.e ? <>{' '}{link(c.e.f, c.e.l)}{c.e.k === 'ref' ? <span className="muted">{t('（當作值傳出）')}</span> : null}</> : null}</span>))}</span> }] : []),
         // how the flow's start reaches this function: one chain of calls, each with its line
-        ...(chain && chain.length > 1 ? [{ label: t('從起點到這裡'), value: <span className="entry-list">{chain.map((c, i) => (
+        ...(chain && chain.length > 1 ? [{ label: t('從起點至此'), value: <span className="entry-list">{chain.map((c, i) => (
           <span key={i} className="entry-row">{i ? '→ ' : ''}<FnLink id={c.id} go={p.goFlow}>{p.ix.funcs[c.id]?.name ?? c.id}</FnLink>{c.e ? <>{' '}{link(c.e.f, c.e.l)}</> : null}</span>))}</span> }] : []),
         // calls the compiler never saw: inside #if/#ifdef blocks this build leaves out
         ...((u) => u?.length ? [{ label: t('條件編譯'), value: <span>{t('另有 {v1} 處呼叫在條件編譯中，本次 build 未編入，因此未計入上方：', { v1: u.length })}{u.map((x, i) => (
@@ -214,7 +214,7 @@ export function Detail(p: Props) {
       ) : at ? <CodeAt ix={p.ix} at={at} isLive={p.isLive} sourceId={p.sourceId} maxHeight="60vh" focus />
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
-        : !src.data ? <p className="small muted">{t('匯出快照時無法讀取此檔案。請在 build 環境重新執行 codemap export。')}</p>
+        : !src.data ? <p className="small muted">{t('匯出快照時無法讀取此檔案：於 build 環境重新執行 codemap export。')}</p>
         : <UI.CodeView {...refs} {...srcCalls} ref={code} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={mark?.key === selKey ? mark.l : focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}

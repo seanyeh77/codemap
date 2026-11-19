@@ -54,7 +54,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
         body: <>{t('參數')} <code className="desc-code">{x.name}</code>{t(' 的預設值僅於定義時建立一次，省略此參數的呼叫皆共用同一物件。')}</> })),
       ...(f.use?.shared ?? []).map((v) => ({ key: 'sh' + v.name, line: (v.writes[0] ?? v.reads[0]), lines: [...v.writes, ...v.reads], src: 'guess' as Src,
         body: <>{v.writes.length ? (v.reads.length ? t('讀寫') : t('寫入')) : t('讀取')} <code className="desc-code">{v.name}</code>
-          {t('（{v1}）', { v1: SCOPE[v.scope] ?? v.scope })}{v.atomic ? t('，以 atomic 操作') : v.writes.length ? t('，非 atomic 操作') : ''}
+          {t('（{v1}）', { v1: SCOPE[v.scope] ? t(SCOPE[v.scope]) : v.scope })}{v.atomic ? t('，以 atomic 操作') : v.writes.length ? t('，非 atomic 操作') : ''}
           <span className="small muted">{' · '}{lineList(v.writes, v.reads)}</span></> })),
       // the AI's lines about the same variables are left out: the code already says it
       ...ai('shared').filter((_, i) => !covered(info?.shared?.[i])),
@@ -116,7 +116,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
 
 /** Marks a line in the code beside the panel while its item is pointed at (null clears it). The code view has no
  *  call for it, so the line is found by its number, as Reader finds the clicked one. */
-const SCOPE: Record<string, string> = { global: '全域變數', extern: '全域變數', static: '檔案內的 static 變數', module: '模組變數', package: 'package 變數', field: 'static 欄位' }
+const SCOPE: Record<string, string> = { global: '全域變數', extern: '全域變數', static: '檔案內的 static 變數', module: '模組變數', package: 'package 變數', field: 'static 欄位', member: '物件欄位' }
 
 function lineList(writes: number[], reads: number[]) {
   const n = (xs: number[]) => xs.slice(0, 4).join(t('、')) + (xs.length > 4 ? t(' 等') : '')
@@ -159,7 +159,7 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
       <div>{codeSpans(say(c)).map((x, j) => (typeof x === 'string' ? x : <code key={j} className="desc-code">{x.code}</code>))}<Src s="ai" /></div></li>)}</ul>
       : found.length || f.ai?.state === 'stale' ? null : <p className="small muted">{f.ai?.info ? t('未發現問題。') : t('尚無 AI 檢查：於 repo 執行 codemap describe。')}</p>}
     <p className="small"><UI.Term variant="inline" title="Change impact" text={t('修改此函式可能影響的範圍。')}>Change impact</UI.Term>{t('：')}
-      {n ? t('修改它可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫它。')}
+      {n ? t('修改此函式可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫此函式。')}
       {tests ? t('另有 {v1} 個測試函式呼叫此函式。', { v1: tests }) : ''}</p>
   </section>
 }

@@ -279,15 +279,13 @@ give it the instruction `codemap describe` prints after the prompts: run describ
 answer each prompt, apply, fix what was not kept, and go on until everything is
 described.
 
-What it says on screen, and that instruction, is in Chinese or English. On a
-terminal it asks which (arrow keys and Enter; the last answer, or the system's
-language, is picked to start with) and keeps the answer in
-`~/.config/codemap/settings.json`; `--lang zh-TW` or `--lang en` answers it
-without asking. Piped or in CI it never asks and uses the last answer.
+What it says on screen is in English, like every command. The instruction for an
+AI agent is in English, or in Chinese with `--lang zh-TW`; the choice is kept in
+`~/.config/codemap/settings.json` for next time.
 
 With no file named it takes the whole project (not its tests: `--tests`), only
-what has no up-to-date description (all of it: `--rewrite`), about 30 functions
-or items to a prompt (`--batch N`). `--level N` writes round N even if one below
+what has no up-to-date description (all of it: `--rewrite`), 12 functions (each
+with its parameters and contract) or 30 items to a prompt (`--batch N`). `--level N` writes round N even if one below
 is not done. Name files to take only their functions: `codemap describe
 src/client.c -o prompt.md`. After the code changes, the same `codemap describe`
 asks again for just what changed.

@@ -86,7 +86,7 @@ export function Settings(p: Props) {
           isLive ? { label: t('主機'), value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: t('檔案'), value: <UI.InlineCode>{p.snapName ?? t('此頁面')}</UI.InlineCode> },
           { label: t('路徑'), value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
-          { label: t('索引'), value: <span><UI.Term variant="inline" text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term variant="inline" text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
+          { label: t('索引'), value: <span><UI.Term variant="inline" text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面皆依此顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term variant="inline" text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
           // one row per language analyzer: how many calls each resolved, and how
           ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: BACKEND[b] ?? LANG[b] ?? b, value: <span><UI.Term variant="inline" text={b === 'go'
             ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值，interface 僅連到確實實作的型別。找不到目標的呼叫不畫線。')
@@ -112,8 +112,8 @@ export function Settings(p: Props) {
           </span> })),
           ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term variant="inline" text={t('以 tree-sitter 讀取定義與呼叫，依名稱對應定義，未經編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l] && !(l === 'javascript' && st.resolution?.typescript)).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對應的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
           isLive ? { label: t('索引建立時間'), value: <span>{when(p.meta!.indexed)}<br />{p.meta!.changed?.length
-            ? <span className="warn-text">{t('之後有 {v1} 個原始檔變更，呼叫關係可能已過時：{v2}。請在 build 環境執行 codemap index 後重新載入。', { v1: p.meta!.changed.length, v2: p.meta!.changed.slice(0, 5).join(t('、')) + (p.meta!.changed.length > 5 ? t(' 等') : '') })}</span>
-            : <span className="muted">{t('之後沒有原始檔變更，頁面與磁碟上的程式碼一致。')}</span>}</span> } : { label: t('匯出時間'), value: when(g.generated) },
+            ? <span className="warn-text">{t('之後有 {v1} 個原始檔變更，呼叫關係可能已過時：{v2}。於 build 環境執行 codemap index 後重新載入。', { v1: p.meta!.changed.length, v2: p.meta!.changed.slice(0, 5).join(t('、')) + (p.meta!.changed.length > 5 ? t(' 等') : '') })}</span>
+            : <span className="muted">{t('之後無原始檔變更，頁面與磁碟上的程式碼一致。')}</span>}</span> } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [
           { label: t('匯出快照'), primary: true, icon: 'download-simple', onClick: download },
@@ -156,7 +156,7 @@ export function Settings(p: Props) {
           <UI.Switch label={t('預設顯示 repo 外的函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
         </label>
         <label className="set-row">
-          <span className="grow"><span className="block">{t('自我測驗')}</span><span className="small muted block">{t('callee 與 caller 的樹每展開一層，先寫下你猜的函式，再揭曉比對。用於練習讀程式。')}</span></span>
+          <span className="grow"><span className="block">{t('自我測驗')}</span><span className="small muted block">{t('callee 與 caller 的樹每展開一層前，先寫下預測的函式，再揭曉比對。用於練習閱讀程式碼。')}</span></span>
           <UI.Switch label={t('自我測驗')} checked={pr.selfTest} onChange={(v) => save('selfTest', v)} />
         </label>
         {g.stats.tests ? <label className="set-row">

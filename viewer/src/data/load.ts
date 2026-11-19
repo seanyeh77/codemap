@@ -11,7 +11,7 @@ async function gunzipJSON<T>(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): Prom
 }
 
 function checkSnapshot(g: Graph, from: string): Graph {
-  if (g?.format !== 'codemap-snapshot') throw new Error(t('{from} 不是 codemap 快照，請改用 codemap export 產生的 .codemap 檔。', { from }))
+  if (g?.format !== 'codemap-snapshot') throw new Error(t('{from} 不是 codemap 快照：請改用 codemap export 產生的 .codemap 檔。', { from }))
   return g
 }
 
@@ -25,7 +25,7 @@ export async function embeddedSnapshot(): Promise<Graph | null> {
 
 export async function snapshotFromURL(url: string): Promise<Graph> {
   const r = await fetch(url)
-  if (!r.ok) throw new Error(t('無法下載 {url}（HTTP {status}），請確認網址。', { url, status: r.status }))
+  if (!r.ok) throw new Error(t('無法下載 {url}（HTTP {status}）：請確認網址。', { url, status: r.status }))
   return checkSnapshot(await gunzipJSON<Graph>(await r.arrayBuffer()), url)
 }
 
@@ -36,11 +36,11 @@ export async function snapshotFromFile(file: File): Promise<Graph> {
 /** The server's own message for a failed request (FastAPI's detail), or the status. */
 async function errorOf(r: Response, path: string) {
   const d = await r.json().then((b) => b?.detail, () => null)
-  return new Error(typeof d === 'string' ? d : t('{path} 回傳 HTTP {status}，請確認 codemap serve 仍在執行。', { path, status: r.status }))
+  return new Error(typeof d === 'string' ? d : t('{path} 回傳 HTTP {status}：請確認 codemap serve 仍在執行。', { path, status: r.status }))
 }
 
 async function api<T>(path: string): Promise<T> {
-  const r = await fetch(path).catch(() => { throw new Error(t('無法連線到 codemap serve，請確認它仍在執行，再重新整理此頁。')) })
+  const r = await fetch(path).catch(() => { throw new Error(t('無法連線至 codemap serve：請確認其仍在執行，再重新整理此頁。')) })
   if (!r.ok) throw await errorOf(r, path)
   return r.json() as Promise<T>
 }

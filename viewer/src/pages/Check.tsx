@@ -48,11 +48,11 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
     return <UI.Card className="pane"><UI.Alert tone="danger" title={t('無法檢查筆記')}>{(q.error as Error).message}</UI.Alert></UI.Card>
   }
   if (!cur && p.compact) return <section className="chk-sec" data-tour="notes"><h3 className="info-h">{t('筆記')}</h3>
-    <p className="small muted">{p.isLive ? t('沒有可檢查的筆記。執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記。') : t('沒有可檢查的筆記。以 codemap export --notes 指定筆記，重新匯出快照。')}</p></section>
+    <p className="small muted">{p.isLive ? t('無可檢查的筆記：執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記。') : t('無可檢查的筆記：以 codemap export --notes 指定筆記，重新匯出快照。')}</p></section>
   if (!cur) {
     return (
       <UI.Card className="pane" data-tour="notes">
-        <UI.EmptyState title={t('沒有可檢查的筆記')}
+        <UI.EmptyState title={t('無可檢查的筆記')}
           description={t('檢查 Markdown 中的 file:line 引用與呼叫關係。')}
           steps={p.isLive ? [t('執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記'), t('重新整理此頁')]
             : [t('以 codemap export --notes 指定筆記，重新匯出快照')]} />
@@ -96,7 +96,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
             v2: rows.filter((r) => r.basis === 'calls' || r.basis === 'syntax').length, v3: rows.filter((r) => r.basis === 'names' || r.basis === 'exists').length })}</p> : null}
         {rows.some((r) => r.result === 'syntax') ? <p className="small muted">{t('「呼叫寫在程式碼裡」：目標由靜態分析或 tree-sitter 找到，未經編譯器確認。說明欄註明為哪一種。')}</p> : null}
         <p className="small muted">{t('「呼叫已確認」：筆記寫的呼叫經編譯器確認。「名稱出現」：引用的行含筆記中的名稱，句子其餘說法（例如由誰設定、讀取）未檢查。「待確認」：說明欄列出須對照的位置。')}</p>
-        <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}</p>
+        <p className="small muted">{t('無 file:line 引用或呼叫的行不列出。')}</p>
         </div> : null}
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
       </UI.Card>}

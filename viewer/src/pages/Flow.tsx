@@ -24,6 +24,9 @@ function buildTree(ix: Index, start: string, dir: 'down' | 'up', showExt: boolea
     // what it does, when someone wrote it, before where the call is (cut at the end, the place is the least loss)
     const d = f ? descLine(ix, nid, order) : null
     if (d && d.kind !== 'facts') { n.meta = `${plainText(d.text)} · ${t(SRC_LABEL[d.kind])}${at ? ' · ' + at : ''}`; delete n.path }
+    // a function outside the repository an AI described (ext:accept): what it does, as for the repository's own
+    const xd = !f && nid.startsWith('ext:') ? ix.g.described?.[nid] : undefined
+    if (xd) { n.meta = `${plainText(local({ 'zh-TW': xd.text['zh-TW'] ?? '', en: xd.text.en ?? '' }))} · ${t(SRC_LABEL.ai)}${at ? ' · ' + at : ''}`; delete n.path }
     if (sites.length > 1) n.tags = [<UI.Tag key="n">{`×${sites.length}`}</UI.Tag>]
     if (e) {
       // the call is in the parent (looking down) or in this node's function (looking up)
@@ -170,7 +173,7 @@ export function Flow(p: FlowProps) {
         <div className="predict">
           {needGuess ? (
             <>
-              <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{(p.dir === 'down' ? t(' 呼叫的函式有 {v1} 個（往下一層）。請先寫下預測再揭曉。', { v1: cur.names.length }) : t(' 的 caller 有 {v1} 個（往上一層）。請先寫下預測再揭曉。', { v1: cur.names.length }))}</div>
+              <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{(p.dir === 'down' ? t(' 呼叫的函式共 {v1} 個（下一層）。先寫下預測，再揭曉。', { v1: cur.names.length }) : t(' 的 caller 共 {v1} 個（上一層）。先寫下預測，再揭曉。', { v1: cur.names.length }))}</div>
               <UI.TextField label={t('預測')} hint={t('函式名稱，以空白分隔')} value={guesses[selKey] ?? ''}
                 onChange={(e) => setGuesses({ ...guesses, [selKey]: e.target.value })}
                 onKeyDown={(e) => { if (e.key === 'Enter') reveal() }} />
@@ -181,7 +184,7 @@ export function Flow(p: FlowProps) {
               {hidden.length ? t('。{v1} 為 repo 外的函式，目前未顯示，因此不計入', { v1: hidden.join(t('、')) }) : ''}
               {res.miss.filter((m) => !hidden.includes(m)).length ? t('。不在這一層：{v1}', { v1: res.miss.filter((m) => !hidden.includes(m)).join(t('、')) }) : ''}</div>
           ) : (
-            <div className="muted" ref={resultRef} tabIndex={-1}>{cur.open ? t('選擇未展開的函式繼續預測。') : t('此函式沒有下一層。')}</div>
+            <div className="muted" ref={resultRef} tabIndex={-1}>{cur.open ? t('選擇未展開的函式繼續預測。') : t('此函式無下一層。')}</div>
           )}
         </div>
       ) : null}
@@ -202,7 +205,7 @@ export function Flow(p: FlowProps) {
       {/* how the lines were found: behind one short line, not two long ones under every tree */}
       <p className="small muted"><UI.Term text={(// what an untagged line rests on depends on which backends read the repository
         !p.ix.g.stats.syntax && !p.ix.g.stats.static ? t('未標示的關係由編譯器確認。標示「推測（規則：…）」的關係，由括號中的 codemap 規則從原始碼推得。')
-          : t('未標示的關係：{v1}。標示「推測（規則：…）」或框架名稱的關係，程式碼中沒有直接呼叫。', { v1: [
+          : t('未標示的關係：{v1}。標示「推測（規則：…）」或框架名稱的關係，程式碼中無直接呼叫。', { v1: [
             p.ix.g.stats.edges ? t('C/C++ 由編譯器確認') : '',
             p.ix.g.stats.resolution?.python ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
             p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到其實作型別；go、defer 與當作函式值傳遞的另有標示') : '',

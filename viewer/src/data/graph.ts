@@ -153,7 +153,7 @@ export class Index {
       if (!this.funcs[id]) return { label: t('外部'), title: t('外部函式'), text: t('不在此 repo 中：{v1}。', { v1: '`' + (e.dn ?? id) + '`' }) }
       // tree-sitter read the call; a name, not a type checker, decided which definition it is
       if (e.by === 'name') return { label: t('依名稱推測'), title: t('依名稱推測'),
-        text: t('這一行呼叫型別未知物件的 `{v1}()`。repo 中只有 {v2} 使用此名稱，因此連到它，實際可能是其他類別的同名方法。', { v1: this.funcs[id].name.split('.').pop() ?? '', v2: to }) }
+        text: t('此行呼叫型別未知物件的 `{v1}()`。repo 中僅 {v2} 使用此名稱，因此連到 {v2}；實際可能為其他類別的同名方法。', { v1: this.funcs[id].name.split('.').pop() ?? '', v2: to }) }
       return { label: t('語法解析'), title: t('語法解析'),
         text: t('tree-sitter 依名稱將這一行的呼叫對應到 {v1} 的定義（同一檔案、import 或 self 的類別）。未經編譯器或型別檢查確認。', { v1: to }) }
     }
@@ -161,7 +161,7 @@ export class Index {
     const tail = t('由規則「{rule}」推得，編譯器無法確認。', { rule: ruleName(e.rule) })
     let text: string
     const from = this.bareName(e.s), slot = e.slot ?? t('函式指標'), via = e.via ?? t('函式指標')
-    if (e.k === 'fnptr_pass') text = t('{from} 將 {to} 作為參數傳給 `{slot}()`，可能由它呼叫。', { from, to, slot }) + tail
+    if (e.k === 'fnptr_pass') text = t('{from} 將 {to} 作為參數傳給 `{slot}()`，可能由 `{slot}()` 呼叫。', { from, to, slot }) + tail
     else if (e.k === 'fnptr_table') text = t('{to} 列於表格 `{slot}`，可能經由此表被呼叫。', { to, slot }) + tail
     else if (e.rule === 'param_call') text = t('{from} 經由參數 `{via}` 呼叫傳入的函式，其中一個呼叫者傳入 {to}。', { from, via, to }) + tail
     else if (e.rule === 'table_install') text = t('{to} 列於表格 `{table}`。{from} 將 `{via}` 寫入 `{slot}`，因此此處可能裝入 {to}。', { to, table: e.table ?? '', from, via, slot }) + tail
@@ -169,7 +169,7 @@ export class Index {
     else if (e.k === 'indirect_saved') text = t('經由 `{via}` 呼叫替換前的 `{name}`。', { via, name: e.saved_from ?? '' }) + tail
     else if (e.k === 'indirect_candidate') text = t('經由 `{via}` 呼叫 {to}。', { via, to }) + tail
     else if (e.k === 'constructor' || e.k === 'destructor') text = e.k === 'constructor'
-      ? t('標記為 `constructor`：dynamic loader 載入程式或程式庫時，在 main 之前自動執行。以 LD_PRELOAD 載入的程式庫常用它做初始化。')
+      ? t('標記為 `constructor`：dynamic loader 載入程式或程式庫時，於 main 之前自動執行。以 LD_PRELOAD 載入的程式庫常以此進行初始化。')
       : t('標記為 `destructor`：程式結束或程式庫卸載時自動執行。')
     else text = t('由規則「{rule}」推得，編譯器無法確認。', { rule: e.rule ?? '' })
     return { label: ruleTag(e.rule), title: t('推測（規則）'), text }
@@ -205,7 +205,7 @@ export class Index {
                     : how === 'override' ? t('子類別覆寫此方法，`self` 也可能是子類別的物件。')
                       : how === 'interface' ? t('經由 interface 呼叫。{v1} 實作此 interface（由型別檢查器確認，非僅比對方法名稱），因此可能是 {v2}。', { v1: ty, v2: to })
                       : how === 'this' ? t('`this` 是 {v1} 的物件，方法依繼承找到 {v2}。', { v1: ty, v2: to })
-                      : how === 'type' ? t('TypeScript 編譯器確定接收者型別為 {v1}，且分析範圍內沒有子類別覆寫此方法，因此是 {v2}。範圍外的程式碼仍可能繼承並覆寫它。', { v1: ty, v2: to })
+                      : how === 'type' ? t('TypeScript 編譯器確定接收者型別為 {v1}，且分析範圍內無子類別覆寫此方法，因此為 {v2}。範圍外的程式碼仍可能繼承並覆寫此方法。', { v1: ty, v2: to })
                       : how === 'new' ? t('`new` 建立物件時執行 {v1}。', { v1: to })
                       : how === 'jsx' ? t('JSX 元素會呼叫元件 {v1}。', { v1: to })
                       : how === 'returned' ? t('呼叫的是另一個函式回傳的函式 {v1}。', { v1: to })
@@ -222,7 +222,7 @@ export class Index {
     if (e.k === 'ref' && e.resolution === 'exact') return { label: t('當作函式值'), title: t('當作函式值'), text: because }
     // the repository's interface method, nothing in production implements it: the method is certain, the code that runs is not
     if (e.resolution === 'exact' && how === 'interface') return { label: t('interface 方法'), title: t('interface 方法'),
-      text: t('呼叫的是 interface 方法 {v1}，實際執行的實作到執行時才決定。正式程式碼中沒有此 interface 的實作。', { v1: to }) }
+      text: t('呼叫的是 interface 方法 {v1}，實際執行的實作於執行時決定。正式程式碼中無此 interface 的實作。', { v1: to }) }
     if (e.resolution === 'exact' && how === 'jsx') return { label: 'JSX', title: 'JSX', text: because }
     if (e.resolution === 'exact' && e.mode) return { label: e.mode, title: e.mode, text: when + because }
     if (e.resolution === 'exact' && how === 'embedding') return { label: t('內嵌提升'), title: t('內嵌提升'), text: because }
@@ -242,10 +242,10 @@ export class Index {
     let text: string
     if (e.rule === 'pytest.fixture') text = t('{v1} 的參數與 fixture {v2} 同名：pytest 先執行 {v2}，再將結果傳入 {v1}。', { v1: from, v2: to })
     else if (e.rule?.endsWith('.depends')) text = t('{v1} 宣告 Depends({v2})：{v3} 先執行 {v2}，再將結果傳入 {v1}。', { v1: from, v2: to, v3: fw })
-    else if (e.rule?.endsWith('.set_ev_cls')) text = t('{v1} 以 set_ev_cls 註冊；{v2} 收到這個事件時呼叫它。', { v1: to, v2: fw })
+    else if (e.rule?.endsWith('.set_ev_cls')) text = t('{v1} 以 set_ev_cls 註冊；{v2} 收到此事件時呼叫。', { v1: to, v2: fw })
     else if (e.k === 'callback') text = t('{v1} 將 {v2} 所屬的物件交給 {v3}，事件發生時由 {v3} 呼叫 {v2}。', { v1: from, v2: to, v3: fw })
     else text = t('由 {v1} 呼叫。', { v1: fw })
-    return { label, title: t('框架呼叫'), text: text + t('程式碼中沒有此呼叫，由框架規則「{v1}」推得。', { v1: e.rule ?? '' }) }
+    return { label, title: t('框架呼叫'), text: text + t('程式碼中無此呼叫，由框架規則「{v1}」推得。', { v1: e.rule ?? '' }) }
   }
 
   /** The function a file:line falls in, for links in notes such as `ops.c:175`. */

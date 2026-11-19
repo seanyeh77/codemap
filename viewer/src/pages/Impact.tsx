@@ -80,7 +80,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             {p.ix.funcs[p.start]
               ? <UI.CodeText as="p" text={t('修改 `{name}` 影響 {v1} 個函式，跨 {v2} 個元件。', { name, v1: rows.length, v2: comps.length })} />
               : <UI.CodeText as="p" text={t('有 {v1} 個函式呼叫 `{name}`（repo 外的函式）。連同其呼叫者共 {v2} 個，跨 {v3} 個元件。', { name, v1: rows.filter((r) => r.kind === 'direct').length, v2: rows.length, v3: comps.length })} />}
-            {vars.length ? <p className="small">{t('其中 {v1} 個與它共用全域變數（{v2}），即使沒有呼叫關係也會受影響。', { v1: rows.filter((r) => r.kind === 'state').length, v2: vars.join(t('、')) })}</p> : null}
+            {vars.length ? <p className="small">{t('其中 {v1} 個與此函式共用全域變數（{v2}），即使無呼叫關係亦會受影響。', { v1: rows.filter((r) => r.kind === 'state').length, v2: vars.join(t('、')) })}</p> : null}
             {entries.length ? (
               <p className="small">
                 {/* one sentence, the term underlined inside it */}
@@ -104,7 +104,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
         ) : (
           <div>
             <p>{t('找不到呼叫')} <UI.InlineCode>{name}</UI.InlineCode> {t('或與其共用全域變數的函式。')}</p>
-            {p.ix.callerInfo(p.start).others.length || p.ix.callerInfo(p.start).load ? <p className="small muted">{t('它不是由函式直接呼叫：{v1}。', { v1: p.ix.callerText(p.start).split('；').slice(1).join(t('；')) })}</p> : null}
+            {p.ix.callerInfo(p.start).others.length || p.ix.callerInfo(p.start).load ? <p className="small muted">{t('此函式並非由其他函式直接呼叫：{v1}。', { v1: p.ix.callerText(p.start).split('；').slice(1).join(t('；')) })}</p> : null}
             <p className="small muted">{p.ix.funcs[p.start]?.api
               ? t('外部進入點：呼叫者是載入此程式庫並呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
               : t('編譯器與規則皆未找到。經由函式指標或來自 repo 外的呼叫可能未偵測到。')}</p>
@@ -120,7 +120,7 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
               `| ${t('函式')} | ${t('關係')} | ${t('位置')} | ${t('距離')} |`, '| --- | --- | --- | ---: |',
               ...rs.map((r) => `| \`${cell(r.name)}\` | ${cell(r.how)} | ${r.lines.map((l) => `\`${r.f}:${l}\``).join(t('、'))} | ${t('{v1} 層', { v1: r.depth })} |`)].join('\n')
           }}
-          onCopyError={() => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。'))}
+          onCopyError={() => UI.announce(t('瀏覽器不允許寫入剪貼簿：請改為選取後複製。'))}
           pageSize={10} urlSync={false} search={{ placeholder: t('篩選函式') }}
           summary={{ key: 'kind', items: (['direct', 'state', 'indirect'] as const).filter((k) => k !== 'state' || vars.length).map((k) => ({ value: k, label: t(KIND_LABEL[k]) })), unit: countUnit('個', 'function', 'functions') }}
           columns={[

@@ -37,7 +37,7 @@ export interface Func {
 }
 export interface Access {
   params?: Record<string, { reads: number[]; writes: number[]; passes: [number, string][]; role: 'in' | 'out' | 'in-out' | null }>
-  shared?: { name: string; scope: 'global' | 'static' | 'extern' | 'module' | 'package' | 'field'; reads: number[]; writes: number[]; atomic: boolean }[]
+  shared?: { name: string; scope: 'global' | 'static' | 'extern' | 'module' | 'package' | 'field' | 'member'; reads: number[]; writes: number[]; atomic: boolean }[]
 }
 
 /** One fact an AI wrote about a function (codemap describe), in each language, with the line it is about. */

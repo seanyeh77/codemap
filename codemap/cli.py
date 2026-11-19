@@ -270,7 +270,6 @@ def cmd_where(a):
             print("  " + ln)
 
 
-ZH_LEVELS = {1: "函式", 2: "檔案、指令、參數值、環境變數、資料檔", 3: "元件", 4: "專案、閱讀路線與名詞"}
 
 
 def cmd_describe(a):
@@ -353,10 +352,10 @@ def cmd_describe(a):
         print("everything there has an up-to-date description (codemap describe --rewrite to write it again)")
         return
     if level == 1:
-        parts = describe.batches(idx, ids, a.batch)
+        parts = describe.batches(idx, ids, a.batch or 12)
         texts = [describe.prompt(root, idx, ids=part)[0] for part in parts]
     else:
-        size = a.batch if level == 2 else 10 ** 9   # a component, or the project, sees all of its round at once
+        size = (a.batch or 30) if level == 2 else 10 ** 9   # a component, or the project, sees all of its round at once
         parts = [ids[i:i + size] for i in range(0, len(ids), size)]
         texts = [describe_items.prompt(root, idx, g(), level, part) for part in parts]
     if len(texts) == 1 and a.files:
@@ -386,24 +385,18 @@ def cmd_describe(a):
     rel = lambda p: p.relative_to(Path.cwd()) if p.is_relative_to(Path.cwd()) else p
     what = (f"{len(ids)} functions in {len(files)} file{'s' * (len(files) != 1)}" if level == 1
             else f"{len(ids)} item{'s' * (len(ids) != 1)}")
-    lang = describe.pick_lang(a.lang)
+    # the screen speaks English like every command; only the instruction for an AI agent comes in the language
+    # asked for with --lang (kept for next time), else the last one asked for, else English
+    lang = describe.pick_lang(a.lang) if a.lang else (describe.saved_lang() or "en")
     zh = lang.startswith("zh")
     files_txt = rel(names[0]).as_posix() + (f" ... {names[-1].name}" if len(names) > 1 else "")
-    if zh:
-        print(f"第 {level} 輪（共 4 輪），{ZH_LEVELS[level]}：{len(ids)} 個{'函式' if level == 1 else '項目'}，"
-              f"{len(texts)} 份 prompt：{files_txt}")
-        print("把每份交給 AI，回答存成同一個資料夾的 answer-NN.json，然後執行：")
-        print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
-        if level < 4:
-            print("再執行一次 codemap describe 進入下一輪")
-        print("\n或把下面這段指示交給在這個 repo 裡的 AI agent（例如 Claude Code），它會自己做完每一輪：\n")
-    else:
-        print(f"round {level} of 4, {describe_items.LEVELS[level]}: {what}: {len(texts)} prompt{'s' * (len(texts) != 1)}, {files_txt}")
-        print("give each to an AI, save its answer as answer-NN.json beside it, then:")
-        print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
-        if level < 4:
-            print("then run codemap describe again for the next round")
-        print("\nor give an AI agent (Claude Code, in this repository) the instruction below; it does every round:\n")
+    print(f"round {level} of 4, {describe_items.LEVELS[level]}: {what}: {len(texts)} prompt{'s' * (len(texts) != 1)}, {files_txt}")
+    print("give each to an AI, save its answer as answer-NN.json beside it, then:")
+    print(f"  codemap describe --apply {rel(folder)}/answer-*.json")
+    if level < 4:
+        print("then run codemap describe again for the next round")
+    print("\nor give an AI agent (Claude Code, in this repository) the instruction below; it does every round"
+          + (" (in Chinese; --lang en for English):\n" if zh else " (--lang zh-TW for it in Chinese):\n"))
     # the whole job for an AI agent (Claude Code), on screen to copy: it does every round by itself
     print(agent_text())
 
@@ -547,14 +540,14 @@ def main(argv=None):
     s.add_argument("--rewrite", action="store_true", help="also what has an up-to-date description")
     s.add_argument("--level", type=int, choices=(1, 2, 3, 4), help="this round, even if one below it is not done: "
                    "1 functions, 2 files/commands/values/env/data files, 3 components, 4 project/route/glossary")
-    s.add_argument("--batch", type=int, default=30, help="functions per prompt when there are many (default 30)")
+    s.add_argument("--batch", type=int, help="functions or items per prompt when there are many (default 12 functions, "
+                   "each with its parameters and contract, or 30 items)")
     s.add_argument("-o", "--output", help="write the prompt here; with several prompts, the folder (default .codemap/prompts)")
     s.add_argument("--apply", metavar="ANSWER", nargs="+", help="keep the AI's JSON answers (- for standard input)")
     s.add_argument("--by", default="ai", help="who wrote the answer, kept with it (e.g. claude-opus-5-5)")
     s.add_argument("--status", action="store_true", help="how many are up to date, stale or wrong")
-    s.add_argument("--lang", choices=("zh-TW", "en"), help="the language of what it says on screen and of the "
-                   "instruction for an AI agent; without it, a terminal asks (the last answer kept in "
-                   "~/.config/codemap/settings.json), otherwise the last answer or the system's language")
+    s.add_argument("--lang", choices=("zh-TW", "en"), help="the language of the instruction for an AI agent, kept in "
+                   "~/.config/codemap/settings.json for next time (default: the last one asked for, else English)")
     s.set_defaults(fn=cmd_describe)
     s = sub.add_parser("relations")
     s.add_argument("name", nargs="?")

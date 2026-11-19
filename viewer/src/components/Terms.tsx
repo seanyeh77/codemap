@@ -23,7 +23,7 @@ export function termsOf(ix: Index, order: DescOrder): Term[] {
 /** The same terms as the design system takes them (CodeView and Markdown `terms`): the card's action opens where the
  *  term is used. */
 export function termDefs(terms: Term[], open: (f: string, l: number) => void): UI.TermDef[] {
-  return terms.map((x) => ({ term: x.term, text: x.text, ...(x.at ? { action: { label: t('看它出現的地方'), onClick: () => open(x.at!.f, x.at!.l) } } : {}) }))
+  return terms.map((x) => ({ term: x.term, text: x.text, ...(x.at ? { action: { label: t('查看出現位置'), onClick: () => open(x.at!.f, x.at!.l) } } : {}) }))
 }
 
 export const TermsCtx = createContext<{ terms: Term[]; defs: UI.TermDef[]; open: (f: string, l: number) => void }>({ terms: [], defs: [], open: () => {} })
@@ -44,7 +44,7 @@ export function TermText(p: { text: string; seen: Set<string> }) {
     if (!term || p.seen.has(term.term)) continue
     p.seen.add(term.term)
     out.push(p.text.slice(last, m.index), <UI.Term key={m.index} variant="inline" title={term.term} text={term.text}
-      action={term.at ? { label: t('看它出現的地方'), onClick: () => open(term.at!.f, term.at!.l) } : undefined}>{m[0]}</UI.Term>)
+      action={term.at ? { label: t('查看出現位置'), onClick: () => open(term.at!.f, term.at!.l) } : undefined}>{m[0]}</UI.Term>)
     last = m.index! + m[0].length
   }
   out.push(p.text.slice(last))

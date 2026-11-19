@@ -48,7 +48,7 @@ export function Relations(p: { ix: Index; at: At; mode: 'down' | 'up'; openFile:
         <UI.InlineCode look="name" href={'#'} onClick={(e) => { e.preventDefault(); if (r.id.startsWith('file:')) p.openFile(r.id.slice(5)); else p.openComp(r.id.slice(5)) }}>{r.name}</UI.InlineCode>
         {r.text ? <span className="small muted rel-text">{r.text}</span> : null}
       </li>)}
-    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，沒有可列的呼叫。') : p.mode === 'down' ? t('未呼叫其他{v1}。', { v1: what }) : t('沒有其他{v1}呼叫它。', { v1: what })}</p> : null}
+    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，無可列出的呼叫。') : p.mode === 'down' ? t('未呼叫其他{v1}。', { v1: what }) : t('無其他{v1}呼叫。', { v1: what })}</p> : null}
   </div>
 }
 

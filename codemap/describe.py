@@ -416,6 +416,15 @@ def _settings_file():
     return Path(base) / "codemap" / "settings.json"
 
 
+def saved_lang():
+    """The language last asked for with --lang (or answered before), or None."""
+    try:
+        v = json.loads(_settings_file().read_text(encoding="utf-8")).get("lang")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return v if v in ("zh-TW", "en") else None
+
+
 def pick_lang(asked=None):
     """--lang, else a question on a terminal (the last answer, or the system's language, picked to start with),
     else the last answer or the system's. The answer is kept in ~/.config/codemap/settings.json for next time."""

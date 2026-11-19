@@ -598,7 +598,7 @@ def test_access_reads_roles_and_shared_state(tmp_path):
         funcs[nid] = dict(file=f, line=l, end=e, name=name, sig=signature.of(tmp_path, f, l, e, lang), **({"lang": lang} if lang else {}))
     u = access.run(tmp_path, funcs)
     assert u["fill"]["params"]["dst"]["role"] == "out" and u["fill"]["params"]["dst"]["writes"] == [6]
-    assert u["fill"]["shared"] == [{"name": "hits", "scope": "static", "reads": [], "writes": [7], "atomic": False}]
+    assert u["fill"]["shared"] == [{"name": "hits", "scope": "static", "reads": [7], "writes": [7], "atomic": False}]
     assert u["step"]["params"]["buf"]["role"] == "out"          # followed into fill
     assert u["step"]["params"]["len"]["role"] == "in-out"
     assert "in" not in u["step"]["params"]                         # const: the language settles it
@@ -638,3 +638,11 @@ def test_files_an_empty_compile_database_leaves_out_are_read_by_tree_sitter(tmp_
     (tmp_path / "compile_commands.json").write_text("[]")
     idx = backends.build(tmp_path)
     assert any(n["name"] == "f" and n.get("defined") for n in idx["nodes"].values())
+
+
+def test_access_lists_the_objects_own_fields(tmp_path):
+    from codemap import access, signature
+    (tmp_path / "a.py").write_text("class Q:\n    def push(self, x):\n        self.items.append(x)\n        self.n += 1\n        self.flush()\n")
+    sig = signature.of(tmp_path, "a.py", 2, 5, "python")
+    shared = access.of(tmp_path, "a.py", 2, 5, "python", sig, {})["shared"]
+    assert {s["name"]: (s["reads"], s["writes"]) for s in shared} == {"self.items": ([3], [3]), "self.n": ([4], [4])}

@@ -306,7 +306,7 @@ function Shell(p: ShellProps) {
           ?? (indexed.has(h.file) || symAt.has(`${h.file}:${h.line}`)
             ? ((s) => s ? ` · ${t(s.kind === 'macro' ? '{v1} 巨集定義' : '{v1} 全域變數宣告', { v1: s.name })}`
               : /^#\s*define\b/.test(h.text) ? ` · ${t('巨集定義')}` : ` · ${t('在函式之外')}`)(symAt.get(`${h.file}:${h.line}`))
-            : ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? ` · ${t('在函式之外')}` : ` · ${t('此檔案不在 build 中，只有文字，沒有呼叫關係')}`)
+            : ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? ` · ${t('在函式之外')}` : ` · ${t('此檔案不在 build 中，僅有文字，無呼叫關係')}`)
       // a call on this line to a name defined more than once: which definition it reaches
       const twinCalls = fid ? [...new Set(ix.callees(fid, true).filter((e) => e.l === h.line && e.f === h.file && ix.funcs[e.d]
         && Object.values(ix.funcs).some((g) => g !== ix.funcs[e.d] && g.name.split('.').pop() === ix.funcs[e.d].name.split('.').pop())).map((e) => e.d))] : []
@@ -393,7 +393,7 @@ function Shell(p: ShellProps) {
             : <button type="button" className="linklike mono" onClick={() => { const a = placeOf(id); if (a) { setTrail((tr) => tr.slice(0, i + 1)); setPin(null); setAt(a) } }}>{ix.funcs[id]?.name.split('.').pop() ?? id}</button>}</span>)}
       </nav> : null}
       {!flowStart ? <Relations ix={ix} at={at} mode={d} openFile={(f) => openFile(f, 1)} openComp={openComp} />
-        : d === 'down' ? (ix.funcs[flowStart] ? tree(flowStart) : <p className="small muted">{t('repo 外的函式：只看得到誰呼叫它。')}</p>)
+        : d === 'down' ? (ix.funcs[flowStart] ? tree(flowStart) : <p className="small muted">{t('repo 外的函式：僅能顯示其呼叫者。')}</p>)
         : <>
           {/* how far a change reaches is said once, in 檢查; here only the two ways to list it */}
           <p className="small impact-sum"><button type="button" className="linklike" onClick={() => setUpTable(!upTable)}>{upTable ? t('改為呼叫樹') : t('列成表')}</button></p>
@@ -438,7 +438,7 @@ function Shell(p: ShellProps) {
         backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
         onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} resetLayout={() => wb.current?.resetLayout()}
         openAt={(f, l) => openFile(f, l)} /></div>
-    : empty ? <UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} />
+    : empty ? <UI.EmptyState title={t('索引中無函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} />
     : at.kind === 'proj' ? <div className="stage-scroll"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="page" only={['ov-project', 'ov-comps']} /></div>
     : at.kind === 'comp' ? (comp?.lang
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
@@ -562,7 +562,7 @@ function paletteItems(ix: Index, order: DescOrder): PaletteItem[] {
   const ext = new Map<string, string[]>()
   for (const e of ix.g.edges) if (written(e) && !ix.funcs[e.d] && ix.funcs[e.s]) push(ext, e.d, e.s)
   for (const [id, callers] of [...ext].sort(([a], [b]) => a.localeCompare(b))) {
-    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處', { v1: new Set(callers).size, v2: callers.length }) : t('{v1} 個 repo 內的函式呼叫它，共 {v2} 處（只算 compile_commands.json 裡的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
+    items.push({ id: 'x:' + id, kind: '外部函式', label: ix.bareName(id), code: true, detail: ix.g.stats.backends && !ix.g.stats.backends.includes('gcc') ? t('repo 內有 {v1} 個函式呼叫，共 {v2} 處', { v1: new Set(callers).size, v2: callers.length }) : t('repo 內有 {v1} 個函式呼叫，共 {v2} 處（僅計 compile_commands.json 中的檔案）', { v1: new Set(callers).size, v2: callers.length }), target: { type: 'ext', id } })
   }
   // ideas a reader searches for by name, answered on the overview
   for (const [label, keywords] of [[t('載入與結束時自動執行的函式（constructor / destructor）'), ['constructor', 'destructor', 'ctor', 'dtor', '__attribute__']],
@@ -609,7 +609,7 @@ function noResults(q: string): string {
   const tryWords = (ws: string[]) => ws.map((w) => t('「{v1}」', { v1: w })).join(t('、'))
   return words.length > 1
     ? t('找不到「{v1}」。可分開搜尋{v2}；若要找風險或限制，可搜尋{v3}。', { v1: q, v2: tryWords(words), v3: tryWords([t('風險'), 'overrun', t('上限')]) })
-    : t('找不到「{v1}」。請改用較短的詞或名稱的一部分；若要找風險或限制，可搜尋{v2}。', { v1: q, v2: tryWords([t('風險'), 'overrun', t('上限')]) })
+    : t('找不到「{v1}」：請改用較短的詞或名稱的一部分；查詢風險或限制時，可搜尋{v2}。', { v1: q, v2: tryWords([t('風險'), 'overrun', t('上限')]) })
 }
 function textKind(file: string): string {
   if (/\.(md|rst|txt|adoc)$/i.test(file) || /(^|\/)docs?\//.test(file) && !/\.(c|h|py)$/.test(file)) return '文件'

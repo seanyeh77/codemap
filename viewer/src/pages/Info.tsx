@@ -44,7 +44,7 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
       {at.id === TRACED ? <p className="small muted">{t('被追蹤的程式（repo 外）')}</p> : null}
       {ai ? <p><DescText d={ai} tag full /></p> : null}
       {c?.doc ? <p className="small">{c.doc.text}</p> : null}
-      {!ai && !c?.doc ? <p className="small muted">{t('沒有說明註解。')}</p> : null}
+      {!ai && !c?.doc ? <p className="small muted">{t('無說明註解。')}</p> : null}
       {c ? <p className="small muted">{t('{v1} 個檔案、{v2} 個函式', { v1: c.files, v2: c.funcs })}</p> : null}
     </div>
   }
@@ -64,7 +64,7 @@ function FileInfo(p: { ix: Index; f: string; openFn: (id: string) => void }) {
     <InfoTitle kind={t('檔案')} name={p.f.split('/').pop()!} where={p.f} />
     {ai ? <p><DescText d={ai} tag full /></p> : null}
     {doc ? <p className="small">{doc.text.split('\n\n')[0]}</p> : null}
-    {!ai && !doc ? <p className="small muted">{t('沒有說明註解。')}</p> : null}
+    {!ai && !doc ? <p className="small muted">{t('無說明註解。')}</p> : null}
     {/* whether the project lets people change it is a fact about the file; what the checks found is in 檢查 */}
     {role ? <p className="small">{role === 'editable' ? t('可修改：專案允許修改此檔案。') : t('請勿修改：專案不希望修改此檔案。')}
       <span className="fp-src">{byRules ? t('依據：.codemap/rules.json 的 roles') : t('依據：檔案開頭註解的第一個詞')}</span></p> : null}

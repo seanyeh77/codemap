@@ -35,7 +35,7 @@ export function OpenSnapshot(p: { onOpen: (f: File) => void; error: string | nul
           onAdd={(fs) => fs[0] && p.onOpen(fs[0])} />
         {p.error ? <UI.Alert tone="danger" title={t('無法開啟此檔案')}>{p.error}</UI.Alert> : null}
         <InstallApp />
-        <p className="small muted">{t('也可在網址加上')} <UI.InlineCode>{t('?snapshot=網址')}</UI.InlineCode>{t('。即時索引請在 build 環境執行')} <UI.InlineCode>codemap serve</UI.InlineCode>{t('。')}</p>
+        <p className="small muted">{t('也可在網址加上')} <UI.InlineCode>{t('?snapshot=網址')}</UI.InlineCode>{t('。即時索引：於 build 環境執行')} <UI.InlineCode>codemap serve</UI.InlineCode>{t('。')}</p>
       </UI.Card>
     </div>
   )
