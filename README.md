@@ -33,7 +33,8 @@ its components, their files and each file's functions, then its documents
 worth a note. In the middle, what is open: the project opens as its overview
 (what it does, where to start reading, its components), a component as the
 architecture diagram, a file or a function as its code. On the right, 說明: what
-the open thing is and what is worth a note; the project's own words (its terms)
+the open thing is and what is worth a note; for a file, also its functions in line
+order with what each does, the one the code is in marked and in full; the project's own words (its terms)
 are explained where they appear, and the search finds them. Below, four tabs
 follow what is open: callee (what the function calls, level by level; a name
 clicked there opens that function above while the tree keeps its start), caller

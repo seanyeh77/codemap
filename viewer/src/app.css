@@ -289,3 +289,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .info-outline { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .info-outline li { display: flex; flex-direction: column; gap: 2px; }
 .info-outline-desc { font-size: 13px; line-height: 20px; color: var(--ink-muted); }
+/* the function the code is in: marked like a selected row, and showing all it has */
+.info-outline li.is-here { margin: 0 calc(-1 * var(--space-2)); padding: var(--space-1) var(--space-2) var(--space-2); border-left: 2px solid var(--accent); background: var(--surface-sub); }
+.info-here-desc { font-size: 14px; line-height: 22px; }
+.info-here-notes { margin: var(--space-1) 0 0; font-size: 13px; color: var(--ink-muted); }

@@ -13,7 +13,7 @@ import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } f
 import { written, type Func, type Graph, type GrepHit, type Meta } from './data/types'
 import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
-import { Flow, chainKeys } from './pages/Flow'
+import { Flow } from './pages/Flow'
 import { Impact, ImpactSummary } from './pages/Impact'
 import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
@@ -155,7 +155,6 @@ function Shell(p: ShellProps) {
   const selKey = (d: 'down' | 'up') => (flowSel[d].start === start ? flowSel[d].key : 'root')
   // 被呼叫 as a tree, or as the table of everything a change reaches
   const [upTable, setUpTable] = useState(false)
-  const [along, setAlong] = useState<{ start: string; keys: string[] } | null>(null)
   const [showExt, setShowExt] = useState(pr.showExtDefault)
   const [cat, setCatState] = useState(lastCat)
   const setCat = (c: string) => { lastCat = c; setCatState(c) }
@@ -346,7 +345,7 @@ function Shell(p: ShellProps) {
    *  open, the files or components it is tied to. */
   function flowView(d: 'down' | 'up', title: string): UI.WorkbenchView & { id: ViewId } {
     const tree = (s: string) => <Flow key={s + d} ix={ix} start={s} dir={d} predict={pr.selfTest} showExt={showExt} setShowExt={setShowExt}
-      selKey={selKey(d)} along={d === 'down' && along?.start === s ? along.keys : undefined}
+      selKey={selKey(d)}
       onSel={(id, e, key) => {
         const moved = key !== selKey(d)
         setFlowSel((x) => ({ ...x, [d]: { start: s, key } }))
@@ -373,13 +372,7 @@ function Shell(p: ShellProps) {
   const views: (UI.WorkbenchView & { id: ViewId })[] = [
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
-      : <Info ix={ix} at={at} fn={fn} isLive={isLive} sourceId={p.sourceId} openFn={openFn} chain={(ids) => {
-          // the chain opens in the call tree from its entry point, the last function selected; the code stays here
-          const keys = chainKeys(ix, ids, showExt)
-          setPin({ id: ids[0], for: fn })
-          if (keys) { setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setFlowSel((x) => ({ ...x, down: { start: ids[0], key: keys[keys.length - 1] } })) }
-          show('down')
-        }} />}</div> },
+      : <Info ix={ix} at={at} fn={fn} openFn={openFn} />}</div> },
     flowView('down', 'callee'),
     flowView('up', 'caller'),
     { id: 'world', title: t('對外介面'), render: () => <div className="view world-view">
