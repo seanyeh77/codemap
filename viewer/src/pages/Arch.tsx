@@ -1,3 +1,4 @@
+import { Masonry } from '../components/Masonry'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { OpenFile, useCodeRefs } from '../components/DocRefs'
 import { Notes, Parts, Q, worthAt } from './Reader'
@@ -865,19 +866,17 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   )
   if (p.mode === 'bare') return <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
   if (p.mode === 'page') return (
+    // no contents column beside it: the two columns show most of the overview at once, and the search finds a section
     <div className="ov-page">
-      <OvToc parts={shownParts} />
       <article className="ov-doc" data-tour="arch">
         <header className="ov-doc-head">
           <h1 className="ov-title">{g.repo}</h1>
           <UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} />
         </header>
-        {/* two columns on a wide stage, as the contents group them: what the project is, and how it meets the world;
-            each is read top to bottom */}
-        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}><div className="ov-flow">
-          <div className="ov-col">{shownParts.filter((x) => !MEETS.has(x.id)).map(body)}</div>
-          <div className="ov-col">{shownParts.filter((x) => MEETS.has(x.id)).map(body)}</div>
-        </div></MdLinksCtx.Provider></RepoKey.Provider>
+        {/* on a wide stage the sections fill two columns, each where a column ends first, so no column runs on alone */}
+        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>
+          <Masonry className="ov-flow">{shownParts.map(body)}</Masonry>
+        </MdLinksCtx.Provider></RepoKey.Provider>
       </article>
     </div>
   )
@@ -899,45 +898,7 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
 
 /** The order the overview is read in: what the project is, then how it meets the world, then what to check. */
 const READING = ['ov-project', 'ov-comps', 'ov-terms', 'ov-docs', 'ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads', 'ov-worth']
-const MEETS = new Set(['ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads'])
 
-/** The overview's contents: its parts in two groups, the one on screen marked; a click scrolls to it. */
-function OvToc(p: { parts: PartMd[] }) {
-  const [on, setOn] = useState(p.parts[0]?.id ?? '')
-  useEffect(() => {
-    // the part whose title last passed the top of the document is the one being read
-    const doc = document.querySelector('.ov-doc')
-    if (!doc) return
-    const f = () => {
-      const top = doc.getBoundingClientRect().top + 80
-      let cur = p.parts[0]?.id ?? ''
-      for (const x of p.parts) { const el = document.getElementById(x.id); if (el && el.getBoundingClientRect().top <= top) cur = x.id }
-      // at the end of the document the last parts cannot reach the top: the last one is the one being read
-      if (doc.scrollTop + doc.clientHeight >= doc.scrollHeight - 4) cur = p.parts[p.parts.length - 1]?.id ?? cur
-      setOn(cur)
-    }
-    doc.addEventListener('scroll', f, { passive: true })
-    f()
-    return () => doc.removeEventListener('scroll', f)
-  }, [p.parts])
-  const go = (id: string) => {
-    setOn(id)
-    const el = document.getElementById(id)
-    el?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
-    document.getElementById(id + '-h')?.focus({ preventScroll: true })
-  }
-  const group = (label: string, xs: PartMd[]) => (xs.length ? <>
-    <p className="reader-label">{label}</p>
-    <ul>{xs.map((x) => <li key={x.id}><a className={'reader-toc-item' + (x.id === on ? ' is-on' : '')} href={'#' + x.id} aria-current={x.id === on ? 'location' : undefined}
-      onClick={(e) => { e.preventDefault(); go(x.id) }}>{x.title}</a></li>)}</ul>
-  </> : null)
-  return (
-    <nav className="reader-toc ov-toc" aria-label={t('總覽的章節')}>
-      {group(t('認識專案'), p.parts.filter((x) => !MEETS.has(x.id)))}
-      {group(t('對外介面'), p.parts.filter((x) => MEETS.has(x.id)))}
-    </nav>
-  )
-}
 
 /** What a variable does, from the code (or the project's own words in .codemap/rules.json), as Markdown lines. */
 function meaning(m: NonNullable<Graph['env_info']>[string]): string[] {

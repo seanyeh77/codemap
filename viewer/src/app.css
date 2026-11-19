@@ -164,13 +164,12 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .level-q p { margin: 0; }
 .level-list, .level-notes { margin: 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); }
 /* 總覽: a document, its parts listed on the left */
-.ov-page { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-4); }
+.ov-page { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
 /* the overview's two groups: one column after the other, side by side once the card is wide enough */
 .ov-doc { container-type: inline-size; }
-.ov-flow, .ov-col { display: flex; flex-direction: column; gap: var(--space-6); }
-.ov-col:empty { display: none; }
+.masonry { display: flex; flex-direction: column; gap: var(--space-6); }
 @container (min-width: 960px) {
-  .ov-flow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--space-8); align-items: start; }
+  .ov-flow.masonry { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: 8px; gap: 0 var(--space-8); --masonry-gap: 24px; }
 }
 
 
