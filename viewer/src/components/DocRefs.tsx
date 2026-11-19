@@ -6,6 +6,8 @@ import { TermsCtx } from './Terms'
 
 /** Opens a file at a line in the side panel; App provides it. */
 export const OpenFile = createContext<(f: string, l: number) => void>(() => {})
+/** Marks a line in the open code while an item about it is pointed at elsewhere (null clears it). */
+export const PeekLine = createContext<(line: number | null) => void>(() => {})
 
 const DOC = /(?:[\w.-]+\/)*[\w.-]+\.(?:md|rst)\b/g
 

@@ -2,7 +2,7 @@
 // declaration guarantees and its contract. Only facts: what might be wrong is the check tab's. Every item that is
 // about one line is marked when the reader clicks that line in the code, and the panel brings it into view unless
 // the reader is busy in the panel.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as UI from '@seanyeh77/ui'
 import { t, local } from '../i18n'
 import type { Index } from '../data/graph'
@@ -12,6 +12,7 @@ import { DescText } from '../components/DescText'
 import { conceptEx, conceptText, keywordText } from '../data/glossary'
 import { affected } from './Impact'
 import { worthIn, worthLists } from './Reader'
+import { PeekLine } from '../components/DocRefs'
 
 type Src = 'sure' | 'guess' | 'ai'
 interface Row { key: string; line?: number; lines?: number[]; src: Src; body: ReactNode }
@@ -97,7 +98,8 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     el?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }, [p.line, p.id])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => () => peek(null), [])
+  const peek = useContext(PeekLine)
+  useEffect(() => () => peek(null), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const empty = useMemo(() => SECTIONS.every((s) => !rows[s].length), [rows])   // eslint-disable-line react-hooks/exhaustive-deps
   return <div className="info fp" ref={box} onPointerEnter={() => setBusy(true)} onPointerLeave={() => setBusy(false)}
     onFocus={() => setBusy(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setBusy(false) }}>
@@ -114,8 +116,6 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
   </div>
 }
 
-/** Marks a line in the code beside the panel while its item is pointed at (null clears it). The code view has no
- *  call for it, so the line is found by its number, as Reader finds the clicked one. */
 const SCOPE: Record<string, string> = { global: '全域變數', extern: '全域變數', static: '檔案內的 static 變數', module: '模組變數', package: 'package 變數', field: 'static 欄位', member: '物件欄位' }
 
 function lineList(writes: number[], reads: number[]) {
@@ -123,17 +123,8 @@ function lineList(writes: number[], reads: number[]) {
   return [writes.length ? t('寫入：第 {v1} 行', { v1: n(writes) }) : '', reads.length ? t('讀取：第 {v1} 行', { v1: n(reads) }) : ''].filter(Boolean).join(t('；'))
 }
 
-function peek(line: number | null) {
-  document.querySelectorAll('.ui-cv-line.cm-peek').forEach((x) => x.classList.remove('cm-peek'))
-  if (line == null) return
-  const row = [...document.querySelectorAll('.ui-wb-main .ui-cv-line')].find((x) => Number(x.querySelector('.ui-cv-num')?.textContent) === line)
-  if (!row) return
-  row.classList.add('cm-peek')
-  row.scrollIntoView({ block: 'nearest' })
-}
-
 function Src(p: { s: Src }) {
-  return p.s === 'sure' ? null : <span className="fp-src">{p.s === 'ai' ? t('AI 撰寫') : t('推測')}</span>
+  return p.s === 'sure' ? null : <UI.AiMark text={p.s === 'ai' ? t('AI 撰寫') : t('推測')} />
 }
 
 /** The check tab's part about the open function: the pitfalls and mismatches the AI found in it, and what a change

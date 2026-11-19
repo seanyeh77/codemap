@@ -11,7 +11,7 @@ import { prefs } from './prefs'
 import { rank } from './data/search'
 import { embeddedSnapshot, live, liveMeta, snapshotFromFile, snapshotFromURL } from './data/load'
 import { written, type Func, type Graph, type GrepHit, type Meta } from './data/types'
-import { OpenFile } from './components/DocRefs'
+import { OpenFile, PeekLine } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
 import { Flow } from './pages/Flow'
 import { Impact } from './pages/Impact'
@@ -179,6 +179,8 @@ function Shell(p: ShellProps) {
   // kept as a trail above the trees, each step a way back
   const [trail, setTrail] = useState<string[]>(() => init.p ?? [])
   const [mdMode, setMdMode] = useState<{ f: string; m: 'preview' | 'source' } | null>(null)
+  // the line an item in 說明 points at while the pointer is on it
+  const [peekLine, setPeekLine] = useState<number | null>(null)
   const fromPanel = (id: string, a: At | null) => {
     if (!a) return
     setTrail((tr) => {
@@ -443,7 +445,7 @@ function Shell(p: ShellProps) {
     : at.kind === 'comp' ? (comp?.lang
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
       : <Arch ix={ix} sel={at.id} onSel={openComp} edge={edge} onEdge={(e) => { setEdge(e); if (e) show('info') }} />)
-    : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare mdMode={isMd ? mdShown : undefined}
+    : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare mdMode={isMd ? mdShown : undefined} peek={peekLine}
         onLine={(n) => { setPicked(true); setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a)) }} />
 
   // where the open thing is: each step up is a link (the address handles it, like a step back)
@@ -474,12 +476,13 @@ function Shell(p: ShellProps) {
   ) : null
 
   return (
-    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}><OpenCall.Provider value={(id) => (fn && ix.funcs[id] && id !== fn ? fromPanel(id, placeOf(id)) : openFn(id))}><TermsCtx.Provider value={termsCtx}>
+    <OpenFile.Provider value={openFile}><PeekLine.Provider value={setPeekLine}><OpenFunc.Provider value={openFn}><OpenCall.Provider value={(id) => (fn && ix.funcs[id] && id !== fn ? fromPanel(id, placeOf(id)) : openFn(id))}><TermsCtx.Provider value={termsCtx}>
     <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
       crumbs={crumbs}
-      mainBar={isFile ? <>{isMd ? <UI.IconButton variant="quiet" icon={mdShown === 'preview' ? 'file-code' : 'eye'}
-        label={mdShown === 'preview' ? t('顯示原始碼') : t('顯示預覽')} onClick={() => setMdMode({ f: at.f, m: mdShown === 'preview' ? 'source' : 'preview' })} /> : null}
+      mainBar={isFile ? <>{isMd ? <UI.SegmentedControl label={t('顯示方式')} iconOnly value={mdShown}
+        onChange={(m) => setMdMode({ f: at.f, m })}
+        items={[{ id: 'preview', label: t('預覽'), icon: 'eye' }, { id: 'source', label: t('原始碼'), icon: 'file-code' }]} /> : null}
         <EditorButton ix={ix} file={at.f} line={at.l} /></> : undefined}
       explorerFilter={{ value: q, onChange: setQ, label: t('篩選檔案與函式') }}
       explorer={<Explorer ix={ix} at={at} fn={fn} q={q} open={explorerOpen} />}
@@ -508,7 +511,7 @@ function Shell(p: ShellProps) {
       { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee：目前函式呼叫的函式。caller：呼叫目前函式的函式。選取名稱即開啟該函式，上方列出瀏覽路徑；分頁可拖曳至右側欄或下方面板。') },
       { target: TOUR_TARGETS[5], title: t('檢查'), text: t('自動檢查的結果、說明與程式碼不一致之處，以及修改的影響範圍。檔案總管中有圓點的項目會開啟此分頁。') },
     ]} />
-    </TermsCtx.Provider></OpenCall.Provider></OpenFunc.Provider></OpenFile.Provider>
+    </TermsCtx.Provider></OpenCall.Provider></OpenFunc.Provider></PeekLine.Provider></OpenFile.Provider>
   )
 }
 

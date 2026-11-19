@@ -105,7 +105,7 @@ function ExtPreview(p: { ix: Index; id: string }) {
   const ps = d.info?.params ?? []
   return <div>
     <span className="mono">{p.id.slice(4)}</span> <span className="small muted">{t('repo 外的函式')}</span>
-    <div className="small">{say(d.text)} <span className="fp-src">{t('AI 撰寫')}</span></div>
+    <div className="small">{say(d.text)}<UI.AiMark text={t('AI 撰寫')} /></div>
     {ps.length ? <dl className="fp-prm-d small">{ps.map((x) => <div key={x.name} style={{ display: 'contents' }}>
       <dt className="mono">{x.name}</dt><dd>{x.role}{x.type ? <span className="muted"> · {x.type}</span> : null}{say(x) ? ' · ' + say(x) : ''}</dd></div>)}</dl> : null}
     {(d.info?.returns ?? []).map((x, i) => <div key={i} className="small">{t('回傳：')}{say(x)}</div>)}

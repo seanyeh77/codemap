@@ -41,7 +41,9 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   /** The line the reader clicked or moved to. */
   onLine?: (n: number) => void
   /** A Markdown file shown as its preview or its source, when the page above chooses it (the workbench's bar) */
-  mdMode?: 'preview' | 'source' }) {
+  mdMode?: 'preview' | 'source'
+  /** A line marked from outside, e.g. while an item in 說明 about it is pointed at. */
+  peek?: number | null }) {
   const src = useFileSource(p.at.f, p.isLive, p.sourceId)
   const view = useRef<UI.CodeViewHandle>(null)
   const refs = useCodeRefs(p.ix)
@@ -71,13 +73,9 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
     if (moved.current) { moved.current = false; return }
     if (src.data && shown === 'source') view.current?.focusTarget()
   }, [src.data, p.at.f, p.at.l, shown])
-  // the line under a click or the keyboard in the code: the code view has no event for it, so it is read from the line
-  const follow = (e: React.SyntheticEvent) => {
-    const row = (e.target as HTMLElement).closest?.('.ui-cv-line')
-    const n = Number(row?.querySelector('.ui-cv-num')?.textContent)
-    // selecting text to copy is not moving to a line: the selection must survive
-    if (e.type === 'click' && String(window.getSelection() ?? '').length) return
-    if (n && n !== cur) { moved.current = true; setCur(n); p.onLine?.(n) }
+  // the line the reader clicks or moves to with the keyboard (selecting text to copy is not a move)
+  const follow = (n: number) => {
+    if (n !== cur) { moved.current = true; setCur(n); p.onLine?.(n) }
   }
   const local = (href: string) => {
     if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return null
@@ -101,11 +99,12 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
           })}
         </ul> : <p className="small muted">{t('此檔案無函式。')}</p>}
       </nav> : <div className="reader-rail-closed"><UI.IconButton icon="list" label={t('打開函式清單')} onClick={toggleRail} /></div>}
-      <section className="reader-code" aria-label={t('程式碼')} onClickCapture={follow} onFocusCapture={follow}>
+      <section className="reader-code" aria-label={t('程式碼')}>
         {!p.isLive ? <p className="small muted">{t('快照僅含函式的原始碼，無法顯示整個檔案：於 build 環境執行 codemap serve 查看。')}</p>
           : src.isPending ? <UI.Skeleton width="80%" height={16} />
           : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
-          : <>{md && !p.mdMode ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
+          : <>{md && !p.mdMode ? <UI.SegmentedControl label={t('顯示方式')} value={shown} onChange={setMode}
+            items={[{ id: 'preview', label: t('預覽'), icon: 'eye' }, { id: 'source', label: t('原始碼'), icon: 'file-code' }]} /> : null}
             {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
               onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
               : <UI.CodeView {...refs} {...calls} ref={view}
@@ -113,7 +112,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
                 // the workbench's bar above already names the file: the language and buttons float over the code
                 {...(p.bare ? { header: 'float' as const } : { fileHref: vscodeURL(p.at.f, cur, p.ix.g.root, p.ix.g.host) ?? undefined })}
                 code={src.data.lines.join('\n')} start={1}
-                target={cur > 1 ? cur : undefined} maxHeight="100%" sections={fns.map(([, f]) => ({ line: f.line, label: f.name }))} />}
+                target={cur > 1 ? cur : undefined} onLine={follow} peek={p.peek ?? null} maxHeight="100%" sections={fns.map(([, f]) => ({ line: f.line, label: f.name }))} />}
             {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
       </section>
     </div>
