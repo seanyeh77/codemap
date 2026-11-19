@@ -165,10 +165,15 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .level-list, .level-notes { margin: 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); }
 /* 總覽: a document, its parts listed on the left */
 .ov-page { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-4); }
-/* the text stops at 80ch: the card stops with it rather than leave a white band beside it, and the pair is centred */
-@media (min-width: 960px) {
-  .ov-page { grid-template-columns: 220px minmax(0, calc(80ch + 2 * var(--space-8))); justify-content: center; }
+/* the overview's two groups: one column after the other, side by side once the card is wide enough */
+.ov-doc { container-type: inline-size; }
+.ov-flow, .ov-col { display: flex; flex-direction: column; gap: var(--space-6); }
+.ov-col:empty { display: none; }
+@container (min-width: 960px) {
+  .ov-flow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--space-8); align-items: start; }
 }
+
+
 .ov-toc { align-self: start; max-height: 100%; }
 .ov-toc .reader-label { margin: var(--space-2) var(--space-2) var(--space-1); }
 .ov-toc .reader-toc-item { white-space: normal; }
@@ -276,3 +281,9 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .view .ui-md ul, .view .ui-md ol { margin: 0; padding-left: var(--space-5); }
 .view .ui-md blockquote { margin: 0; font-size: 13px; color: var(--ink-muted); }
 .chk-sec > p:not(.small) { margin: 0; }
+/* 檢查 on a wide panel: its three sections side by side rather than three short rows down the left */
+.check-view { container-type: inline-size; }
+@container (min-width: 900px) {
+  .check-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); align-items: start; }
+  .check-cols > .chk-sec + .chk-sec { padding-top: 0; border-top: 0; padding-left: var(--space-6); border-left: 1px solid var(--line); }
+}

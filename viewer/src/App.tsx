@@ -370,9 +370,11 @@ function Shell(p: ShellProps) {
     flowView('down', 'callee'),
     flowView('up', 'caller'),
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
+      <div className="check-cols">
       <Check compact ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
       <DescHealth compact ix={ix} />
       <section className="chk-sec chk-worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} compact /></section>
+      </div>
     </div> },
   ]
 

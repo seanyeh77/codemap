@@ -872,7 +872,12 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
           <h1 className="ov-title">{g.repo}</h1>
           <UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} />
         </header>
-        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
+        {/* two columns on a wide stage, as the contents group them: what the project is, and how it meets the world;
+            each is read top to bottom */}
+        <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}><div className="ov-flow">
+          <div className="ov-col">{shownParts.filter((x) => !MEETS.has(x.id)).map(body)}</div>
+          <div className="ov-col">{shownParts.filter((x) => MEETS.has(x.id)).map(body)}</div>
+        </div></MdLinksCtx.Provider></RepoKey.Provider>
       </article>
     </div>
   )
