@@ -1053,4 +1053,10 @@ export const EN: Record<string, string> = {
   "callee 與 caller": "callee and caller",
   "callee 是目前函式呼叫的函式；caller 是呼叫它的函式，以及修改它會影響的範圍。點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。": "callee: what the current function calls; caller: what calls it, and what a change reaches. Click a name and the code above goes there. Drag a tab to the side bar or the panel, and drag the borders to resize.",
   "這些關係怎麼判斷的": "How these calls were found",
+  "筆記": "Notes",
+  "沒有可檢查的筆記。執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記。": "No notes to check. Run codemap arch to write CODEMAP.md, or name notes with codemap serve --notes.",
+  "沒有可檢查的筆記。以 codemap export --notes 指定筆記，重新匯出快照。": "No notes to check. Name notes with codemap export --notes and export the snapshot again.",
+  "{v1} 檢查": "Checked {v1}",
+  "匯出時的結果・": "As exported · ",
+  "開啟全文": "Open the whole file",
 }

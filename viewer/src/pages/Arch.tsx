@@ -539,7 +539,9 @@ function From(p: { doc: Doc }) {
 /** The project's overview, as Markdown parts. On the 總覽 page (mode 'page') it is a document: the parts in reading
  *  order with their contents on the left. On the check page (mode 'bare') only the parts asked for, one after another. */
 export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void
-  mode?: 'page' | 'bare'; only?: string[]; skip?: string[] }) {
+  mode?: 'page' | 'bare'; only?: string[]; skip?: string[]
+  /** 檢查's panel: only the checks that found something, each folded to its title and count */
+  compact?: boolean }) {
   const g = p.ix.g
   const refs = useCodeRefs(p.ix)
   const openFile = useContext(OpenFile)
@@ -805,10 +807,13 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   if (g.worth) {
     const w = g.worth
     const none = note(t('沒有找到。'))
-    const check = (k: string, title: string, body: string) => (k === 'twins' || applies(k) ? `### ${title}\n\n${body}` : '')
+    const counts = new Map<string, number>(found.map(([k, n]) => [k, n]))
+    const check = (k: string, title: string, body: string) => (!(k === 'twins' || applies(k)) ? ''
+      : p.compact ? (counts.get(k) ? details(t('{v1}：{v2} 處', { v1: title, v2: counts.get(k)! }), body) : '')
+      : `### ${title}\n\n${body}`)
     const kept = <T,>(xs: T[], f: (x: T) => string) => xs.map(f).join('\n')
     parts.push({ id: 'ov-worth', title: t('值得檢查的地方'), summary: sums.worth, md: [
-      note(t('僅列出程式碼中的事實，是否有問題須視實際用法而定。')),
+      p.compact ? '' : note(t('僅列出程式碼中的事實，是否有問題須視實際用法而定。')),
       check('broad', t('捕捉所有例外後繼續執行'), [note(t('範圍：except Exception、except BaseException 與未寫型別的 except，且處理區塊未再 raise。指定型別的 except 不列入。')),
         broad.length ? kept(broad, (x) => `- **except ${esc(x.what)}**：${fnL(x.fid)} ${loc(x.f, x.l)}${t('：接著執行 {v1}，未再拋出', { v1: code(x.then) })}`) : none].join('\n\n')),
       check('twins', t('不同檔案中的同名函式'), twins.length ? kept(twins, ([name, ids]) => `- **${esc(name)}**` + ids.map((id) => `\n  - ${loc(p.ix.funcs[id].file, p.ix.funcs[id].line)} ${esc(p.ix.callerText(id))}`).join('')) : none),
@@ -840,7 +845,7 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
           + v.writes.map((x) => `\n  - ${fnL(x.fid)}${p.ix.callerInfo(x.fid).load === 'constructor' ? t('（載入時）') : p.ix.callerInfo(x.fid).load === 'destructor' ? t('（結束時）') : ''}${t('：')}${code(x.text)} ${loc(x.f, x.l)}`).join(''))].join('\n\n') : none),
       check('env', t('未檢查 NULL 就使用的 getenv 結果'), w.env.length ? kept(w.env, (e) => `- **${e.name ? code(e.name) : t('（名稱執行時決定）')}**：${fnL(e.fid)}${e.use !== e.l ? t(' 在第 {v1} 行使用：', { v1: e.use }) : t(' 直接使用：')}${loc(e.f, e.l)}`)
         : note(t('未找到。每個 getenv 結果在使用前皆已檢查 NULL，或直接回傳給呼叫者。'))),
-      skipped.length ? note(t('另有 {v1} 項只適用於 {v2} 的檢查，本專案不適用，未列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })) : '',
+      skipped.length && !p.compact ? note(t('另有 {v1} 項只適用於 {v2} 的檢查，本專案不適用，未列出。', { v1: skipped.length, v2: [...new Set(skipped.flatMap(([k]) => covers(k)))].map((l) => LANG_NAME[l] ?? l).join(t('、')) })) : '',
     ].filter(Boolean).join('\n\n') })
   }
 

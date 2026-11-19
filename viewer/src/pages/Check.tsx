@@ -21,7 +21,9 @@ function whyText(r: CheckItem) {
   return r.msgs.map((m) => t(m.t, Object.fromEntries(Object.entries(m.v).map(([k, v]) => [k, Array.isArray(v) ? list(v) : v])))).join(t('；'))
 }
 
-export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (id: string, edge: Sel['edge']) => void }) {
+export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (id: string, edge: Sel['edge']) => void
+  /** 檢查's panel: a heading and one line of where things stand, the table only for what needs a look */
+  compact?: boolean }) {
   // a snapshot carries its checks; live, the notes may have changed since indexing, so they are checked again on open
   const q = useQuery<CheckFile[]>({ queryKey: ['checks', p.ix.g.generated], queryFn: live.checks, enabled: p.isLive, staleTime: 0 })
   const files = q.data ?? p.ix.g.checks ?? []
@@ -45,6 +47,8 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   if (p.isLive && q.error) {
     return <UI.Card className="pane"><UI.Alert tone="danger" title={t('無法檢查筆記')}>{(q.error as Error).message}</UI.Alert></UI.Card>
   }
+  if (!cur && p.compact) return <section className="chk-sec" data-tour="notes"><h3 className="info-h">{t('筆記')}</h3>
+    <p className="small muted">{p.isLive ? t('沒有可檢查的筆記。執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記。') : t('沒有可檢查的筆記。以 codemap export --notes 指定筆記，重新匯出快照。')}</p></section>
   if (!cur) {
     return (
       <UI.Card className="pane" data-tour="notes">
@@ -66,10 +70,18 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
   const fixes = rows.filter((r) => r.fix)
   const issues = rows.filter((r) => r.status === 'fail' || r.status === 'review')
   const shown = all ? rows : issues
+  const head = p.compact ? <>
+    <div className="chk-head"><h3 className="info-h">{t('筆記')} <UI.InlineCode>{cur.file}</UI.InlineCode></h3><span className="grow" />
+      {p.isLive ? <UI.IconButton variant="quiet" icon="arrows-clockwise" label={q.isFetching ? t('檢查中') : t('重新檢查')} disabled={q.isFetching}
+        onClick={() => { asked.current = true; q.refetch() }} /> : null}</div>
+    <p className="small muted">{p.isLive && q.dataUpdatedAt ? t('{v1} 檢查', { v1: dateTime(new Date(q.dataUpdatedAt)) }) + t('・') : t('匯出時的結果・')}
+      <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟全文')}</button></p>
+  </> : null
   return (
-    <div className="pane">
+    <div className={p.compact ? 'chk-sec' : 'pane'}>
+      {head}
       {files.length > 1 ? <UI.Tabs label={t('筆記檔案')} unit={countUnit('項', 'item', 'items')} items={files.map((f) => ({ id: f.file, label: f.file, count: f.items.length }))} value={cur.file} onChange={setFile} /> : null}
-      <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
+      {p.compact ? null : <UI.Card data-tour="notes" title={<UI.InlineCode>{cur.file}</UI.InlineCode>}
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
         {/* one line of where things stand; what each result means is behind 「結果的意思」 */}
         <p className="small muted">{p.isLive && q.dataUpdatedAt ? t('檢查時間：{v1}。', { v1: dateTime(new Date(q.dataUpdatedAt)) }) + ' ' : ''}
@@ -87,7 +99,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
         <p className="small muted">{t('沒有 file:line 引用或呼叫的行不列出。')}</p>
         </div> : null}
         {!p.isLive ? <p className="small muted">{t('此為匯出時的檢查結果。重新檢查需在 build 環境執行 codemap serve。')}</p> : null}
-      </UI.Card>
+      </UI.Card>}
       {shown.length ? <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
         summary={{ key: 'result', items: ['fail', 'review', 'calls', 'syntax', 'names', 'exists', 'done'].filter((v) => shown.some((r) => r.result === v)).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
         columns={[
@@ -118,11 +130,17 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
 
 /** The map's descriptions: how many functions say what they do, and which AI descriptions the code has moved away from
  *  (stale) or that name places or names the code does not have (wrong). Here because it is about the map, not the code. */
-export function DescHealth(p: { ix: Index }) {
+export function DescHealth(p: { ix: Index; compact?: boolean }) {
   const openFile = useContext(OpenFile)
   const fs = Object.entries(p.ix.funcs).filter(([, f]) => f.kind !== 'module' && f.scope !== 'test')
   const bad = fs.filter(([, f]) => f.ai && (f.ai.state === 'stale' || f.ai.state === 'wrong'))
   if (!fs.length) return null
+  if (p.compact) return <section className="chk-sec"><h3 className="info-h">{t('函式說明')}</h3>
+    <DescCoverage ix={p.ix} />
+    {bad.length ? <ul className="level-list">{bad.map(([id, f]) => (
+      <li key={id}><UI.InlineCode look="name" href={'#' + id} onClick={(e) => { e.preventDefault(); openFile(f.file, f.line) }}>{f.name}</UI.InlineCode>{' '}
+        <span className="small muted">{f.ai!.state === 'stale' ? t('程式碼在說明寫好之後改過') : t('提到的位置或名稱與程式碼不符')}</span></li>))}</ul> : null}
+  </section>
   return (
     <UI.Card className="desc-health" title={t('函式說明')}>
       <DescCoverage ix={p.ix} />

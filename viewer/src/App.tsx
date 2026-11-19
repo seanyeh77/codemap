@@ -375,9 +375,9 @@ function Shell(p: ShellProps) {
     flowView('down', 'callee'),
     flowView('up', 'caller'),
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
-      <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
-      <DescHealth ix={ix} />
-      <UI.Card className="worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} /></UI.Card>
+      <Check compact ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
+      <DescHealth compact ix={ix} />
+      <section className="chk-sec chk-worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} compact /></section>
     </div> },
   ]
 

@@ -262,3 +262,15 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .info-here { font-weight: 600; font-size: 13px; }
 .info-open { margin-left: var(--space-3); }
 .impact-sum { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: baseline; margin: 0; }
+.chk-sec { display: flex; flex-direction: column; gap: var(--space-2); }
+.check-view > .chk-sec + .chk-sec { padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.chk-head { display: flex; align-items: center; gap: var(--space-2); }
+.chk-head .info-h { display: inline-flex; align-items: center; gap: var(--space-2); }
+.check-view { gap: var(--space-3); }
+.chk-sec .check-rest { box-shadow: none; background: transparent; padding: 0; margin: 0; }
+.chk-worth .ov-sec { gap: var(--space-2); }
+.chk-worth .ov-sec > h2 { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink-muted); }
+.chk-worth .ov-sec > h2 + .small { display: none; }   /* 有發現：… repeats the titles listed right under it */
+.chk-worth .ui-md-summary { font-size: 14px; font-weight: 400; padding-block: 4px; }
+.chk-worth .ui-md-details { margin: 0; }
+.chk-worth .ui-md { gap: 0; }
