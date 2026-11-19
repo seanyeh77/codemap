@@ -127,8 +127,14 @@ def cmd_index(a):
         print(term.fit(ln))
     failed = [u for u in idx["units"] if u["status"] == "failed"]
     if failed:
-        ui.say(f"{len(failed)} unit{'s' * (len(failed) != 1)} did not compile (their calls are missing): "
-               + ", ".join(u["file"] for u in failed[:3]) + (" ..." if len(failed) > 3 else ""), "warn")
+        errors = " ".join(u.get("error") or "" for u in failed)
+        why = ("the compiler here is not GCC (on macOS, gcc is clang): for exact calls install GCC (brew install gcc) "
+               "and run codemap index --cc gcc-15 (the version brew installed)"
+               if "callgraph-info" in errors or "clang" in errors or "not found" in errors
+               else (failed[0].get("error") or "").strip().splitlines()[-1:][0][:120] if failed[0].get("error") else "")
+        ui.say(f"{len(failed)} unit{'s' * (len(failed) != 1)} did not compile with GCC, so tree-sitter read their files "
+               f"(calls matched by name): " + ", ".join(u["file"] for u in failed[:3]) + (" ..." if len(failed) > 3 else "")
+               + (f"; {why}" if why else ""), "warn")
     errs = [e for b in idx["backends"].values() if isinstance(b, dict) for e in b.get("errors", [])]
     if errs:
         ts = (idx["backends"].get("typescript") or {}).get("placeholders") or []
@@ -151,7 +157,7 @@ def index_summary(idx, secs):
     calls = sum(1 for e in idx["edges"] if e.get("kind") in CALLISH)
     sure = [f"{res[k]} {k}" for k in ("exact", "inferred", "ambiguous") if res.get(k)]
     # tree-sitter's calls are matched by name: counted apart, so the line adds up and says how sure they are
-    byname = (idx["backends"].get("syntax") or {}).get("edges", 0)
+    byname = sum((idx["backends"].get(k) or {}).get("edges", 0) for k in ("syntax", "syntax-c"))
     if byname:
         sure.append(f"{byname} matched by name")
     tests = sum(1 for n in nodes if n.get("scope") == "test")

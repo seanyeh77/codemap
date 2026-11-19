@@ -10,8 +10,9 @@ looks inside a backend, so a new language is a new module here.
   typescript  TypeScript and JavaScript through the TypeScript compiler API (a Node helper): source "static"
   syntax   every other language with a tree-sitter grammar, calls matched by name: source "syntax"
 
-The gcc backend takes the C/C++ files when it can; tree-sitter reads them only
-when the repository has no compile_commands.json. Python goes to its own
+The gcc backend takes the C/C++ files when it can; tree-sitter reads them when
+the repository has no compile_commands.json, and reads the files of the units
+GCC could not compile (no GCC: macOS's gcc is clang) as "syntax-c". Python goes to its own
 analyzer; `"backends": {"python": false}` in .codemap/rules.json sends it to
 tree-sitter instead.
 """
@@ -75,6 +76,18 @@ def build(root, scope=None, jobs=None, cc=None, config=None):
             name, part = _one(root, name, files, scope, jobs, cc, config, parts)
             st.done(_result(name, part), "warn" if _trouble(part) else "ok")
         parts.append((name, part))
+        if name == "gcc" and part["stats"].get("failed"):
+            # the units GCC could not compile (no GCC: macOS's gcc is clang; a missing header): their files are
+            # read by tree-sitter instead, so their functions are on the map, their calls matched by name
+            done = {n.get("file") for n in part["nodes"].values() if n.get("defined")}
+            rest = [f for f in files if f not in done]
+            if rest:
+                from . import syntax
+                with ui().step(f"tree-sitter, for what GCC could not compile ({len(rest)} file{'s' * (len(rest) != 1)})") as st:
+                    p2 = syntax.build(root, rest, others=[p for _, p in parts])
+                    p2["stats"]["fallback"] = "tree-sitter"
+                    st.done(_result("syntax", p2), "warn")
+                parts.append(("syntax-c", p2))
     from .. import scope
     idx = schema.merge(parts)
     scope.mark(idx["nodes"], config)

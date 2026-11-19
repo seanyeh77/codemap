@@ -1,6 +1,7 @@
 """Run with: python3 -m unittest discover -s tests"""
 
 import gzip
+import os
 import json
 import shutil
 import subprocess
@@ -615,3 +616,17 @@ def test_check_without_notes_checks_the_descriptions(tmp_path, capsys):
     except SystemExit:
         pass
     assert "CODEMAP.md: none yet" in capsys.readouterr().out
+
+
+def test_units_gcc_cannot_compile_are_read_by_tree_sitter(tmp_path, monkeypatch):
+    from codemap import backends
+    (tmp_path / "a.c").write_text("static int g(void) { return 1; }\nint f(void) { return g(); }\n")
+    (tmp_path / "compile_commands.json").write_text(json.dumps([{"directory": str(tmp_path), "file": "a.c", "arguments": ["clang", "-c", "a.c"]}]))
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "gcc").write_text("#!/bin/sh\necho 'clang: error: unknown argument: -fcallgraph-info' >&2\nexit 1\n")
+    (fake / "gcc").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake}:{os.environ['PATH']}")
+    idx = backends.build(tmp_path)
+    names = {n["name"] for n in idx["nodes"].values() if n.get("defined")}
+    assert {"f", "g"} <= names and "syntax-c" in idx["backends"]
