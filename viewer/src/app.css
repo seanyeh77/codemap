@@ -253,7 +253,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .rel-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-view { display: flex; flex-direction: column; gap: var(--space-4); }
 .check-view > .pane { flex: 0 0 auto; overflow: visible; }
-.info-h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-muted); }
+.info-h { margin: 0; }
 .info-notes, .info-path { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .info-notes .level-notes { margin: 0; }
 .info-chain { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px; line-height: 1.7; font-size: 14px; }
@@ -269,8 +269,21 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .check-view { gap: var(--space-3); }
 .chk-sec .check-rest { box-shadow: none; background: transparent; padding: 0; margin: 0; }
 .chk-worth .ov-sec { gap: var(--space-2); }
-.chk-worth .ov-sec > h2 { margin: 0; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--ink-muted); }
+.chk-worth .ov-sec > h2 { margin: 0; }
 .chk-worth .ov-sec > h2 + .small { display: none; }   /* 有發現：… repeats the titles listed right under it */
-.chk-worth .ui-md-summary { font-size: 14px; font-weight: 400; padding-block: 4px; }
+.chk-worth .ui-md-summary { padding-block: 4px; }
 .chk-worth .ui-md-details { margin: 0; }
 .chk-worth .ui-md { gap: 0; }
+
+/* one type scale in the side bar and the panel: headings 14 px semibold, text 14 px, notes and places 13 px muted;
+   the overview's Markdown, when shown here, follows it instead of its page sizes */
+.view, .info { font-size: 14px; line-height: 22px; }
+.view p, .info p, .view li, .info li { font-size: inherit; line-height: inherit; }
+.info-h, .chk-worth .ov-sec > h2, .view .ui-md h3, .view .ui-md h4 { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--ink); margin: 0; }
+.view .small, .info .small { font-size: 13px; line-height: 20px; }
+.view .ui-md, .view .ui-md p, .view .ui-md li, .view .ui-md-summary { font-size: 14px; line-height: 22px; }
+.view .ui-md strong { font-weight: 600; }
+.view .ui-md code, .info code, .view .ui-inline-code, .info .ui-inline-code { font-size: 13px; }
+.view .ui-md ul, .view .ui-md ol { margin: 0; padding-left: var(--space-5); }
+.view .ui-md blockquote { margin: 0; font-size: 13px; color: var(--ink-muted); }
+.chk-sec > p:not(.small) { margin: 0; }
