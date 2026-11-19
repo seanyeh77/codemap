@@ -315,3 +315,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .info-what { display: flex; flex-direction: column; gap: 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); }
 .info-what .info-title { font-size: 16px; line-height: 24px; font-weight: 600; }
 .info-what .info-title.mono { font-family: var(--font-mono); }
+/* the way to the function shown, through callee and caller: each step goes back there */
+.trail { display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px; margin: 0 0 var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); }
+.trail > span { white-space: nowrap; }
+.trail .muted { margin-right: 6px; }
+.trail-here { font-weight: 600; }

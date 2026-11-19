@@ -52,7 +52,8 @@ the words it uses (Pass by Sharing, precondition) are explained where they first
 appear. The project's own words (its terms)
 are explained where they appear, and the search finds them. Below, four tabs
 follow what is open: callee (what the function calls, level by level; a name
-clicked there opens that function above while the tree keeps its start), caller
+clicked there or in caller opens that function everywhere, code, 說明 and both
+trees, and the way there stays above the trees, each step a way back), caller
 (what calls it, with how far a change reaches, as a tree or a table), 對外介面
 (the entry points, commands, environment variables, build products and files
 read and written, of the whole project or only of the open component, file or

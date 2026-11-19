@@ -1109,4 +1109,6 @@ export const EN: Record<string, string> = {
   "讀取：第 {v1} 行": "read on line {v1}",
   "（寫入：第 {v1} 行）": " (written on line {v1})",
 
+  "走過的路": "The way here",
+  "走過的路：": "The way here:",
 }

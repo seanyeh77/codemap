@@ -175,7 +175,20 @@ function Shell(p: ShellProps) {
   }
   const openComp = (c: string) => (c.startsWith('file:') ? openFile(c.slice(5), 1) : c ? setAt({ kind: 'comp', id: c }) : setAt({ kind: 'proj' }))
   /** Opens a place from the panel: the panel stays on its start. */
-  const fromPanel = (a: At | null) => { if (!a) return; if (start) setPin({ id: start, for: a.kind === 'file' ? fnAt(ix, a.f, a.l) : null }); setAt(a) }
+  // a function picked in callee or caller becomes what everything shows (code, 說明, both trees); the way there is
+  // kept as a trail above the trees, each step a way back
+  const [trail, setTrail] = useState<string[]>([])
+  const fromPanel = (id: string, a: At | null) => {
+    if (!a) return
+    setTrail((tr) => {
+      const at = tr.indexOf(id)
+      if (at >= 0) return tr.slice(0, at + 1)
+      const base = fn && tr[tr.length - 1] === fn ? tr : fn ? [fn] : []
+      return [...base, id]
+    })
+    setPin(null)
+    setAt(a)
+  }
   /** Shows a view wherever the reader has put it, opening its area. */
   const show = (v: ViewId) => wb.current?.show(v)
   const explorerOpen = (id: string) => {
@@ -352,16 +365,22 @@ function Shell(p: ShellProps) {
       onSel={(id, e, key) => {
         const moved = key !== selKey(d)
         setFlowSel((x) => ({ ...x, [d]: { start: s, key } }))
-        // a row picked in the tree opens that function above; the tree keeps its start
-        if (moved && key !== 'root') fromPanel(placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
+        // a row picked in the tree opens that function everywhere: above, in 說明, and as the trees' start
+        if (moved && key !== 'root') fromPanel(id, placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
       }} />
     return { id: d, title, render: () => <div className="view">
+      {fn && trail.length > 1 && trail[trail.length - 1] === fn ? <nav className="trail small" aria-label={t('走過的路')}>
+        <span className="muted">{t('走過的路：')}</span>
+        {trail.map((id, i) => <span key={id}>{i ? <span className="info-sep" aria-hidden="true">›</span> : null}
+          {i === trail.length - 1 ? <span className="mono trail-here" aria-current="true">{ix.funcs[id]?.name.split('.').pop() ?? id}</span>
+            : <button type="button" className="linklike mono" onClick={() => { const a = placeOf(id); if (a) { setTrail((tr) => tr.slice(0, i + 1)); setPin(null); setAt(a) } }}>{ix.funcs[id]?.name.split('.').pop() ?? id}</button>}</span>)}
+      </nav> : null}
       {!flowStart ? <Relations ix={ix} at={at} mode={d} openFile={(f) => openFile(f, 1)} openComp={openComp} />
         : d === 'down' ? (ix.funcs[flowStart] ? tree(flowStart) : <p className="small muted">{t('repo 外的函式：只看得到誰呼叫它。')}</p>)
         : <>
           <ImpactSummary ix={ix} start={flowStart} table={upTable} setTable={setUpTable} />
           {upTable ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
-              onSel={(id, e) => fromPanel(e ? { kind: 'file', f: e.f, l: e.l } : placeOf(id))} />
+              onSel={(id, e) => fromPanel(id, placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))} />
             : ix.funcs[flowStart] ? tree(flowStart) : null}
         </>}
     </div> }
