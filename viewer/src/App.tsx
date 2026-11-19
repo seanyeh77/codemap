@@ -14,7 +14,7 @@ import { written, type Func, type Graph, type GrepHit, type Meta } from './data/
 import { OpenFile } from './components/DocRefs'
 import { Arch, CompDetail, EdgeDetail, Overview, TRACED, jump } from './pages/Arch'
 import { Flow, chainKeys } from './pages/Flow'
-import { Impact } from './pages/Impact'
+import { Impact, ImpactSummary } from './pages/Impact'
 import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { FileReader, compOfFile } from './pages/Reader'
@@ -115,13 +115,14 @@ interface ShellProps {
   openError: string | null
 }
 
-type ViewId = 'info' | 'flow' | 'impact' | 'check'
-const VIEW_IDS: ViewId[] = ['info', 'flow', 'impact', 'check']
+// 說明; 呼叫 (what it calls, down) and 被呼叫 (what calls it, up, with what a change reaches); 檢查
+type ViewId = 'info' | 'down' | 'up' | 'check'
+const VIEW_IDS: ViewId[] = ['info', 'down', 'up', 'check']
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
-const LAYOUT = { side: ['info'], panel: ['flow', 'impact', 'check'] }
+const LAYOUT = { side: ['info'], panel: ['down', 'up', 'check'] }
 // the tour points at the explorer, the search, the stage and three of the views, wherever the reader moved them
-const TOUR_TARGETS = ['tree', 'search', 'stage', ...['info', 'flow', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
+const TOUR_TARGETS = ['tree', 'search', 'stage', ...['info', 'down', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
 
 function Shell(p: ShellProps) {
   const pr = usePrefs()
@@ -145,12 +146,11 @@ function Shell(p: ShellProps) {
   const [pin, setPin] = useState<{ id: string; for: string | null } | null>(() => init.s ? { id: init.s, for: init.at?.kind === 'file' ? fnAt(ix, init.at.f, init.at.l) : null } : null)
   const known = (id: string) => !!(ix.funcs[id] || ix.inn.has(id))
   const start = pin && pin.for === fn && known(pin.id) ? pin.id : fn
-  const [flowSel, setFlowSel] = useState<{ start: string | null; key: string }>({ start, key: 'root' })
-  const selKey = flowSel.start === start ? flowSel.key : 'root'
-  const [dir, setDirState] = useState<'down' | 'up'>(init.d === 'up' ? 'up' : 'down')
-  const dirMoved = useRef(false)
-  const setDir = (d: 'down' | 'up') => { dirMoved.current = true; setDirState(d) }
-  const [predict, setPredict] = useState(false)
+  // the row picked in each tree, for the start it was picked under
+  const [flowSel, setFlowSel] = useState<Record<'down' | 'up', { start: string | null; key: string }>>({ down: { start, key: 'root' }, up: { start, key: 'root' } })
+  const selKey = (d: 'down' | 'up') => (flowSel[d].start === start ? flowSel[d].key : 'root')
+  // 被呼叫 as a tree, or as the table of everything a change reaches
+  const [upTable, setUpTable] = useState(false)
   const [along, setAlong] = useState<{ start: string; keys: string[] } | null>(null)
   const [showExt, setShowExt] = useState(pr.showExtDefault)
   const [cat, setCatState] = useState(lastCat)
@@ -165,7 +165,7 @@ function Shell(p: ShellProps) {
   const openFn = (id: string) => {
     const a = placeOf(id)
     if (a) setAt(a)
-    else if (ix.inn.has(id)) { setPin({ id, for: fn }); show('impact') }       // a function outside the repo: who in the repo calls it
+    else if (ix.inn.has(id)) { setPin({ id, for: fn }); show('up') }       // a function outside the repo: who in the repo calls it
   }
   const openComp = (c: string) => (c.startsWith('file:') ? openFile(c.slice(5), 1) : c ? setAt({ kind: 'comp', id: c }) : setAt({ kind: 'proj' }))
   /** Opens a place from the panel: the panel stays on its start. */
@@ -180,7 +180,7 @@ function Shell(p: ShellProps) {
   }
 
   // the address: what is open (each a step back can return to) and the panel's view (replaced, not a new step)
-  const base = hashOf(at, start !== fn ? start : null, dir)
+  const base = hashOf(at, start !== fn ? start : null)
   const here = base + (layout?.open.panel && layout.active.panel ? (base.includes('?') ? '&' : '?') + 'v=' + layout.active.panel : '')
   const placed = useRef(false)
   const lastBase = useRef(base)
@@ -197,7 +197,6 @@ function Shell(p: ShellProps) {
       const h = readHash(ix)
       if (h.at) { setEdge(''); setAtState(h.at) }
       setPin(h.s ? { id: h.s, for: h.at?.kind === 'file' ? fnAt(ix, h.at.f, h.at.l) : null } : null)
-      setDirState(h.d === 'up' ? 'up' : 'down')
       if (h.v) show(h.v)
     }
     addEventListener('popstate', onPop)
@@ -326,9 +325,9 @@ function Shell(p: ShellProps) {
     const g = item.target
     if (g.type === 'func') openFn(g.id)
     else if (g.type === 'comp') openComp(g.id)
-    else if (g.type === 'page') { if (g.id === 'settings') setAt({ kind: 'settings' }); else if (g.id === 'overview' || g.id === 'arch') setAt({ kind: 'proj' }); else show(g.id as ViewId) }
+    else if (g.type === 'page') { if (g.id === 'settings') setAt({ kind: 'settings' }); else if (g.id === 'overview' || g.id === 'arch') setAt({ kind: 'proj' }); else show(g.id === 'flow' ? 'down' : g.id === 'impact' ? 'up' : g.id as ViewId) }
     else if (g.type === 'line' || g.type === 'file') openFile(g.f, g.l)
-    else if (g.type === 'ext') { setPin({ id: g.id, for: fn }); show('impact') }
+    else if (g.type === 'ext') { setPin({ id: g.id, for: fn }); show('up') }
     else if (g.type === 'overview') {
       // what to check is in 檢查; the rest of the overview is the project's page
       if (g.sec && WORTH_SECTIONS.has(g.sec)) show('check')
@@ -341,31 +340,40 @@ function Shell(p: ShellProps) {
   const empty = !p.graph.comps.length
   const isFile = at.kind === 'file'
   const flowStart = start && (ix.funcs[start] || ix.inn.has(start)) ? start : null
+  /** 呼叫 or 被呼叫: the call tree one way from the function above (or where the panel was pinned); with no function
+   *  open, the files or components it is tied to. */
+  function flowView(d: 'down' | 'up', title: string): UI.WorkbenchView & { id: ViewId } {
+    const tree = (s: string) => <Flow key={s + d} ix={ix} start={s} dir={d} predict={pr.selfTest} showExt={showExt} setShowExt={setShowExt}
+      selKey={selKey(d)} along={d === 'down' && along?.start === s ? along.keys : undefined}
+      onSel={(id, e, key) => {
+        const moved = key !== selKey(d)
+        setFlowSel((x) => ({ ...x, [d]: { start: s, key } }))
+        // a row picked in the tree opens that function above; the tree keeps its start
+        if (moved && key !== 'root') fromPanel(placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
+      }} />
+    return { id: d, title, render: () => <div className="view">
+      {!flowStart ? <Relations ix={ix} at={at} mode={d} openFile={(f) => openFile(f, 1)} openComp={openComp} />
+        : d === 'down' ? (ix.funcs[flowStart] ? tree(flowStart) : <p className="small muted">{t('repo 外的函式：只看得到誰呼叫它。')}</p>)
+        : <>
+          <ImpactSummary ix={ix} start={flowStart} table={upTable} setTable={setUpTable} />
+          {upTable ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
+              onSel={(id, e) => fromPanel(e ? { kind: 'file', f: e.f, l: e.l } : placeOf(id))} />
+            : ix.funcs[flowStart] ? tree(flowStart) : null}
+        </>}
+    </div> }
+  }
   const views: (UI.WorkbenchView & { id: ViewId })[] = [
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
       : <Info ix={ix} at={at} fn={fn} isLive={isLive} sourceId={p.sourceId} openFn={openFn} chain={(ids) => {
           // the chain opens in the call tree from its entry point, the last function selected; the code stays here
           const keys = chainKeys(ix, ids, showExt)
-          setPin({ id: ids[0], for: fn }); setDirState('down'); setPredict(false)
-          if (keys) { setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setFlowSel({ start: ids[0], key: keys[keys.length - 1] }) }
-          show('flow')
+          setPin({ id: ids[0], for: fn })
+          if (keys) { setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setFlowSel((x) => ({ ...x, down: { start: ids[0], key: keys[keys.length - 1] } })) }
+          show('down')
         }} />}</div> },
-    { id: 'flow', title: t('呼叫流程'), render: () => <div className="view">{flowStart && ix.funcs[flowStart]
-      ? <Flow key={flowStart + dir} ix={ix} start={flowStart} dir={dir} setDir={setDir} dirMoved={dirMoved} predict={predict} setPredict={setPredict}
-          showExt={showExt} setShowExt={setShowExt} selKey={selKey} along={along?.start === flowStart ? along.keys : undefined} openSearch={() => setPalette(true)}
-          onSel={(id, e, key) => {
-            const moved = key !== selKey
-            setFlowSel({ start: flowStart, key })
-            // a row picked in the tree opens that function above; the tree keeps its start
-            if (moved && key !== 'root') fromPanel(placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
-            else if (moved && key === 'root' && flowStart !== fn) openFn(flowStart)
-          }} />
-      : <Relations ix={ix} at={at} mode="flow" openFile={(f) => openFile(f, 1)} openComp={openComp} />}</div> },
-    { id: 'impact', title: t('影響範圍'), render: () => <div className="view">{flowStart
-      ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
-          onSel={(id, e) => fromPanel(e ? { kind: 'file', f: e.f, l: e.l } : placeOf(id))} />
-      : <Relations ix={ix} at={at} mode="impact" openFile={(f) => openFile(f, 1)} openComp={openComp} />}</div> },
+    flowView('down', t('呼叫')),
+    flowView('up', t('被呼叫')),
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
       <DescHealth ix={ix} />
@@ -391,8 +399,8 @@ function Shell(p: ShellProps) {
   const crumbs: UI.BreadcrumbItem[] = [{ label: p.graph.repo, href: '#overview' }]
   if (at.kind === 'settings') crumbs.push({ label: t('設定') })
   const cid = at.kind === 'comp' ? at.id : isFile ? compOfFile(ix, at.f) : undefined
-  if (cid) crumbs.push({ label: cid === TRACED ? t('被追蹤的程式') : cid, href: hashOf({ kind: 'comp', id: cid }, null, 'down') })
-  if (isFile) crumbs.push({ label: at.f.split('/').pop()!, href: hashOf({ kind: 'file', f: at.f, l: 1 }, null, 'down') })
+  if (cid) crumbs.push({ label: cid === TRACED ? t('被追蹤的程式') : cid, href: hashOf({ kind: 'comp', id: cid }, null) })
+  if (isFile) crumbs.push({ label: at.f.split('/').pop()!, href: hashOf({ kind: 'file', f: at.f, l: 1 }, null) })
   if (fn) crumbs.push({ label: ix.funcs[fn].name })
   delete crumbs[crumbs.length - 1].href
 
@@ -445,7 +453,7 @@ function Shell(p: ShellProps) {
       { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('點這裡搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
       { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案是總覽，元件是架構圖，檔案與函式是程式碼。程式碼裡藍色的名稱可以點。') },
       { target: TOUR_TARGETS[3], title: t('說明'), text: t('打開的東西是什麼、值得注意什麼。沒有說明的函式可以用 codemap describe 請 AI 補上。') },
-      { target: TOUR_TARGETS[4], title: t('呼叫流程與影響範圍'), text: t('目前函式的呼叫樹與修改它會影響誰；點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
+      { target: TOUR_TARGETS[4], title: t('呼叫與被呼叫'), text: t('目前函式呼叫的函式，以及呼叫它的函式與修改它會影響的範圍；點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
       { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
     ]} />
     </OpenFunc.Provider></OpenFile.Provider>
@@ -581,7 +589,11 @@ function readHash(ix: Index): Loc {
   const q = new URLSearchParams(query)
   const get = (k: string) => q.get(k) ?? undefined
   const place = (id: string | undefined): At | null => (id && ix.funcs[id] ? { kind: 'file', f: ix.funcs[id].file, l: ix.funcs[id].line } : null)
-  const view = (v: string | undefined) => (VIEW_IDS as string[]).includes(v ?? '') ? v as ViewId : undefined
+  // older addresses named the tabs flow and impact, and the direction d=up
+  const view = (v: string | undefined) => {
+    const w = v === 'flow' ? (get('d') === 'up' ? 'up' : 'down') : v === 'impact' ? 'up' : v
+    return (VIEW_IDS as string[]).includes(w ?? '') ? w as ViewId : undefined
+  }
   const o = /^(.+):(\d+)$/.exec(get('o') ?? '')
   const base = { d: get('d'), v: view(get('v')) }
   switch (page) {
@@ -595,7 +607,7 @@ function readHash(ix: Index): Loc {
     }
     case 'flow': case 'impact': {
       const s = get('s'), f = get('f')
-      return { at: o ? { kind: 'file', f: o[1], l: +o[2] } : place(f ?? s), s: f && f !== s ? s : undefined, d: get('d'), v: page }
+      return { at: o ? { kind: 'file', f: o[1], l: +o[2] } : place(f ?? s), s: f && f !== s ? s : undefined, v: view(page) }
     }
     case 'check': case 'notes': return { at: null, v: 'check' }
   }
@@ -606,13 +618,12 @@ function readHash(ix: Index): Loc {
   return { at: place(id) }
 }
 
-/** The address of what is open; s when the panel starts elsewhere, d when the flow goes up. */
-function hashOf(at: At, s: string | null, d: 'down' | 'up'): string {
+/** The address of what is open; s when the panel starts elsewhere. */
+function hashOf(at: At, s: string | null): string {
   const q = new URLSearchParams()
   if (at.kind === 'comp') q.set('c', at.id)
   if (at.kind === 'file') { q.set('f', at.f); q.set('l', String(at.l)) }
   if (s) q.set('s', s)
-  if (d === 'up') q.set('d', 'up')
   const qs = q.toString()
   return '#' + ({ proj: 'overview', comp: 'comp', file: 'code', settings: 'settings' } as const)[at.kind] + (qs ? '?' + qs : '')
 }

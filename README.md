@@ -34,12 +34,13 @@ project opens as its overview (what it does, where to start reading, its terms
 and documents, and how it meets the world: entry points, commands, environment
 variables, files read and written), a component as the architecture diagram,
 a file or a function as its code. On the right, 說明: what the open thing is and
-what is worth a note. Below, three tabs follow the open function: 呼叫流程 (its
-calls down or up; a name clicked there opens that function above while the tree
-keeps its start), 影響範圍 (what a change to it reaches) and 檢查 (whether the
-notes still match the code, and what the checks found worth checking). With a
-file or a component open, 呼叫流程 and 影響範圍 list the files or components
-instead. Every border can be dragged, every tab can be dragged between the side
+what is worth a note. Below, three tabs follow the open function: 呼叫 (what it
+calls, level by level; a name clicked there opens that function above while the
+tree keeps its start), 被呼叫 (what calls it, with how far a change to it reaches,
+as a tree or a table) and 檢查 (whether the notes still match the code, and what
+the checks found worth checking). With a file or a component open, 呼叫 and
+被呼叫 list the files or components instead. The self-test (guess each level
+before it opens) is in 設定. Every border can be dragged, every tab can be dragged between the side
 bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer, the panel
 and the side bar; the layout is kept in the browser (設定 › 版面 puts it back).
 Narrower screens draw the side bar and then the explorer over the code, and

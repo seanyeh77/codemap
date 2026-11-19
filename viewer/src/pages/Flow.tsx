@@ -126,18 +126,14 @@ interface FlowProps {
   ix: Index
   start: string
   dir: 'down' | 'up'
-  setDir: (d: 'down' | 'up') => void
-  /** set when the direction was just changed: focus returns to the tabs */
-  dirMoved: { current: boolean }
+  /** self-test (a setting): each level asks for a guess before it opens */
   predict: boolean
-  setPredict: (v: boolean) => void
   showExt: boolean
   setShowExt: (v: boolean) => void
   selKey: string | null
   /** rows opened from the start: a chain of calls shown at once */
   along?: string[]
   onSel: (id: string, edge: Sel['edge'], key: string) => void
-  openSearch: () => void
 }
 
 export function Flow(p: FlowProps) {
@@ -165,13 +161,11 @@ export function Flow(p: FlowProps) {
   // guesses that are functions outside the repo, left out of the tree while 外部函式 is off
   const hidden = res && cur && p.dir === 'down' && !p.showExt
     ? res.miss.filter((m) => p.ix.callees(cur.fid, true).some((e) => !p.ix.funcs[e.d] && p.ix.bareName(e.d, e) === m)) : []
-  const cardRef = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    if (!p.dirMoved.current) return
-    p.dirMoved.current = false
-    // the tree is drawn again in the other direction: the direction button keeps the focus
-    cardRef.current?.querySelector<HTMLElement>('button')?.focus()
-  }, [p.dirMoved])
+  // the start is the function open above, named there already: the tree begins at its first level (the self-test
+  // keeps the start's row, where the first guess is asked)
+  const items = useMemo(() => (p.predict ? tree.items : tree.children('root')), [tree, p.predict])
+  // functions outside the repo that the start calls: left out unless asked for, and counted under the tree
+  const extNames = p.dir === 'down' ? [...new Set(p.ix.callees(p.start, true).filter((e) => !p.ix.funcs[e.d]).map((e) => p.ix.bareName(e.d, e)))] : []
   // guess mode keeps even the start closed until its level is revealed
   const openKeys = [...(p.predict ? [] : ['root', ...(p.along ?? [])]), ...Object.keys(revealed)]
   const reveal = () => {
@@ -206,19 +200,13 @@ export function Flow(p: FlowProps) {
       ) : null}
       <div id="flow-tree">
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
-          items={tree.items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
-          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }}
-          // no toolbar above the tree: the direction and the options sit at the end of the start's row
-          rowActions={(n) => n.id !== 'root' ? null : <span className="flow-acts" ref={cardRef}>
-            <UI.IconButton variant="quiet" icon={p.dir === 'down' ? 'arrow-down' : 'arrow-up'}
-              label={p.dir === 'down' ? t('往下：它呼叫誰。按一下改成往上：誰呼叫它') : t('往上：誰呼叫它。按一下改成往下：它呼叫誰')}
-              onClick={(e) => { e.stopPropagation(); p.setDir(p.dir === 'down' ? 'up' : 'down') }} />
-            <UI.Menu label={t('呼叫流程選項')} items={[
-              { label: p.showExt ? t('隱藏外部函式') : t('顯示外部函式'), icon: 'eye', disabled: p.dir !== 'down', onSelect: () => p.setShowExt(!p.showExt) },
-              { label: p.predict ? t('結束自我測驗') : t('開始自我測驗'), icon: 'pencil-simple', onSelect: () => { setRevealed({}); p.setPredict(!p.predict) } },
-            ]} />
-          </span>} />
+          items={items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
+          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />
       </div>
+      {extNames.length ? <p className="small muted">{p.showExt
+        ? <button type="button" className="linklike" onClick={() => p.setShowExt(false)}>{t('隱藏 {n} 個 repo 外的函式', { n: extNames.length })}</button>
+        : <>{t('另有 {n} 個 repo 外的函式，例如 {v1}。', { n: extNames.length, v1: extNames.slice(0, 3).join(t('、')) })}<button type="button" className="linklike" onClick={() => p.setShowExt(true)}>{t('顯示')}</button></>}</p> : null}
+      {p.dir === 'down' && !tree.index.root?.kids.length && !extNames.length ? <p className="small">{t('它沒有呼叫 repo 內的函式。')}</p> : null}
       {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api
           ? t('找不到 caller：此為外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })

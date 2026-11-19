@@ -12,6 +12,8 @@ export interface Prefs {
   lang: 'zh-TW' | 'en'
   /** include test code (scope "test") in flows, impact and search; the architecture stays production's */
   tests: boolean
+  /** the call trees ask for a guess before showing each level: a way to practise reading code */
+  selfTest: boolean
 }
 
 const KEY = 'codemap.prefs.v1'
@@ -24,7 +26,7 @@ function browserLang(): 'zh-TW' | 'en' {
     return 'zh-TW'
   }
 }
-const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'none', sshHost: '', clone: '', lang: browserLang(), tests: false }
+const DEFAULTS: Prefs = { theme: 'auto', panel: 'right', showExtDefault: false, editor: 'none', sshHost: '', clone: '', lang: browserLang(), tests: false, selfTest: false }
 
 function read(): Prefs {
   try {

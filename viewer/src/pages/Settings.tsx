@@ -152,8 +152,12 @@ export function Settings(p: Props) {
       <UI.SettingsSection title={t('架構圖與流程')}>
         {/* the text and the switch in one label: clicking the text toggles it too */}
         <label className="set-row">
-          <span className="grow"><span className="block">{t('流程預設顯示外部函式')}</span><span className="small muted block">{t('例如 libc、UCX 的函式。')}</span></span>
-          <UI.Switch label={t('流程預設顯示外部函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
+          <span className="grow"><span className="block">{t('預設顯示 repo 外的函式')}</span><span className="small muted block">{t('例如 libc、UCX 的函式。')}</span></span>
+          <UI.Switch label={t('預設顯示 repo 外的函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
+        </label>
+        <label className="set-row">
+          <span className="grow"><span className="block">{t('自我測驗')}</span><span className="small muted block">{t('呼叫與被呼叫的樹每展開一層，先寫下你猜的函式，再揭曉比對。用於練習讀程式。')}</span></span>
+          <UI.Switch label={t('自我測驗')} checked={pr.selfTest} onChange={(v) => save('selfTest', v)} />
         </label>
         {g.stats.tests ? <label className="set-row">
           <span className="grow"><span className="block">{t('包含測試程式碼')}</span><span className="small muted block">{t('在流程、影響範圍與搜尋中列出測試檔的 {v1} 個函式，及測試對正式程式碼的呼叫。架構圖只畫正式程式碼，型別推論也不採用測試放入的替身。', { v1: g.stats.tests })}</span></span>

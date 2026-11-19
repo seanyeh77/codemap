@@ -12,17 +12,15 @@ interface Rel { id: string; name: string; rel: string; text: string; depth?: num
 /** The panel's 呼叫流程 and 影響範圍 when what is open is not a function: the same questions one level up. For a file,
  *  which files call it and which it calls (and, for 影響範圍, every file a change can reach through callers); for a
  *  component, the same between components; for the project, the components and how they call each other. */
-export function Relations(p: { ix: Index; at: At; mode: 'flow' | 'impact'; openFile: (f: string) => void; openComp: (c: string) => void }) {
+export function Relations(p: { ix: Index; at: At; mode: 'down' | 'up'; openFile: (f: string) => void; openComp: (c: string) => void }) {
   const { ix, at } = p
   const fg = useMemo(() => fileGraph(ix), [ix])
   const rows = useMemo((): Rel[] => {
     const base = (f: string) => f.split('/').pop()!
     if (at.kind === 'file') {
-      const inn = fg.links.filter((l) => l.b === at.f), out = fg.links.filter((l) => l.a === at.f)
+      const out = fg.links.filter((l) => l.a === at.f)
       const names = (es: { d: string }[]) => [...new Set(es.map((e) => ix.funcs[e.d]?.name).filter(Boolean))]
-      if (p.mode === 'flow') return [
-        ...inn.sort((x, y) => y.es.length - x.es.length).map((l) => ({ id: 'file:' + l.a, name: base(l.a), rel: t('呼叫它'),
-          text: t('{n} 次，呼叫 {v1}', { n: l.es.length, v1: names(l.es).slice(0, 4).join(t('、')) }) })),
+      if (p.mode === 'down') return [
         ...out.sort((x, y) => y.es.length - x.es.length).map((l) => ({ id: 'file:' + l.b, name: base(l.b), rel: t('它呼叫'),
           text: t('{n} 次，呼叫 {v1}', { n: l.es.length, v1: names(l.es).slice(0, 4).join(t('、')) }) })),
       ]
@@ -30,17 +28,17 @@ export function Relations(p: { ix: Index; at: At; mode: 'flow' | 'impact'; openF
     }
     if (at.kind === 'comp') {
       const ls = ix.g.links.filter((l) => l.a !== l.b && (l.a === at.id || l.b === at.id))
-      if (p.mode === 'flow') return ls.map((l) => ({ id: 'comp:' + (l.a === at.id ? l.b : l.a), name: l.a === at.id ? l.b : l.a,
+      if (p.mode === 'down') return ls.filter((l) => l.a === at.id).map((l) => ({ id: 'comp:' + (l.a === at.id ? l.b : l.a), name: l.a === at.id ? l.b : l.a,
         rel: l.a === at.id ? t('它呼叫') : t('呼叫它'), text: l.kind === 'call' ? t('{n} 次', { n: l.n }) : t('推測：{v1}', { v1: l.kind }) }))
       return reach(ix.g.links.filter((l) => l.a !== l.b).map((l) => [l.a, l.b] as const), at.id).map(([c, d, via]) => ({ id: 'comp:' + c, name: c, rel: d === 1 ? t('直接呼叫') : t('經由 {v1}', { v1: via }), text: '', depth: d }))
     }
-    if (p.mode === 'flow') return ix.g.links.filter((l) => l.a !== l.b && l.kind === 'call').map((l) => ({ id: 'comp:' + l.a, name: `${l.a} → ${l.b}`, rel: t('呼叫'), text: t('{n} 次', { n: l.n }) }))
+    if (p.mode === 'down') return ix.g.links.filter((l) => l.a !== l.b && l.kind === 'call').map((l) => ({ id: 'comp:' + l.a, name: `${l.a} → ${l.b}`, rel: t('呼叫'), text: t('{n} 次', { n: l.n }) }))
     return []
   }, [ix, at, fg, p.mode])
   const what = at.kind === 'file' ? t('檔案') : at.kind === 'comp' ? t('元件') : ''
   const lead = at.kind === 'proj' || at.kind === 'settings'
-    ? (p.mode === 'flow' ? t('元件之間的呼叫。選一個元件、檔案或函式，這裡會改列它的關係。') : t('選一個元件、檔案或函式，這裡會列出修改它會影響誰。'))
-    : p.mode === 'flow' ? t('這個{v1}和其他{v1}之間的呼叫。選一個函式，這裡會改成它的呼叫流程。', { v1: what })
+    ? (p.mode === 'down' ? t('元件之間的呼叫。選一個元件、檔案或函式，這裡會改列它的關係。') : t('選一個元件、檔案或函式，這裡會列出修改它會影響誰。'))
+    : p.mode === 'down' ? t('這個{v1}呼叫的其他{v1}。選一個函式，這裡會改成它呼叫的函式。', { v1: what })
     : t('修改這個{v1}，可能影響這些{v1}（往上找呼叫者）。選一個函式，可以看到函式層級的影響範圍。', { v1: what })
   return <div className="rel">
     <p className="small muted">{lead}</p>
@@ -50,7 +48,7 @@ export function Relations(p: { ix: Index; at: At; mode: 'flow' | 'impact'; openF
         <UI.InlineCode look="name" href={'#'} onClick={(e) => { e.preventDefault(); if (r.id.startsWith('file:')) p.openFile(r.id.slice(5)); else p.openComp(r.id.slice(5)) }}>{r.name}</UI.InlineCode>
         {r.text ? <span className="small muted rel-text">{r.text}</span> : null}
       </li>)}
-    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，沒有可列的呼叫。') : p.mode === 'flow' ? t('和其他{v1}沒有呼叫關係。', { v1: what }) : t('沒有其他{v1}呼叫它。', { v1: what })}</p> : null}
+    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，沒有可列的呼叫。') : p.mode === 'down' ? t('它沒有呼叫其他{v1}。', { v1: what }) : t('沒有其他{v1}呼叫它。', { v1: what })}</p> : null}
   </div>
 }
 
