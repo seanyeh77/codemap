@@ -165,6 +165,10 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .level-list, .level-notes { margin: 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); }
 /* 總覽: a document, its parts listed on the left */
 .ov-page { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--space-4); }
+/* the text stops at 80ch: the card stops with it rather than leave a white band beside it, and the pair is centred */
+@media (min-width: 960px) {
+  .ov-page { grid-template-columns: 220px minmax(0, calc(80ch + 2 * var(--space-8))); justify-content: center; }
+}
 .ov-toc { align-self: start; max-height: 100%; }
 .ov-toc .reader-label { margin: var(--space-2) var(--space-2) var(--space-1); }
 .ov-toc .reader-toc-item { white-space: normal; }
