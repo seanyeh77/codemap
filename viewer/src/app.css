@@ -249,6 +249,12 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .rel-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .check-view { display: flex; flex-direction: column; gap: var(--space-4); }
 .check-view > .pane { flex: 0 0 auto; overflow: visible; }
-.info-path { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-2); }
-.info-chain { margin: 0; padding-left: var(--space-5); display: grid; gap: 2px; }
+.info-h { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-muted); }
+.info-notes, .info-path { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.info-notes .level-notes { margin: 0; }
+.info-chain { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px; line-height: 1.7; font-size: 14px; }
+.info-chain > span { white-space: nowrap; }
+.info-sep { color: var(--ink-muted); margin: 0 6px; }
+.info-here { font-weight: 600; font-size: 13px; }
+.info-open { margin-left: var(--space-3); }
 .impact-sum { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: baseline; margin: 0; }

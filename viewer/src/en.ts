@@ -1028,7 +1028,7 @@ export const EN: Record<string, string> = {
   "檔案總管、右側欄與下方面板的邊界可以拖曳；分頁可以在右側欄與下方面板之間拖曳。這裡把它們放回原處。": "The borders of the explorer, side bar and panel can be dragged, and tabs moved between the side bar and the panel. This puts everything back.",
   "還原預設版面": "Restore the default layout",
   "與 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會優先執行此版本。": "Has the name of a {v1} library function: loaded with LD_PRELOAD, this version runs instead.",
-  "在 callee 分頁展開這條路徑": "Open this path under callee",
+  "在 callee 展開": "Open under callee",
   "同名的還有 {v1}": "Others of the same name: {v1}",
   "另有 {v1} 處呼叫在條件編譯中，本次 build 未編入，因此未計入。": "{v1} more calls are in conditional code this build leaves out, so they are not counted.",
   "此檔案的型別檢查不完整，可能漏掉部分呼叫。": "Type checking of this file was incomplete: some calls may be missing.",

@@ -215,7 +215,9 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
 }
 
 /** 值得注意: whether people may change the file, and what the checks found in this function (or this file). */
-export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extra?: string[] }) {
+export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extra?: string[]
+  /** the workbench's 說明: no tabs around it, a small heading, and nothing at all when there is nothing to note */
+  flat?: boolean }) {
   const g = p.ix.g
   const role = roleOf(g, p.f)
   const found = worthAt(g, (x) => (p.id ? x.fid === p.id : x.f === p.f))
@@ -228,6 +230,12 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
     stale ? <li key="stale">{t('AI 說明寫好之後程式碼改過了，可能不準。')}</li> : null,
     ...(p.extra ?? []).map((x) => <li key={x}>{x}</li>),
   ].filter(Boolean)
+  if (p.flat) return items.length ? <section className="info-notes" aria-label={t('值得注意')}>
+    <h3 className="info-h">{t('值得注意')}</h3>
+    <ul className="level-notes">{items}</ul>
+    {found.length ? <a className="link small" href="#check">{t('到檢查看細節')}</a> : null}
+    {p.why ? <p className="small muted">{p.why}</p> : null}
+  </section> : null
   return <Q title={t('值得注意')}>
     {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('沒有發現。')}</p>}
     {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
