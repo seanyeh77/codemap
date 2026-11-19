@@ -212,6 +212,7 @@ def choose(question, options, default=0):
     out.write(f"{question}{hint}\n{ESC}[?25l")
     draw(True)
     old = termios.tcgetattr(fd)
+    stopped = False
     try:
         tty.setcbreak(fd)
         while True:
@@ -219,6 +220,7 @@ def choose(question, options, default=0):
             if k in ("\r", "\n"):
                 break
             if k == "\x03":
+                stopped = True
                 raise KeyboardInterrupt
             if k in ("up", "k"):
                 at = (at - 1) % n
@@ -229,9 +231,13 @@ def choose(question, options, default=0):
             else:
                 continue
             draw(False)
+    except KeyboardInterrupt:                        # Ctrl-C arrives as a signal (cbreak keeps it)
+        stopped = True
+        raise
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         out.write(f"{ESC}[{n + 1}A\r{ESC}[J{ESC}[?25h")      # the question and its list give way to one line
-        out.write(f"{question} {u._paint('36', options[at][1])}\n")
+        if not stopped:                              # Ctrl-C answers nothing: the question goes, the run stops
+            out.write(f"{question} {u._paint('36', options[at][1])}\n")
         out.flush()
     return options[at][0]

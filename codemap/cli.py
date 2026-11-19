@@ -562,9 +562,9 @@ def main(argv=None):
     s.add_argument("-o", "--output", default="codemap-viewer")
     s.set_defaults(fn=cmd_viewer)
     a = ap.parse_args(argv)
-    if not a.cmd:                                     # `codemap` alone: what to do next, asked; the list is -h
-        return start(a)
     try:
+        if not a.cmd:                                 # `codemap` alone: what to do next, asked; the list is -h
+            return start(a)
         a.fn(a)
     except KeyboardInterrupt:                         # Ctrl-C: the cursor back, one line, the usual status
         term.ui()._restore()
@@ -594,7 +594,8 @@ def _ago(t, w):
 
 def start(a):
     """`codemap` alone: where the project stands, and a question with the next step picked to start with. It asks
-    again after each step, until the map is opened or the answer is to quit."""
+    again after reading the code or checking; after writing prompts, exporting or opening the map it ends, so what
+    that step says stays the last thing on screen. Ctrl-C stops it, as any command."""
     w = START["en"]                                  # the command line speaks English, like every other command
     if not term.can_ask():
         print(w["tty"])
@@ -635,9 +636,12 @@ def start(a):
             args += [pick]
         try:
             main(args)
-        except SystemExit:
-            pass                                     # a step that ends with a status (describe, check) asks again
-        if pick == "serve":
+        except SystemExit as e:
+            if e.code == 130:                        # Ctrl-C in the step: stop, as anywhere else
+                raise
+        # what a step leaves to do outside codemap (prompts for an AI, a file, the map in a browser) stays the
+        # last thing on screen; after reading the code or checking, the question comes back
+        if pick in ("describe", "serve", "export"):
             return
 
 
