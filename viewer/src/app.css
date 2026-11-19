@@ -211,20 +211,9 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .wb { height: 100vh; height: 100dvh; }
 .grow { flex: 1; min-width: 0; }
 .wb-notice { flex: none; padding: var(--space-3) var(--space-4) 0; display: grid; gap: var(--space-2); }
-.stage-bar { flex: none; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--line); background: var(--surface); }
-.stage-crumb { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 13px; }
-.stage-crumb ol { flex-wrap: nowrap; }
-.stage-crumb li { flex: none; }
-.stage-bar .ui-btn { height: 28px; }
-@media (max-width: 959px) {
-  .stage-crumb li:not(:last-child) { display: none; }
-  .stage-crumb li:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-}
-/* the main area of the workbench: the bar, then the stage under it */
+/* the main area of the workbench: a notice when there is one, then the stage */
 .ui-wb-main { display: flex; flex-direction: column; }
 .stage { flex: 1; min-width: 0; min-height: 0; display: flex; padding: var(--space-3) var(--space-4) var(--space-4); box-sizing: border-box; }
-/* the key help under the code takes two lines of the stage; the keys stay (aria-keyshortcuts names them) */
-.stage .ui-cv-keys, .ui-cv:focus-within .ui-cv-keys { display: none; }
 .flow-acts { display: inline-flex; align-items: center; gap: 2px; }
 .stage > * { flex: 1; min-width: 0; min-height: 0; }
 .stage-scroll { overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); }

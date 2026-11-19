@@ -204,12 +204,7 @@ function Shell(p: ShellProps) {
     return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
   }, [ix])   // eslint-disable-line react-hooks/exhaustive-deps
   // an address that asks for a view shows it once, at start
-  // after the layout has measured its width: on a phone it first closes what lies over the code, which would undo this
-  useEffect(() => {
-    if (!init.v) return
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => show(init.v!)))
-    return () => cancelAnimationFrame(id)
-  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (init.v) show(init.v) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   // what changed on screen, for screen readers
   useEffect(() => { if (at.kind === 'file') UI.announce(t('已開啟 {v1} 第 {v2} 行', { v1: at.f.split('/').pop(), v2: at.l })) }, [at])
   useEffect(() => { try { if (fn) localStorage.setItem(`codemap:last:${p.graph.repo}`, fn) } catch { /* private mode */ } }, [fn, p.graph.repo])
@@ -426,7 +421,9 @@ function Shell(p: ShellProps) {
     <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}>
     <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
-      explorerHead={<UI.SearchField className="ex-filter" value={q} onChange={setQ} label={t('篩選檔案與函式')} placeholder={t('篩選檔案與函式')} />}
+      crumbs={crumbs}
+      mainBar={isFile ? <EditorButton ix={ix} file={at.f} line={at.l} /> : undefined}
+      explorerFilter={{ value: q, onChange: setQ, label: t('篩選檔案與函式') }}
       explorer={<Explorer ix={ix} at={at} fn={fn} q={q} open={explorerOpen} />}
       explorerFoot={<button type="button" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} onClick={() => setAt({ kind: 'settings' })}><UI.Icon name="gear" />{t('設定')}</button>}
       actions={<>
@@ -439,9 +436,6 @@ function Shell(p: ShellProps) {
           footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</a>} />
       </>}>
       {snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
-      {/* where the open thing is, in a bar as high as the side bar's and the panel's tab bars */}
-      <div className="stage-bar"><UI.Breadcrumb className="stage-crumb" items={crumbs} />
-        {isFile ? <EditorButton ix={ix} file={at.f} line={at.l} /> : null}</div>
       <div className="stage" data-tour="stage">{stage}</div>
     </UI.Workbench>
     <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}

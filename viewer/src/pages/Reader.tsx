@@ -97,10 +97,9 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
             {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
               onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
               : <UI.CodeView {...refs} {...calls} ref={view}
-                {...(p.bare
-                  // the workbench's bar above already names the file: no header in the code box
-                  ? { language: codeLanguage(src.data.file) }
-                  : { file: src.data.file, languageLabel: langLabel(src.data.file), fileHref: vscodeURL(p.at.f, cur, p.ix.g.root, p.ix.g.host) ?? undefined })}
+                file={src.data.file} languageLabel={langLabel(src.data.file)}
+                // the workbench's bar above already names the file: the language and buttons float over the code
+                {...(p.bare ? { header: 'float' as const } : { fileHref: vscodeURL(p.at.f, cur, p.ix.g.root, p.ix.g.host) ?? undefined })}
                 code={src.data.lines.join('\n')} start={1}
                 target={cur > 1 ? cur : undefined} maxHeight="100%" sections={fns.map(([, f]) => ({ line: f.line, label: f.name }))} />}
             {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
@@ -256,8 +255,3 @@ export function worthAt(g: Graph, at: (x: { fid: string; f: string }) => boolean
   return lists.map(([label, xs]) => [label, xs.filter(at).length] as [string, number]).filter(([, n]) => n > 0)
 }
 
-/** The code view's language from a file's extension, as the design system reads it from a file name. */
-function codeLanguage(file: string): string {
-  const ext = /\.([A-Za-z0-9]+)$/.exec(file)?.[1].toLowerCase() ?? ''
-  return ({ c: 'c', h: 'c', cc: 'c', cpp: 'c', hpp: 'c', cu: 'c', js: 'js', jsx: 'js', ts: 'js', tsx: 'js', mjs: 'js', py: 'py', sh: 'sh', bash: 'sh' } as Record<string, string>)[ext] ?? 'plain'
-}
