@@ -309,7 +309,7 @@ function Shell(p: ShellProps) {
         : new RegExp(`^\\s*(async\\s+)?(def|class|func|function)\\s+${ident}\\b`).test(h.text) ? t('定義')
         : /^\s*(from\s+\S+\s+)?import\b/.test(h.text) || (/^\s*[\w.]+,?\s*$/.test(h.text) && /\.py$/.test(h.file)) ? t('匯入或列出名稱')
         : fid && ix.callees(fid, true).some((e) => e.l === h.line && e.f === h.file && (ix.funcs[e.d]?.name ?? ix.bareName(e.d, e)).split('.').pop() === ident) ? t('呼叫')
-        : t('提到這個名稱，不是呼叫')
+        : t('僅提及此名稱，並非呼叫')
       const roleText = role ? ` · ${role}` : ''
       return { id: `t:${h.file}:${h.line}`, kind, label: kind === '文件' ? plainDoc(h.text) : h.text, code: kind !== '文件' && kind !== '註解',
         detail: (partial ? t('找不到「{v1}」，改列含 {v2} 的行 · ', { v1: typed, v2: parts.join(t('、')) }) : '') + `${h.file}:${h.line}` + where + roleText + reaches, target: { type: 'file', f: h.file, l: h.line } }
@@ -404,8 +404,8 @@ function Shell(p: ShellProps) {
     flowView('up', 'caller'),
     { id: 'world', title: t('對外介面'), render: () => <div className="view world-view">
       <Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={WORLD} compact within={within}
-        empty={<p className="small muted">{at.kind === 'comp' ? t('這個元件不執行外部指令，也不讀寫環境變數或檔案。')
-          : fn ? t('這個函式不執行外部指令，也不讀寫環境變數或檔案。') : t('這個檔案不執行外部指令，也不讀寫環境變數或檔案。')}</p>} />
+        empty={<p className="small muted">{at.kind === 'comp' ? t('此元件不執行外部指令，亦不讀寫環境變數或檔案。')
+          : fn ? t('此函式不執行外部指令，亦不讀寫環境變數或檔案。') : t('此檔案不執行外部指令，亦不讀寫環境變數或檔案。')}</p>} />
     </div> },
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <div className="check-cols">
@@ -450,7 +450,7 @@ function Shell(p: ShellProps) {
   // an address that points at test code while test code is hidden: say so, rather than showing something else
   const testAlert = init.s && !ix.funcs[init.s] && p.graph.funcs[init.s]?.scope === 'test' ? (
     <UI.Alert tone="info" title={t('{v1} 是測試程式碼', { v1: p.graph.funcs[init.s].name })} actionLabel={t('包含測試程式碼')} onAction={() => prefs.set('tests', true)}>
-      {t('流程、影響範圍與搜尋預設不含測試程式碼，因此這裡顯示其他函式。開啟後即可查看。')}
+      {t('流程、影響範圍與搜尋預設不含測試程式碼，因此此處顯示其他函式；開啟此設定即可查看。')}
     </UI.Alert>
   ) : init.s && !known(init.s) && !p.graph.funcs[init.s] ? (
     <UI.Alert tone="warning" title={t('找不到「{v1}」', { v1: init.s })} actionLabel={t('搜尋')} onAction={() => setPalette(true)}>
@@ -484,10 +484,10 @@ function Shell(p: ShellProps) {
       placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
       kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
     <UI.Tour open={tourOpen} onClose={tourClose} step={tourStep} onStepChange={setTourStep} steps={[
-      { target: TOUR_TARGETS[0], title: t('檔案總管'), text: t('專案、元件、檔案與函式。點一個就在中間打開；有圓點的地方有值得注意的事。上方可以篩選名稱。') },
-      { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('點這裡搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
-      { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案是總覽，元件是架構圖，檔案與函式是程式碼。程式碼裡藍色的名稱可以點。') },
-      { target: TOUR_TARGETS[3], title: t('說明'), text: t('打開的東西是什麼、值得注意什麼。沒有說明的函式可以用 codemap describe 請 AI 補上。') },
+      { target: TOUR_TARGETS[0], title: t('檔案總管'), text: t('專案、元件、檔案與函式。選取項目即於中間開啟；圓點：有值得注意之處。上方可篩選名稱。') },
+      { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
+      { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案：總覽；元件：架構圖；檔案與函式：程式碼。程式碼中的藍色名稱為連結。') },
+      { target: TOUR_TARGETS[3], title: t('說明'), text: t('開啟項目的說明與值得注意之處。缺少說明的函式可執行 codemap describe 由 AI 補上。') },
       { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee 是目前函式呼叫的函式；caller 是呼叫它的函式，以及修改它會影響的範圍。點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
       { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
     ]} />

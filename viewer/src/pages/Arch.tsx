@@ -1124,7 +1124,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
         <Q title={t('和誰有關')}>
         {others.length ? <ul className="level-list">{[...new Set(others.map((l) => (l.a === p.comp ? l.b : l.a)))].map((c) => (
           <li key={c}><button type="button" className="linklike" onClick={() => p.onComp(c)}>{c}</button>
-            <span className="small muted"> {others.some((l) => l.a === p.comp && l.b === c) ? t('它呼叫') : ''}{others.some((l) => l.a === p.comp && l.b === c) && others.some((l) => l.b === p.comp && l.a === c) ? t('、') : ''}{others.some((l) => l.b === p.comp && l.a === c) ? t('呼叫它') : ''}</span></li>))}</ul>
+            <span className="small muted"> {others.some((l) => l.a === p.comp && l.b === c) ? t('呼叫') : ''}{others.some((l) => l.a === p.comp && l.b === c) && others.some((l) => l.b === p.comp && l.a === c) ? t('、') : ''}{others.some((l) => l.b === p.comp && l.a === c) ? t('被呼叫') : ''}</span></li>))}</ul>
           : <p className="small muted">{t('和其他元件沒有呼叫關係。')}</p>}
         {uses?.size ? (
           <>

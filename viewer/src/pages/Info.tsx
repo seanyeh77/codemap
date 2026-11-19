@@ -34,7 +34,7 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
     const found = worthAt(g, (x) => !!ix.funcs[x.fid] && ix.funcs[x.fid].scope !== 'test')
     return <div className="info">
       <InfoTitle kind={t('專案')} name={g.repo} code={false} />
-      {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
+      {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</p>}
       <p className="small muted">{t('{v1} 個元件、{v2} 個函式', { v1: g.comps.length, v2: Object.keys(ix.funcs).length })}</p>
       <Found found={found} />
     </div>
@@ -83,7 +83,7 @@ function FileInfo(p: { ix: Index; f: string; openFn: (id: string) => void }) {
 
 function OneLine(p: { ix: Index; id: string }) {
   const d = descriptions(p.ix, p.id, useDescOrder()).find((x) => x.kind !== 'facts')
-  return d ? <span className="info-outline-desc"><DescText d={d} tag /></span> : <span className="small muted">{t('沒有說明')}</span>
+  return d ? <span className="info-outline-desc"><DescText d={d} tag /></span> : <span className="small muted">{t('無說明')}</span>
 }
 
 /** What the checks found here, under a small heading; nothing when they found nothing. */
@@ -91,6 +91,6 @@ function Found(p: { found: [string, number][] }) {
   return p.found.length ? <section className="info-notes" aria-label={t('值得注意')}>
     <h3 className="info-h">{t('值得注意')}</h3>
     <ul className="level-notes">{p.found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul>
-    <a className="link small" href="#check">{t('到檢查看細節')}</a>
+    <a className="link small" href="#check">{t('於檢查查看細節')}</a>
   </section> : null
 }

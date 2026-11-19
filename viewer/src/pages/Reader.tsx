@@ -198,13 +198,13 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
       {ds.map((d, i) => <p key={i} className="reader-desc"><DescText d={d} tag full /></p>)}
       {/* no description: its signature says what goes in and comes out, in the code's own words */}
       {!ds.length && p.sig ? <pre className="reader-sig mono">{p.sig}</pre> : null}
-      {!ds.length ? <p className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p> : null}
+      {!ds.length ? <p className="small muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</p> : null}
     </Q>
     <Q title={t('和誰有關')}>
       <UI.DetailList items={[
         ...(called.length ? [{ label: t('這一行呼叫'), value: list(called, '') }] : []),
         { label: t('誰呼叫它'), value: fw ? <span>{t('由 {v1} 呼叫', { v1: fw })}{callers.length ? <> · {list(callers, '')}</> : null}</span> : list(callers, t('（repo 中沒有）')) },
-        { label: t('它呼叫'), value: list(callees, t('（無）')) },
+        { label: t('呼叫'), value: list(callees, t('（無）')) },
       ]} />
       <div><UI.Button icon="share-network" onClick={() => p.onFunc(p.id)}>{t('看流程')}</UI.Button></div>
     </Q>
@@ -232,7 +232,7 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
   if (p.flat) return items.length ? <section className="info-notes" aria-label={t('值得注意')}>
     <h3 className="info-h">{t('值得注意')}</h3>
     <ul className="level-notes">{items}</ul>
-    {found.length ? <a className="link small" href="#check">{t('到檢查看細節')}</a> : null}
+    {found.length ? <a className="link small" href="#check">{t('於檢查查看細節')}</a> : null}
     {p.why ? <p className="small muted">{p.why}</p> : null}
   </section> : null
   return <Q title={t('值得注意')}>

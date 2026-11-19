@@ -49,12 +49,12 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     ],
     'Shared state': [
       ...(sig?.statics ?? []).map((s) => ({ key: 'st' + s.name, line: s.line, src: 'sure' as Src,
-        body: <>{term('static local', t('static 區域變數'))} <code className="desc-code">{s.name}</code>{t('：呼叫之間保留它的值。')}</> })),
+        body: <>{term('static local', t('static 區域變數'))} <code className="desc-code">{s.name}</code>{t('：在多次呼叫之間保留其值。')}</> })),
       ...(sig?.params ?? []).filter((x) => x.default_mutable).map((x) => ({ key: 'dm' + x.name, line: x.line, src: 'sure' as Src,
-        body: <>{t('參數')} <code className="desc-code">{x.name}</code>{t(' 的預設值在定義時只建立一次，所有不傳它的呼叫共用同一個物件。')}</> })),
+        body: <>{t('參數')} <code className="desc-code">{x.name}</code>{t(' 的預設值僅於定義時建立一次，省略此參數的呼叫皆共用同一物件。')}</> })),
       ...(f.use?.shared ?? []).map((v) => ({ key: 'sh' + v.name, line: (v.writes[0] ?? v.reads[0]), lines: [...v.writes, ...v.reads], src: 'guess' as Src,
         body: <>{v.writes.length ? (v.reads.length ? t('讀寫') : t('寫入')) : t('讀取')} <code className="desc-code">{v.name}</code>
-          {t('（{v1}）', { v1: SCOPE[v.scope] ?? v.scope })}{v.atomic ? t('，atomic 操作') : v.writes.length ? t('，不是 atomic 操作') : ''}
+          {t('（{v1}）', { v1: SCOPE[v.scope] ?? v.scope })}{v.atomic ? t('，以 atomic 操作') : v.writes.length ? t('，非 atomic 操作') : ''}
           <span className="small muted">{' · '}{lineList(v.writes, v.reads)}</span></> })),
       // the AI's lines about the same variables are left out: the code already says it
       ...ai('shared').filter((_, i) => !covered(info?.shared?.[i])),
@@ -63,7 +63,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     'Return value': ai('returns'),
     'Side effects': ai('effects'),
     'Declaration': [...new Map((sig?.decl ?? []).map((d) => [d.kw, d])).values()].map((d) => ({ key: 'kw' + d.kw, line: d.line, src: 'sure' as Src, body: <>{keywordText(d.kw)}</> })),
-    'Contract': ai('contract', (it) => (CONTRACT[it.kind ?? ''] ? <>{term(CONTRACT[it.kind!])}{t('：')}</> : it.kind === 'error' ? t('出錯時：') : null)),
+    'Contract': ai('contract', (it) => (CONTRACT[it.kind ?? ''] ? <>{term(CONTRACT[it.kind!])}{t('：')}</> : it.kind === 'error' ? t('錯誤處理：') : null)),
   }
 
   function paramRow(x: SigParam, a?: InfoItem): Row {
@@ -73,7 +73,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     const role = sure ?? used?.role ?? a?.role
     const roleSrc: Src = sure ? 'sure' : used?.role ? 'guess' : 'ai'
     const mech = x.mech === 'value' ? 'Pass by Value' : x.mech === 'reference' ? 'Pass by Reference' : x.mech === 'sharing' ? 'Pass by Sharing' : 'move'
-    const note = x.note === 'address' ? t('，複製位址') : x.note === 'slice' ? t('，複製 slice header，底層陣列共用') : x.note === 'map' || x.note === 'chan' ? t('，底層資料共用')
+    const note = x.note === 'address' ? t('，複製位址') : x.note === 'slice' ? t('，複製 slice header，共用底層陣列') : x.note === 'map' || x.note === 'chan' ? t('，共用底層資料')
       : x.note === 'immutable' ? t('，物件不可變') : ''
     return { key: 'p' + x.name, line: x.line, lines: [x.line, ...(used?.writes ?? [])], src: 'sure', body: <>
       <div className="fp-prm-h"><span className="fp-prm-n">{x.name}</span>{x.type ? <span className="fp-prm-t">{x.type}</span> : null}{x.recv ? <span className="small muted">{t('receiver')}</span> : null}</div>
@@ -102,15 +102,15 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
   return <div className="info fp" ref={box} onPointerEnter={() => setBusy(true)} onPointerLeave={() => setBusy(false)}
     onFocus={() => setBusy(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setBusy(false) }}>
     <InfoTitle kind={t('函式')} name={f.name.split('.').pop()!} where={`${f.file}:${f.line}`} />
-    <p className="fp-status small muted" aria-live="polite">{(p.line == null ? t('在程式碼點一行，這裡會標出與那一行有關的資料。') : n ? t('第 {v1} 行：{v2} 筆相關資料', { v1: p.line, v2: n }) : t('第 {v1} 行：沒有相關資料', { v1: p.line }))}</p>
-    {d ? <p><DescText d={d} full />{d.kind === 'ai' ? <Src s="ai" /> : null}</p> : <p className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
+    <p className="fp-status small muted" aria-live="polite">{(p.line == null ? t('選取程式碼中的一行，即標示與該行相關的資料。') : n ? t('第 {v1} 行：{v2} 筆相關資料', { v1: p.line, v2: n }) : t('第 {v1} 行：無相關資料', { v1: p.line }))}</p>
+    {d ? <p><DescText d={d} full />{d.kind === 'ai' ? <Src s="ai" /> : null}</p> : <p className="small muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</p>}
     {SECTIONS.map((s) => rows[s].length ? <section key={s} className="fp-sec" aria-label={s}>
       <h3 className="info-h">{term(s)}<span className="fp-cnt">{t('{v1} 項', { v1: rows[s].length })}</span></h3>
       <ul className="fp-rows">{rows[s].map((r) => <li key={r.key} className={'fp-it' + (here(r) ? ' is-here' : '') + (r.line ? ' has-line' : '')}
         onPointerEnter={r.line ? () => peek(r.line!) : undefined} onPointerLeave={r.line ? () => peek(null) : undefined}>{r.body}{r.src !== 'sure' && s !== 'Parameters' ? <Src s={r.src} /> : null}</li>)}</ul>
     </section> : null)}
-    {empty && !info ? <p className="small muted">{t('執行環境、參數用途、回傳值與 contract 由 AI 撰寫：在 repo 執行 codemap describe。')}</p> : null}
-    <p className="fp-legend small muted">{t('沒有標註的資料來自程式碼或語言規則。標「推測」的只從寫法推得，可能不準；標「AI 撰寫」的是 AI 讀程式碼後寫成，可能有誤。')}</p>
+    {empty && !info ? <p className="small muted">{t('Execution context、參數用途、回傳值與 Contract 由 AI 撰寫：於 repo 執行 codemap describe。')}</p> : null}
+    <p className="fp-legend small muted">{t('未標註者來自程式碼或語言規則。「推測」僅依寫法推得，「AI 撰寫」由 AI 依程式碼撰寫，兩者皆可能有誤。')}</p>
   </div>
 }
 
@@ -152,15 +152,15 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
     <h3 className="info-h">{t('{v1} 的檢查', { v1: f.name.split('.').pop()! })}</h3>
     {found.length || f.ai?.state === 'stale' ? <ul className="fp-rows">
       {found.map(([label, l], i) => <li key={'w' + i} className="fp-it"><span className="small muted">{t('自動檢查')}{at(l)}</span><div>{t(label)}</div></li>)}
-      {f.ai?.state === 'stale' ? <li className="fp-it"><span className="small muted">{t('說明')}</span><div>{t('函式在說明寫好之後改過，說明可能過時。執行 codemap describe 會重寫。')}</div></li> : null}
+      {f.ai?.state === 'stale' ? <li className="fp-it"><span className="small muted">{t('說明')}</span><div>{t('說明撰寫後函式已修改，內容可能過時；執行 codemap describe 以重新撰寫。')}</div></li> : null}
     </ul> : null}
     {checks.length ? <ul className="fp-rows">{checks.map((c, i) => <li key={i} className="fp-it">
       <span className="small muted">{KIND[c.kind ?? ''] ?? c.kind}{c.line ? <>{' · '}<button type="button" className="linklike" onClick={() => p.open(f.file, c.line!)}>{t('第 {v1} 行', { v1: c.line })}</button></> : null}</span>
       <div>{codeSpans(say(c)).map((x, j) => (typeof x === 'string' ? x : <code key={j} className="desc-code">{x.code}</code>))}<Src s="ai" /></div></li>)}</ul>
-      : found.length || f.ai?.state === 'stale' ? null : <p className="small muted">{f.ai?.info ? t('沒有發現問題。') : t('還沒有 AI 檢查：在 repo 執行 codemap describe。')}</p>}
-    <p className="small"><UI.Term variant="inline" title="Change impact" text={t('修改這個函式後，可能跟著受影響的範圍。')}>Change impact</UI.Term>{t('：')}
+      : found.length || f.ai?.state === 'stale' ? null : <p className="small muted">{f.ai?.info ? t('未發現問題。') : t('尚無 AI 檢查：於 repo 執行 codemap describe。')}</p>}
+    <p className="small"><UI.Term variant="inline" title="Change impact" text={t('修改此函式可能影響的範圍。')}>Change impact</UI.Term>{t('：')}
       {n ? t('修改它可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫它。')}
-      {tests ? t('另有 {v1} 個測試函式呼叫它。', { v1: tests }) : ''}</p>
+      {tests ? t('另有 {v1} 個測試函式呼叫此函式。', { v1: tests }) : ''}</p>
   </section>
 }
 

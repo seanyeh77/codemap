@@ -100,7 +100,7 @@ function RelationTag(p: { ix: Index; e: Edge; open: () => void }) {
   return (
     <span className="rel-tag" onClick={stop} onKeyDown={stop}>
       <UI.Tag><UI.Term title={x.title} text={x.text} code={p.e.t ? `${String(p.e.l).padStart(4)} │ ${p.e.t}` : undefined}
-        action={{ label: t('看這一行'), onClick: p.open }}>{x.label}</UI.Term></UI.Tag>
+        action={{ label: t('查看此行'), onClick: p.open }}>{x.label}</UI.Term></UI.Tag>
     </span>
   )
 }
@@ -190,14 +190,14 @@ export function Flow(p: FlowProps) {
           items={items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
           selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />
       </div> : null}
-      {p.dir === 'down' && !items.length ? <p className="small">{t('它沒有呼叫 repo 內的函式。')}</p> : null}
+      {p.dir === 'down' && !items.length ? <p className="small">{t('此函式未呼叫 repo 內的函式。')}</p> : null}
       {extNames.length ? <p className="small muted">{p.showExt
         ? <button type="button" className="linklike" onClick={() => p.setShowExt(false)}>{t('隱藏 {n} 個 repo 外的函式', { n: extNames.length })}</button>
         : <>{t('另有 {n} 個 repo 外的函式，例如 {v1}。', { n: extNames.length, v1: extNames.slice(0, 3).join(t('、')) })}<button type="button" className="linklike" onClick={() => p.setShowExt(true)}>{t('顯示')}</button></>}</p> : null}
       {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api
           ? t('找不到 caller：此為外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
-          : t('找不到 caller。可能從 repo 外呼叫、經由未偵測到的函式指標呼叫，或未被使用。')}</p>
+          : t('找不到 caller：可能由 repo 外呼叫、經由未偵測到的函式指標呼叫，或未被使用。')}</p>
       ) : null}
       {/* how the lines were found: behind one short line, not two long ones under every tree */}
       <p className="small muted"><UI.Term text={(// what an untagged line rests on depends on which backends read the repository
@@ -207,7 +207,7 @@ export function Flow(p: FlowProps) {
             p.ix.g.stats.resolution?.python ? t('Python 由 import 與類別確定目標；標示「型別推論」的靠推得的型別，「可能目標之一」的有不只一個目標') : '',
             p.ix.g.stats.resolution?.go ? t('Go 由 go/types 確定目標，經 interface 的呼叫只連到其實作型別；go、defer 與當作函式值傳遞的另有標示') : '',
             p.ix.g.stats.resolution?.typescript ? t('TypeScript 與 JavaScript 由 TypeScript 編譯器依名稱與型別確定目標；經覆寫、interface 或函式值的呼叫另有標示') : '',
-            p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對應定義，「依名稱推測」僅憑方法名稱') : ''].filter(Boolean).join(t('；')) })) + t('L5、L6：從起點算起的層數，第 5 層起標示。')}>{t('這些關係怎麼判斷的')}</UI.Term></p>
+            p.ix.g.stats.syntax ? t('其他語言由 tree-sitter 依名稱對應定義，「依名稱推測」僅憑方法名稱') : ''].filter(Boolean).join(t('；')) })) + t('L5、L6：從起點算起的層數，第 5 層起標示。')}>{t('關係的判斷依據')}</UI.Term></p>
     </UI.Card>
   )
 }

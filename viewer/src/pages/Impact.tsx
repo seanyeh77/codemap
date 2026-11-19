@@ -99,11 +99,11 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
                 value: <span>{siteText[i]?.data ? <UI.InlineCode>{String(siteText[i].data).trim()}</UI.InlineCode> : <span className="muted">{t('讀取中')}</span>}<span className="muted">{t('（{v1}）', { v1: r.name })}</span></span>,
               }))} />
             </div> : null}
-            <p className="small muted">{t('直接：呼叫它的函式；間接：往上到程式入口的其他呼叫者。只計算 repo 內的函式，共用變數只找一層。')}</p>
+            <p className="small muted">{t('直接：呼叫此函式的函式；間接：向上至程式入口的其他呼叫者。僅計算 repo 內的函式，共用變數僅追溯一層。')}</p>
           </div>
         ) : (
           <div>
-            <p>{t('找不到呼叫')} <UI.InlineCode>{name}</UI.InlineCode> {t('或和它共用全域變數的函式。')}</p>
+            <p>{t('找不到呼叫')} <UI.InlineCode>{name}</UI.InlineCode> {t('或與其共用全域變數的函式。')}</p>
             {p.ix.callerInfo(p.start).others.length || p.ix.callerInfo(p.start).load ? <p className="small muted">{t('它不是由函式直接呼叫：{v1}。', { v1: p.ix.callerText(p.start).split('；').slice(1).join(t('；')) })}</p> : null}
             <p className="small muted">{p.ix.funcs[p.start]?.api
               ? t('外部進入點：呼叫者是載入此程式庫並呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })
@@ -160,6 +160,6 @@ export function ImpactSummary(p: { ix: Index; start: string; table: boolean; set
   const far = rows.reduce((m, r) => Math.max(m, r.depth), 0)
   return <p className="small impact-sum">
     {n ? t('修改它可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫它。')}
-    {n ? <button type="button" className="linklike" onClick={() => p.setTable(!p.table)}>{p.table ? t('改看呼叫樹') : t('列成表')}</button> : null}
+    {n ? <button type="button" className="linklike" onClick={() => p.setTable(!p.table)}>{p.table ? t('改為呼叫樹') : t('列成表')}</button> : null}
   </p>
 }

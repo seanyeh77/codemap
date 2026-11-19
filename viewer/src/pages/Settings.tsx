@@ -100,7 +100,7 @@ export function Settings(p: Props) {
                 {/* where: a count is a reason to doubt, the places say which flows it may have cut */}
                 {at?.length ? <span className="muted">{t('：')}{at.map(([f, l], i) => <span key={f + l}>{i ? t('、') : ''}{p.openAt
                   ? <button type="button" className="linklike" onClick={() => p.openAt!(f, l)}>{`${f.split('/').pop()}:${l}`}</button> : `${f}:${l}`}</span>)}{n > at.length ? t('…') : ''}</span> : null}</span>)}</span>
-              <span className="muted">{t('多為型別未知的物件或參數上的方法。點選位置可開啟該行。')}</span></details> : null}</span> })),
+              <span className="muted">{t('多為型別未知的物件或參數上的方法。選取位置即開啟該行。')}</span></details> : null}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
           ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>
             {b === 'go' ? <>{t('build tag 只依檔名判斷，vendor 目錄未特別處理。')}<br /></> : null}
@@ -168,7 +168,7 @@ export function Settings(p: Props) {
         <UI.RadioGroup label={t('說明的順序')} value={descOrder} onChange={(v) => setDescOrder(v as DescOrder)}
           options={ORDERS.map((o) => ({ value: o.id, label: <span><span className="block">{t(ORDER_LABEL[o.id][0])}</span><span className="small muted block">{t(ORDER_LABEL[o.id][1])}</span></span> }))} />
       </UI.SettingsSection>
-      <UI.SettingsSection title={t('版面')} description={t('檔案總管、右側欄與下方面板的邊界可以拖曳；分頁可以在右側欄與下方面板之間拖曳。這裡把它們放回原處。')}>
+      <UI.SettingsSection title={t('版面')} description={t('檔案總管、右側欄與下方面板的邊界可拖曳，分頁可在右側欄與下方面板之間移動。此按鈕將版面還原為預設。')}>
         <div><UI.Button icon="arrow-u-up-left" onClick={p.resetLayout}>{t('還原預設版面')}</UI.Button></div>
       </UI.SettingsSection>
     </>

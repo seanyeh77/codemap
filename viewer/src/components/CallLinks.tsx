@@ -50,7 +50,7 @@ export function callLinks(ix: Index, file: string, start: number, lines: string[
     }
     for (const l of at.values()) {
       const f = ix.funcs[l.ids[0]]
-      l.label = !f ? t('{v1}，在 repo 外', { v1: l.ids[0].slice(4) }) : l.ids.length > 1
+      l.label = !f ? t('{v1}，位於 repo 外', { v1: l.ids[0].slice(4) }) : l.ids.length > 1
         ? t('{v1}：{v2} 個可能的目標', { v1: l.text, v2: l.ids.length })
         : t('{v1}，定義在 {v2}', { v1: f.name, v2: `${f.file}:${f.line}` })
       out.push(l)

@@ -145,7 +145,7 @@ export function Detail(p: Props) {
           </li>))}
         {!said.some((d) => d.state !== 'wrong') ? <>
           {sig ? <li><pre className="reader-sig mono">{sig}</pre></li> : null}
-          <li className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</li></> : null}
+          <li className="small muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</li></> : null}
       </ul>
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
