@@ -11,6 +11,7 @@ import { codeSpans, descriptions, useDescOrder } from '../data/describe'
 import { DescText } from '../components/DescText'
 import { conceptEx, conceptText, keywordText } from '../data/glossary'
 import { affected } from './Impact'
+import { worthIn } from './Reader'
 
 type Src = 'sure' | 'guess' | 'ai'
 interface Row { key: string; line?: number; lines?: number[]; src: Src; body: ReactNode }
@@ -145,12 +146,18 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
   const far = rows.reduce((m, r) => Math.max(m, r.depth), 0)
   const tests = p.ix.g.hidden_callers?.[p.id] ?? 0
   const KIND: Record<string, string> = { trap: t('語言陷阱'), desc: t('說明與程式碼不一致') }
+  const found = worthIn(p.ix.g, p.id)
+  const at = (l?: number) => (l ? <>{' · '}<button type="button" className="linklike" onClick={() => p.open(f.file, l)}>{t('第 {v1} 行', { v1: l })}</button></> : null)
   return <section className="chk-sec">
     <h3 className="info-h">{t('{v1} 的檢查', { v1: f.name.split('.').pop()! })}</h3>
+    {found.length || f.ai?.state === 'stale' ? <ul className="fp-rows">
+      {found.map(([label, l], i) => <li key={'w' + i} className="fp-it"><span className="small muted">{t('自動檢查')}{at(l)}</span><div>{t(label)}</div></li>)}
+      {f.ai?.state === 'stale' ? <li className="fp-it"><span className="small muted">{t('說明')}</span><div>{t('函式在說明寫好之後改過，說明可能過時。執行 codemap describe 會重寫。')}</div></li> : null}
+    </ul> : null}
     {checks.length ? <ul className="fp-rows">{checks.map((c, i) => <li key={i} className="fp-it">
       <span className="small muted">{KIND[c.kind ?? ''] ?? c.kind}{c.line ? <>{' · '}<button type="button" className="linklike" onClick={() => p.open(f.file, c.line!)}>{t('第 {v1} 行', { v1: c.line })}</button></> : null}</span>
       <div>{codeSpans(say(c)).map((x, j) => (typeof x === 'string' ? x : <code key={j} className="desc-code">{x.code}</code>))}<Src s="ai" /></div></li>)}</ul>
-      : <p className="small muted">{f.ai?.info ? t('沒有發現問題。') : t('還沒有 AI 檢查：在 repo 執行 codemap describe。')}</p>}
+      : found.length || f.ai?.state === 'stale' ? null : <p className="small muted">{f.ai?.info ? t('沒有發現問題。') : t('還沒有 AI 檢查：在 repo 執行 codemap describe。')}</p>}
     <p className="small"><UI.Term variant="inline" title="Change impact" text={t('修改這個函式後，可能跟著受影響的範圍。')}>Change impact</UI.Term>{t('：')}
       {n ? t('修改它可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫它。')}
       {tests ? t('另有 {v1} 個測試函式呼叫它。', { v1: tests }) : ''}</p>

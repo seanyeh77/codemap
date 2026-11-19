@@ -1111,4 +1111,5 @@ export const EN: Record<string, string> = {
 
   "走過的路": "The way here",
   "走過的路：": "The way here:",
+  "自動檢查": "Automatic check",
 }

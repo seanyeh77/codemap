@@ -22,7 +22,7 @@ import { Info, fnAt, type At } from './pages/Info'
 import { FnChecks } from './pages/FnPanel'
 import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
-import { Explorer } from './pages/Explorer'
+import { Explorer, flagged } from './pages/Explorer'
 import { TermsCtx, termDefs, termsOf } from './components/Terms'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
@@ -191,11 +191,16 @@ function Shell(p: ShellProps) {
   }
   /** Shows a view wherever the reader has put it, opening its area. */
   const show = (v: ViewId) => wb.current?.show(v)
+  const flags = useMemo(() => flagged(ix.g, ix), [ix])
   const explorerOpen = (id: string) => {
     if (id === 'proj') setAt({ kind: 'proj' })
     else if (id.startsWith('comp:')) setAt({ kind: 'comp', id: id.slice(5) })
     else if (id.startsWith('file:')) openFile(id.slice(5), 1)
-    else if (id.startsWith('fn:')) openFn(id.slice(3))
+    else if (id.startsWith('fn:')) {
+      openFn(id.slice(3))
+      // a function with a dot: what was found is in 檢查, so it opens there
+      if (flags.has(id)) show('check')
+    }
     // 文件 is a folder: choosing it only opens it
   }
 

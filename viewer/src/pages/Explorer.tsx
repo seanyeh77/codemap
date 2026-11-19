@@ -11,7 +11,7 @@ export const nodeOf = (at: At, fn: string | null): string =>
 
 /** Where the checks found something, and functions whose AI description is older than their code: the explorer marks
  *  them, and the rows above them, with a dot. */
-function flagged(g: Graph, ix: Index): Set<string> {
+export function flagged(g: Graph, ix: Index): Set<string> {
   const out = new Set<string>()
   const w = g.worth
   const add = (fid: string, f: string) => {

@@ -244,14 +244,22 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
 
 /** What the checks found where `at` says, by check: [label, count]. */
 export function worthAt(g: Graph, at: (x: { fid: string; f: string }) => boolean): [string, number][] {
+  return worthLists(g).map(([label, xs]) => [label, xs.filter(at).length] as [string, number]).filter(([, n]) => n > 0)
+}
+
+/** What the checks found in one function, each with its line: [label, line]. */
+export function worthIn(g: Graph, fid: string): [string, number | undefined][] {
+  return worthLists(g).flatMap(([label, xs]) => xs.filter((x) => x.fid === fid).map((x) => [label, (x as { l?: number }).l] as [string, number | undefined]))
+}
+
+function worthLists(g: Graph): [string, { fid: string; f: string }[]][] {
   const w = g.worth
   if (!w) return []
-  const lists: [string, { fid: string; f: string }[]][] = [
+  return [
     ['捕捉所有例外後繼續執行', w.broad ?? []], ['結束程式的呼叫', w.stops], ['未檢查 NULL 就使用的 getenv 結果', w.env],
     ['只在未設定時才設定的環境變數', w.env_if_unset ?? []], ['回傳固定錯誤碼的地方', w.errors ?? []], ['會丟掉資料的地方', w.loss ?? []],
     ['程式結束後會留下的東西', w.leftovers ?? []], ['到達上限時直接返回、不印訊息', w.limits?.silent ?? []],
     ['不經 atomic 操作就修改的全域變數', (w.plain_writes ?? []).flatMap((v) => v.writes)],
   ]
-  return lists.map(([label, xs]) => [label, xs.filter(at).length] as [string, number]).filter(([, n]) => n > 0)
 }
 
