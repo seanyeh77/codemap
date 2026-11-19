@@ -1052,4 +1052,5 @@ export const EN: Record<string, string> = {
   "callee 與 caller 的樹每展開一層，先寫下你猜的函式，再揭曉比對。用於練習讀程式。": "Before each level of the call trees opens, write down your guess, then reveal and compare. A way to practise reading code.",
   "callee 與 caller": "callee and caller",
   "callee 是目前函式呼叫的函式；caller 是呼叫它的函式，以及修改它會影響的範圍。點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。": "callee: what the current function calls; caller: what calls it, and what a change reaches. Click a name and the code above goes there. Drag a tab to the side bar or the panel, and drag the borders to resize.",
+  "這些關係怎麼判斷的": "How these calls were found",
 }
