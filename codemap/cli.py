@@ -573,14 +573,6 @@ def main(argv=None):
 
 
 START = {
-    "zh-TW": dict(
-        sep="", no_index="還沒讀過這個專案的程式碼。", index="索引：{n} 個函式，{when}建立。", changed="程式碼在那之後改過。",
-        desc="說明：{done} / {total} 個函式寫好了。", old="其中 {n} 個還沒有參數用途、回傳值與 contract。", what="要做什麼？", index_o="讀取程式碼（codemap index）",
-        describe_o="撰寫說明（codemap describe）", serve_o="在瀏覽器開啟地圖（codemap serve）",
-        export_o="匯出成一個 HTML 檔（codemap export --html）", check_o="檢查筆記和說明（codemap check）",
-        help_o="列出所有指令（codemap -h）", quit_o="離開", which="寫哪些說明？", missing_o="還沒有或已經過時的",
-        rewrite_o="全部重寫（--rewrite）", status_o="只看進度（--status）", min_ago="{n} 分鐘前", hour_ago="{n} 小時前",
-        day_ago="{n} 天前", now="剛剛", tty="codemap：在終端機執行可以選擇要做什麼；所有指令：codemap -h"),
     "en": dict(
         sep=" ", no_index="This project's code has not been read yet.", index="Index: {n} functions, built {when}.",
         changed="The code changed since.", desc="Descriptions: {done} of {total} functions.",
@@ -603,7 +595,7 @@ def _ago(t, w):
 def start(a):
     """`codemap` alone: where the project stands, and a question with the next step picked to start with. It asks
     again after each step, until the map is opened or the answer is to quit."""
-    w = START["zh-TW" if describe.screen_lang().startswith("zh") else "en"]
+    w = START["en"]                                  # the command line speaks English, like every other command
     if not term.can_ask():
         print(w["tty"])
         return
