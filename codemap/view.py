@@ -11,7 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import arch, check, describe, docs, facts, rules, state
+from . import signature, arch, check, describe, docs, facts, rules, state
 from .arch import in_repo, repo_func
 from .source import c_body_end, code_lines, lines
 from .schema import CALL_SOURCES
@@ -215,6 +215,11 @@ def build(root, index, config=None):
         # an AI's description kept by `codemap describe --apply`, with whether it still matches the code
         if nid in ai:
             funcs[nid]["ai"] = {"text": ai[nid].get("text", {}), "state": describe.state(root, index, nid, ai[nid]), "by": ai[nid].get("by")}
+            if ai[nid].get("info"):
+                funcs[nid]["ai"]["info"] = ai[nid]["info"]
+        # what the declaration says: the parameters, how each is passed, static, async ...
+        if sig := signature.of(root, n["file"], n["line"], end, n.get("lang")):
+            funcs[nid]["sig"] = sig
         if end:
             top = min(n.get("top") or n["line"], docs.lead_line(root, n["file"], n["line"]))   # the comment, attributes and decorators above it
             if top < n["line"]:

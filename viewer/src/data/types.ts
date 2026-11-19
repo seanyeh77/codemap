@@ -29,8 +29,39 @@ export interface Func {
   /** The author's one line about it: the docstring, or the comment right above the definition */
   doc?: string
   /** An AI's description in each language, from `codemap describe`, and what `codemap check` found */
-  ai?: { text: Record<string, string>; state?: 'ok' | 'stale' | 'wrong' }
+  ai?: { text: Record<string, string>; state?: 'ok' | 'stale' | 'wrong'; info?: FuncInfo }
+  /** What its declaration says, read from the code: parameters, how each is passed, keywords, static locals */
+  sig?: Signature
 }
+
+/** One fact an AI wrote about a function (codemap describe), in each language, with the line it is about. */
+export interface InfoItem { 'zh-TW'?: string; en?: string; line?: number; name?: string; role?: 'in' | 'out' | 'in-out'; kind?: string }
+export interface FuncInfo {
+  context?: InfoItem[]
+  shared?: InfoItem[]
+  params?: InfoItem[]
+  returns?: InfoItem[]
+  effects?: InfoItem[]
+  /** kind: pre, post, error, ownership */
+  contract?: InfoItem[]
+  /** kind: trap (a pitfall of the language), desc (the code does something other than its comment says) */
+  checks?: InfoItem[]
+}
+export interface SigParam {
+  name: string
+  type: string
+  line: number
+  /** how the language passes it */
+  mech: 'value' | 'reference' | 'sharing' | 'move'
+  /** address: a pointer, the address is copied; slice, map, chan (Go); immutable (Python) */
+  note?: 'address' | 'slice' | 'map' | 'chan' | 'immutable'
+  /** the language guarantees the callee cannot change what was passed (const T *, const T &) */
+  ro?: boolean
+  recv?: boolean
+  rest?: boolean
+  default_mutable?: boolean
+}
+export interface Signature { params: SigParam[]; decl: { kw: string; line: number }[]; statics?: { name: string; line: number }[] }
 
 /** How an edge is known: the first three are calls written in the code, the last two are inferred. */
 export type EdgeSource = 'compiler' | 'static' | 'syntax' | 'rule' | 'framework'

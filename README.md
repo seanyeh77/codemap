@@ -34,15 +34,25 @@ worth a note. In the middle, what is open: the project opens as its overview
 (what it does, where to start reading, its components), a component as the
 architecture diagram, a file or a function as its code. On the right, 說明: what
 the open thing is and what is worth a note; for a file, also its functions in line
-order with what each does, the one the code is in marked and in full; the project's own words (its terms)
+order with what each does. With the code inside a function, 說明 is that function
+for reading it: Execution context, Shared state, Parameters (each one's role, in,
+out or in-out, and how the language passes it), Return value, Side effects,
+Declaration (static, async, virtual ...) and Contract. Clicking a line in the code
+marks what is about that line and brings it into view, except while the pointer
+is in 說明. Only facts are there; what may be wrong is in 檢查. The declaration and
+how each parameter is passed are read from the code with tree-sitter, so they are
+certain; the rest is written by `codemap describe` and marked as the AI's, and
+the words it uses (Pass by Sharing, precondition) are explained where they first
+appear. The project's own words (its terms)
 are explained where they appear, and the search finds them. Below, four tabs
 follow what is open: callee (what the function calls, level by level; a name
 clicked there opens that function above while the tree keeps its start), caller
 (what calls it, with how far a change reaches, as a tree or a table), 對外介面
 (the entry points, commands, environment variables, build products and files
 read and written, of the whole project or only of the open component, file or
-function) and 檢查 (whether the notes still match the code, and what the checks
-found worth checking). With a file or a component open, callee and caller list
+function) and 檢查 (for an open function, the language pitfalls and mismatches
+with its comment the AI found in it and how far a change reaches; whether the
+notes still match the code, and what the checks found worth checking). With a file or a component open, callee and caller list
 the files or components instead. The self-test (guess each level before it
 opens) is in 設定. Every border can be dragged, every tab can be dragged between
 the side bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer,
@@ -274,6 +284,15 @@ or items to a prompt (`--batch N`). `--level N` writes round N even if one below
 is not done. Name files to take only their functions: `codemap describe
 src/client.c -o prompt.md`. After the code changes, the same `codemap describe`
 asks again for just what changed.
+
+A function's description comes with `info`, short facts a reader needs to use or
+change it, each about one line where it can be: what runs it and what that
+forbids, the data outside it it reads or writes, each parameter's role (in, out,
+in-out) and meaning, what each return value means, its side effects, its
+contract (pre, post, error, ownership), and, apart, the pitfalls and mismatches
+it falls into, which the viewer shows under 檢查. An `info` item is not kept
+where its line is outside the function, it names a parameter the function does
+not have, or a part or kind is not one of these.
 
 Each description is in Traditional Chinese and English, cites the lines it rests
 on, and is kept in `.codemap/descriptions.json` with a hash of what it describes

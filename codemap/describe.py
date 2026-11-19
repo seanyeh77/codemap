@@ -6,7 +6,14 @@ neighbours; an AI answers with JSON; `codemap describe --apply ANSWER` checks th
 function shows its description as stale, and the places and names it cites are checked against the code.
 
 descriptions.json: {"version": 1, "funcs": {id: {"text": {"zh-TW": str, "en": str}, "evidence": ["file:line"],
-"hash": str, "by": str, "at": iso date}}}
+"hash": str, "by": str, "at": iso date, "info": {...}}}}
+
+info is what a reader needs beside the sentence, each line in both languages and, where it is about one line of
+the code, that line: context (which thread runs it, what triggers it), shared (data outside it that it reads or
+writes), params (each parameter's role: in, out, in-out, and what it is), returns (what each value means),
+effects (what it changes besides its return value), contract (pre, post, error, ownership), and checks (a
+language pitfall or the code doing something other than its comment says). What the code's own declaration says
+(types, how each parameter is passed, static, async ...) is not asked for: signature.py reads it from the code.
 """
 import datetime
 import hashlib
@@ -14,7 +21,7 @@ import json
 import re
 from pathlib import Path
 
-from . import docs
+from . import docs, signature
 
 FILE = ".codemap/descriptions.json"
 LANGS = ("zh-TW", "en")
@@ -101,12 +108,87 @@ def problems(root, idx, nid, entry):
     body = "\n".join(source(root, node))
     names = {idx["nodes"][x]["name"] for x in [nid, *ins, *outs]}
     names |= {n.rsplit(".", 1)[-1] for n in names}
-    for lang in LANGS:
-        for word in CODE.findall(str(text.get(lang, ""))):
-            w = word.strip().rstrip("()")
-            if w and w not in names and w not in body:
-                out.append(f"{lang}: `{word}` is not in the function's code nor a function next to it")
+
+    def code_names(where, txt):
+        for lang in LANGS:
+            for word in CODE.findall(str(txt.get(lang, ""))):
+                w = word.strip().rstrip("()")
+                if w and w not in names and w not in body and not re.fullmatch(r"-?\d+|NULL|nullptr|nil|None|null|true|false|True|False", w):
+                    out.append(f"{where}{lang}: `{word}` is not in the function's code nor a function next to it")
+    code_names("", text)
+    out += info_problems(root, node, entry.get("info"), code_names)
     return out
+
+
+INFO_KINDS = ("context", "shared", "params", "returns", "effects", "contract", "checks")
+ROLES = ("in", "out", "in-out")
+CONTRACT = ("pre", "post", "error", "ownership")
+CHECKS = ("trap", "desc")
+
+
+def info_problems(root, node, info, code_names):
+    """What in a description's info does not fit the function: an unknown part or kind, a line outside the
+    function, a parameter it does not have, a language missing."""
+    if not info:
+        return []
+    if not isinstance(info, dict):
+        return ["info is not an object"]
+    out = []
+    lo, hi = node["line"], node.get("end") or node["line"]
+    sig = signature.of(root, node["file"], node["line"], node.get("end"), node.get("lang"))
+    have = {p["name"].lstrip("*.").rstrip("?") for p in (sig or {}).get("params", [])}
+    for part, items in info.items():
+        if part not in INFO_KINDS:
+            out.append(f"info: unknown part {part!r} (one of {', '.join(INFO_KINDS)})")
+            continue
+        for i, it in enumerate(items if isinstance(items, list) else []):
+            where = f"info.{part}[{i}] "
+            if not isinstance(it, dict):
+                out.append(where + "is not an object")
+                continue
+            for lang in LANGS:
+                if not str(it.get(lang, "")).strip():
+                    out.append(where + f"has no {lang} text")
+            if it.get("line") is not None:
+                try:
+                    ln = int(it["line"])
+                except (TypeError, ValueError):
+                    ln = 0
+                if not lo <= ln <= hi:
+                    out.append(where + f"line {it['line']} is not in the function ({lo}-{hi})")
+            if part == "params":
+                if str(it.get("name", "")).lstrip("*.") not in have and sig is not None:
+                    out.append(where + f"the function has no parameter {it.get('name')!r} (it has {', '.join(sorted(have)) or 'none'})")
+                if it.get("role") not in ROLES:
+                    out.append(where + f"role must be one of {', '.join(ROLES)}")
+            if part == "contract" and it.get("kind") not in CONTRACT:
+                out.append(where + f"kind must be one of {', '.join(CONTRACT)}")
+            if part == "checks" and it.get("kind") not in CHECKS:
+                out.append(where + f"kind must be one of {', '.join(CHECKS)}")
+            code_names(where, it)
+    return out
+
+
+def clean_info(info):
+    """The info as kept: only its known parts, each item's languages, line, and name, role or kind."""
+    if not isinstance(info, dict):
+        return None
+    out = {}
+    for part in INFO_KINDS:
+        items = []
+        for it in info.get(part) or []:
+            if not isinstance(it, dict):
+                continue
+            x = {lang: str(it.get(lang, "")).strip() for lang in LANGS}
+            if it.get("line") is not None:
+                x["line"] = int(it["line"])
+            for k in ("name", "role", "kind"):
+                if it.get(k):
+                    x[k] = str(it[k]).lstrip("*.") if k == "name" else str(it[k])
+            items.append(x)
+        if items:
+            out[part] = items
+    return out or None
 
 
 def state(root, idx, nid, entry):
@@ -180,8 +262,11 @@ def prompt(root, idx, files=None, only_missing=False, ids=None):
         name = lambda x: (f'{idx["nodes"][x]["name"]} ({idx["nodes"][x]["file"]}:{idx["nodes"][x]["line"]})'
                           if idx["nodes"][x].get("line") else f'{idx["nodes"][x]["name"]} (outside the repository)')
         doc = docs.func_doc(root, n["file"], n["line"], n.get("lang", "c"))
+        sig = signature.of(root, n["file"], n["line"], n.get("end"), n.get("lang"))
+        ps = [p for p in (sig or {}).get("params", []) if p["name"] != "..."]
         parts.append(f'### id: {nid}\n'
                      f'- name: {n["name"]}, {n["file"]}:{n["line"]}-{n.get("end") or n["line"]}\n'
+                     + (f'- parameters: {", ".join(p["name"].lstrip("*.") + (" (" + p["type"] + ")" if p["type"] else "") for p in ps)}\n' if ps else "")
                      + (f'- the author wrote: {doc}\n' if doc else "")
                      + f'- called by: {", ".join(map(name, ins)) or "nothing in the repository"}\n'
                      + f'- calls: {", ".join(map(name, outs)) or "nothing in the repository"}\n\n'
@@ -200,9 +285,33 @@ backticks (`ring_open`); every such name must be in the function's code or be on
 to it. Give as evidence the one to three lines (file:line) that show it most directly; each must be in the
 function itself or in a function it calls or is called by.
 
+Then, in "info", write what a reader needs to use or change it, in short facts. Write a fact only when the code
+below shows it; leave a part out when there is nothing to say. Each fact has zh-TW (at most 50 characters) and en
+(at most 25 words), and "line" when it is about one line of the function (that line's number). Do not judge or
+warn in these parts: say what the code does ("writes `count` without an atomic operation"), not that it is wrong.
+- context: which thread or loop runs it and what triggers it (a callback registered with a library, a signal
+  handler, each request), and what that forbids (must not block). Leave it out when it simply runs on its caller's thread.
+- shared: data outside the function that it reads or writes: globals, static variables, fields of a shared
+  object; say read or write, and atomic or under which lock when the code shows it.
+- params: for every parameter the caller passes something into and may get something back from (a pointer, a
+  reference, a list, an object): "name" as listed, "role" in, out or in-out, and what it holds. Other parameters
+  only when their meaning is not obvious from the name.
+- returns: what each return value means (`-1`: stopped, errno not set).
+- effects: what it changes besides its return value and parameters: files, sockets, output, processes, memory it
+  allocates or frees.
+- contract: "kind" pre (what must hold before the call), post (what holds after), error (what happens when it
+  fails), ownership (who frees or closes what it hands out or takes).
+- checks: "kind" trap (a pitfall of the language the code falls into: a mutable default argument, an append the
+  caller never sees, an unsigned wrap) or desc (the code does something other than its comment or name says).
+  Only what the code below shows for certain.
+
 Answer with JSON only, in this form (one entry per id below, ids copied exactly):
 
-{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}]}
+{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"],
+  "info": {"context": [{"zh-TW": "...", "en": "..."}],
+           "params": [{"name": "buf", "role": "out", "zh-TW": "...", "en": "...", "line": 12}],
+           "returns": [{"zh-TW": "...", "en": "...", "line": 30}],
+           "contract": [{"kind": "pre", "zh-TW": "...", "en": "..."}]}}]}
 
 Then save it to a file and run: codemap describe --apply <that file>
 
@@ -220,11 +329,17 @@ def apply(root, idx, answer, by="ai"):
         nid = str(it.get("id", ""))
         entry = {"text": {lang: str(it.get(lang, "")).strip() for lang in LANGS},
                  "evidence": [str(x) for x in it.get("evidence", [])], "by": by, "at": today}
+        if it.get("info") is not None:
+            entry["info"] = it.get("info")
         bad = problems(root, idx, nid, entry)
         if bad:
             rejected[nid] = bad
             continue
         entry["hash"] = digest(root, idx["nodes"][nid])
+        if "info" in entry:
+            entry["info"] = clean_info(entry["info"])
+            if not entry["info"]:
+                del entry["info"]
         have[nid] = entry
         kept.append(nid)
     if kept:

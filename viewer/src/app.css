@@ -293,3 +293,19 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .info-outline li.is-here { margin: 0 calc(-1 * var(--space-2)); padding: var(--space-1) var(--space-2) var(--space-2); border-left: 2px solid var(--accent); background: var(--surface-sub); }
 .info-here-desc { font-size: 14px; line-height: 22px; }
 .info-here-notes { margin: var(--space-1) 0 0; font-size: 13px; color: var(--ink-muted); }
+
+/* the function panel (說明 while the code is in a function): facts only, the items of the picked line marked */
+.fp-status { margin: 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); }
+.fp-sec { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-3); }
+.fp-cnt { margin-left: 6px; font-weight: 400; font-size: 12px; color: var(--ink-muted); font-family: var(--font-mono); }
+.fp-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.fp-it { padding: 6px var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.fp-it.is-here { background: var(--surface-sub); box-shadow: inset 2px 0 0 var(--accent); }
+.fp-src { margin-left: 8px; font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
+.fp-prm-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.fp-prm-n { font-family: var(--font-mono); font-weight: 600; }
+.fp-prm-t { font-family: var(--font-mono); font-size: 12px; color: var(--ink-muted); }
+.fp-prm-d { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px var(--space-3); margin: 4px 0 0; }
+.fp-prm-d dt { color: var(--ink-muted); font-size: 13px; white-space: nowrap; }
+.fp-prm-d dd { margin: 0; min-width: 0; }
+.fp-legend { padding-top: var(--space-3); border-top: 1px solid var(--line); margin: var(--space-2) 0 0; }

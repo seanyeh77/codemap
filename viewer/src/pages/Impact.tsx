@@ -19,7 +19,7 @@ interface Row {
  *  the functions that use the same file-scope variables as the start (one level: what they share
  *  with each other is not followed) and their callers. LD_PRELOAD entry points are marked, since
  *  what calls them is outside the repo. */
-function affected(ix: Index, start: string): Row[] {
+export function affected(ix: Index, start: string): Row[] {
   const seen = new Set([start]), res: Row[] = [], frontier: [string, number, Kind][] = [[start, 0, 'direct']]
   const add = (fid: string, d: number, kind: Kind, f: string, l: number, how: string, via: string, source: string, inferred: boolean, lines = [l]) => {
     seen.add(fid)

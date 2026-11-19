@@ -19,6 +19,7 @@ import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { FileReader, compOfFile } from './pages/Reader'
 import { Info, fnAt, type At } from './pages/Info'
+import { FnChecks } from './pages/FnPanel'
 import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
 import { Explorer } from './pages/Explorer'
@@ -162,7 +163,9 @@ function Shell(p: ShellProps) {
   const [paletteKey, setPaletteKey] = useState(0)
 
   // where to go; every move clears the diagram's chosen line and tells a narrow screen's explorer to close
-  const setAt = (a: At) => { setEdge(''); setAtState(a) }
+  const setAt = (a: At) => { setEdge(''); setPicked(false); setAtState(a) }
+  // the reader clicked or moved to a line in the code: 說明 marks what is about that line (not on opening)
+  const [picked, setPicked] = useState(false)
   const openFile = (f: string, l: number) => setAt({ kind: 'file', f, l })
   const placeOf = (id: string): At | null => (ix.funcs[id] ? { kind: 'file', f: ix.funcs[id].file, l: ix.funcs[id].line } : null)
   const openFn = (id: string) => {
@@ -199,7 +202,7 @@ function Shell(p: ShellProps) {
   useEffect(() => {
     const onPop = () => {
       const h = readHash(ix)
-      if (h.at) { setEdge(''); setAtState(h.at) }
+      if (h.at) { setEdge(''); setPicked(false); setAtState(h.at) }
       setPin(h.s ? { id: h.s, for: h.at?.kind === 'file' ? fnAt(ix, h.at.f, h.at.l) : null } : null)
       if (h.v) show(h.v)
     }
@@ -372,7 +375,7 @@ function Shell(p: ShellProps) {
   const views: (UI.WorkbenchView & { id: ViewId })[] = [
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
-      : <Info ix={ix} at={at} fn={fn} openFn={openFn} />}</div> },
+      : <Info ix={ix} at={at} fn={fn} openFn={openFn} line={picked && at.kind === 'file' ? at.l : null} />}</div> },
     flowView('down', 'callee'),
     flowView('up', 'caller'),
     { id: 'world', title: t('對外介面'), render: () => <div className="view world-view">
@@ -382,6 +385,7 @@ function Shell(p: ShellProps) {
     </div> },
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <div className="check-cols">
+      {fn ? <FnChecks ix={ix} id={fn} open={openFile} /> : null}
       <Check compact ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
       <DescHealth compact ix={ix} />
       <section className="chk-sec chk-worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} compact /></section>
@@ -401,7 +405,7 @@ function Shell(p: ShellProps) {
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
       : <Arch ix={ix} sel={at.id} onSel={openComp} edge={edge} onEdge={(e) => { setEdge(e); if (e) show('info') }} />)
     : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare
-        onLine={(n) => setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a))} />
+        onLine={(n) => { setPicked(true); setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a)) }} />
 
   // where the open thing is: each step up is a link (the address handles it, like a step back)
   const crumbs: UI.BreadcrumbItem[] = [{ label: p.graph.repo, href: '#overview' }]

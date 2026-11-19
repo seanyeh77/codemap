@@ -544,3 +544,42 @@ def test_index_summary_counts_calls_matched_by_name():
         "syntax": {"edges": 1012, "languages": {"c": 11, "css": 3}}}}
     line = index_summary(idx, 0.3).splitlines()[1]
     assert "46 exact, 1 inferred, 1012 matched by name; 20 not resolved" in line
+
+
+def test_signature_reads_parameters_and_keywords(tmp_path):
+    from codemap import signature
+    (tmp_path / "a.c").write_text("static int f(const char *s, int n, char *out, ...)\n{\n    static int calls;\n    return n;\n}\n")
+    (tmp_path / "b.py").write_text("def _g(xs=[], n: int = 1, *rest):\n    yield n\n")
+    (tmp_path / "c.go").write_text("package m\nfunc (m *M) Drain(out []int, k map[string]int) int { return 0 }\n")
+    c = signature.of(tmp_path, "a.c", 1, 5)
+    ps = {p["name"]: p for p in c["params"]}
+    assert ps["s"]["type"] == "const char *" and ps["s"].get("ro") and ps["s"]["note"] == "address"
+    assert ps["n"] == {"name": "n", "type": "int", "line": 1, "mech": "value"}
+    assert ps["out"]["note"] == "address" and not ps["out"].get("ro")
+    assert {d["kw"] for d in c["decl"]} == {"static", "variadic"}
+    assert c["statics"] == [{"name": "calls", "line": 3}]
+    py = signature.of(tmp_path, "b.py", 1, 2, "python")
+    assert [p["name"] for p in py["params"]] == ["xs", "n", "*rest"]
+    assert py["params"][0].get("default_mutable") and py["params"][1]["note"] == "immutable"
+    assert {d["kw"] for d in py["decl"]} == {"generator", "internal", "variadic"}
+    go = signature.of(tmp_path, "c.go", 2, 2, "go")
+    assert [(p["name"], p.get("note"), p.get("recv", False)) for p in go["params"]] == [("m", "address", True), ("out", "slice", False), ("k", "map", False)]
+    assert {d["kw"] for d in go["decl"]} == {"exported", "receiver-pointer"}
+
+
+def test_describe_keeps_info_that_fits_the_function(tmp_path):
+    from codemap import describe
+    (tmp_path / "a.c").write_text("int read_frame(short *frame, int n)\n{\n    if (n < 0)\n        return -1;\n    frame[0] = 1;\n    return 0;\n}\n")
+    idx = {"nodes": {"a.c:read_frame": {"name": "read_frame", "file": "a.c", "line": 1, "end": 7, "kind": "function", "defined": True}}, "edges": []}
+    good = {"id": "a.c:read_frame", "zh-TW": "讀一個 frame。", "en": "Reads a frame.", "evidence": ["a.c:5"],
+            "info": {"params": [{"name": "frame", "role": "out", "zh-TW": "寫入 sample。", "en": "Gets samples.", "line": 5}],
+                     "returns": [{"zh-TW": "`-1`：n 小於 0。", "en": "`-1`: n is negative.", "line": 4}],
+                     "contract": [{"kind": "pre", "zh-TW": "`frame` 可寫入。", "en": "`frame` is writable."}]}}
+    kept, bad = describe.apply(tmp_path, idx, {"descriptions": [good]})
+    assert kept == ["a.c:read_frame"] and not bad
+    info = describe.load(tmp_path)["a.c:read_frame"]["info"]
+    assert info["params"][0] == {"zh-TW": "寫入 sample。", "en": "Gets samples.", "line": 5, "name": "frame", "role": "out"}
+    wrong = dict(good, info={"params": [{"name": "buf", "role": "inout", "zh-TW": "x", "en": "x", "line": 40}], "mood": []})
+    kept, bad = describe.apply(tmp_path, idx, {"descriptions": [wrong]})
+    msgs = " ".join(bad["a.c:read_frame"])
+    assert not kept and "unknown part 'mood'" in msgs and "no parameter 'buf'" in msgs and "role must be" in msgs and "not in the function" in msgs
