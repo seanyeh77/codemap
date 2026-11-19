@@ -320,12 +320,18 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .trail .muted { margin-right: 6px; }
 .trail-here { font-weight: 600; }
 
-/* the 定義 view: one item per definition, its name, kind and line on the first row */
+/* the 定義 view: like the parameters in 說明, the name is the strongest text, its type and value gray; only links
+   to elsewhere (the functions that use it) are in the accent color */
 .defs-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.defs-name { all: unset; cursor: pointer; font-family: var(--font-mono); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.defs-name:hover { text-decoration: underline; }
+.defs-name:focus-visible, .defs-toggle:focus-visible, .defs-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 2px; }
+.defs-type { font-family: var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
 .defs-filter { margin-top: var(--space-3); }
-.defs-fields .linklike { display: inline-flex; align-items: center; gap: 4px; }
+.defs-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); }
+.defs-toggle:hover { color: var(--ink); }
 .defs-field-list { list-style: none; margin: var(--space-1) 0 0; padding: 0 0 0 var(--space-5); display: flex; flex-direction: column; gap: 2px; }
 .defs-field-list li { display: flex; gap: var(--space-2); align-items: baseline; }
-.defs-field { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--accent-text); cursor: pointer; }
+.defs-field { all: unset; cursor: pointer; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
 .defs-field:hover { text-decoration: underline; }
 .defs .fp-sec > .linklike { align-self: flex-start; }

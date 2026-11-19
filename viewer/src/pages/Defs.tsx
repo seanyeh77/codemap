@@ -55,18 +55,18 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
   if (d) {
     items.types = d.types.map((x) => ({ key: 't' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: <>{kindText(TYPE_KIND[x.kind] ?? [x.kind])}{x.typedef ? <>{t('、')}{kindText(TYPE_KIND.typedef)}</> : null}</>,
-      detail: x.of ? <>{t('即 ')}<code className="desc-code">{x.of}</code></> : null,
+      detail: x.of ? <>{t('即 ')}<span className="defs-type">{x.of}</span></> : null,
       more: x.fields.length ? <Fields id={'t' + x.name + x.line} fields={x.fields} enumLike={x.kind === 'enum' || x.of === 'enum'}
         open={!!openTypes['t' + x.name + x.line]} toggle={() => setOpenTypes({ ...openTypes, ['t' + x.name + x.line]: !openTypes['t' + x.name + x.line] })}
         go={(l) => p.file && p.open(p.file, l)} peek={peek} /> : null }))
     items.vars = d.vars.map((x) => ({ key: 'v' + x.name + x.line, name: x.name, line: x.line, at: x.at, users: x.users, users_n: x.users_n,
-      kind: kindText(VAR_KIND[x.scope] ?? [x.scope]), detail: x.type ? <code className="desc-code">{x.type}</code> : null }))
+      kind: kindText(VAR_KIND[x.scope] ?? [x.scope]), detail: x.type ? <span className="defs-type">{x.type}</span> : null }))
     items.consts = d.consts.map((x) => ({ key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, at: x.at, users: x.users, users_n: x.users_n,
-      kind: kindText(CONST_KIND[x.kind] ?? [x.kind]), detail: x.value ? <>= <code className="desc-code">{x.value}</code></> : null }))
+      kind: kindText(CONST_KIND[x.kind] ?? [x.kind]), detail: x.value ? <span className="defs-type">= {x.value}</span> : null }))
     items.imports = d.imports.map((x) => ({ key: 'i' + x.line + x.text, name: x.text, line: x.line, at: x.at,
       kind: x.local === undefined ? null : kindText(x.local ? ['專案內的檔案', 'include'] : ['系統或程式庫', 'include']),
       detail: x.file ? <UI.InlineCode look="name" href="#" onClick={(e) => { e.preventDefault(); p.open(x.file!, 1) }}>{x.file}</UI.InlineCode>
-        : x.names?.length && x.names.join() !== x.text ? <>{t('取得：')}{x.names.map((n, i) => <span key={n}>{i ? t('、') : ''}<code className="desc-code">{n}</code></span>)}</> : null }))
+        : x.names?.length && x.names.join() !== x.text ? <>{t('取得：')}<span className="defs-type">{x.names.join(t('、'))}</span></> : null }))
     items.exports = d.exports.map((x) => ({ key: 'e' + x.name + x.line, name: x.name, line: x.line, kind: i18nExport(x.name) }))
   }
   const total = SECTIONS.reduce((n, s) => n + items[s.k].length, 0)
@@ -105,10 +105,10 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
         <ul className="fp-rows">{shown.map((x) => <li key={x.key} className={'fp-it has-line' + (here(x) ? ' is-here' : '')}
           onPointerEnter={() => peek(x.line)} onPointerLeave={() => peek(null)}>
           <div className="defs-head">
-            <UI.InlineCode look="name" href="#" onClick={(e) => { e.preventDefault(); p.open(p.file!, x.line) }}>{x.name}</UI.InlineCode>
+            <button type="button" className="defs-name" onClick={() => p.open(p.file!, x.line)}>{x.name}</button>
             <span className="small muted">{x.kind ? <>{x.kind}{t(' · ')}</> : null}{t('第 {v1} 行', { v1: x.line })}</span>
           </div>
-          {x.detail ? <div className="small">{x.detail}</div> : null}
+          {x.detail ? <div className="small muted">{x.detail}</div> : null}
           {x.users?.length ? <div className="small muted">{t('用到的函式：')}{x.users.slice(0, 3).map((id, i) => <span key={id}>{i ? t('、') : ''}
             <UI.InlineCode look="name" href="#" onClick={(e) => { e.preventDefault(); p.openFn(id) }}>{name(id)}</UI.InlineCode></span>)}
             {(x.users_n ?? x.users.length) > 3 ? t(' 等 {v1} 個', { v1: x.users_n ?? x.users.length }) : ''}<UI.AiMark text={t('推測')} /></div> : null}
@@ -130,11 +130,11 @@ function Fields(p: { id: string; fields: { name: string; type: string; line: num
   go: (l: number) => void; peek: (l: number | null) => void }) {
   const label = p.enumLike ? t('值 {v1} 個', { v1: p.fields.length }) : t('欄位 {v1} 個', { v1: p.fields.length })
   return <div className="defs-fields">
-    <button type="button" className="linklike small" aria-expanded={p.open} aria-controls={p.id} onClick={p.toggle}>
+    <button type="button" className="defs-toggle small" aria-expanded={p.open} aria-controls={p.id} onClick={p.toggle}>
       <UI.Icon name={p.open ? 'caret-down' : 'caret-right'} />{label}</button>
     {p.open ? <ul id={p.id} className="defs-field-list">{p.fields.map((f) => <li key={f.name + f.line}
       onPointerEnter={(e) => { e.stopPropagation(); p.peek(f.line) }}>
       <button type="button" className="defs-field mono" onClick={() => p.go(f.line)}>{f.name}</button>
-      {f.type ? <span className="small muted mono">{f.type}</span> : null}</li>)}</ul> : null}
+      {f.type ? <span className="defs-type small">{f.type}</span> : null}</li>)}</ul> : null}
   </div>
 }
