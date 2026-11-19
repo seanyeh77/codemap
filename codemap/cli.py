@@ -1,6 +1,6 @@
 """codemap: a static map of a codebase for people and AI.
 
-Start here, in the repository:
+Start here, in the repository: `codemap` alone asks what to do next. Or:
   codemap index                      1. read the code (again after it changes)
   codemap describe                   2. optional: prompts for an AI to say what each function does (codemap describe -h)
   codemap serve                      3. open the map in a browser: http://127.0.0.1:7300/
@@ -11,7 +11,8 @@ Every command:
   codemap callers NAME               who calls NAME (compiler and rule edges)
   codemap callees NAME               what NAME calls
   codemap where NAME                 definition of NAME, and what it does
-  codemap describe [FILE ...]        AI descriptions: prompts for what is not described, --apply the answers, --status
+  codemap describe [FILE ...]        AI descriptions: prompts for what is not described (--rewrite: all of it),
+                                     --apply the answers, --status
   codemap relations [NAME]           rule edges: pointers, env, exec, build, cross-language
   codemap arch                       write the Architecture section of CODEMAP.md and a diagram
   codemap check [FILE ...]           validate file:line references and call claims
@@ -561,15 +562,91 @@ def main(argv=None):
     s.add_argument("-o", "--output", default="codemap-viewer")
     s.set_defaults(fn=cmd_viewer)
     a = ap.parse_args(argv)
-    if not a.cmd:                                     # `codemap` alone: how to start, not an error
-        print(__doc__)
-        return
+    if not a.cmd:                                     # `codemap` alone: what to do next, asked; the list is -h
+        return start(a)
     try:
         a.fn(a)
     except KeyboardInterrupt:                         # Ctrl-C: the cursor back, one line, the usual status
         term.ui()._restore()
         sys.stderr.write("\ncodemap: stopped\n")
         sys.exit(130)
+
+
+START = {
+    "zh-TW": dict(
+        sep="", no_index="還沒讀過這個專案的程式碼。", index="索引：{n} 個函式，{when}建立。", changed="程式碼在那之後改過。",
+        desc="說明：{done} / {total} 個函式寫好了。", old="其中 {n} 個還沒有參數用途、回傳值與 contract。", what="要做什麼？", index_o="讀取程式碼（codemap index）",
+        describe_o="撰寫說明（codemap describe）", serve_o="在瀏覽器開啟地圖（codemap serve）",
+        export_o="匯出成一個 HTML 檔（codemap export --html）", check_o="檢查筆記和說明（codemap check）",
+        help_o="列出所有指令（codemap -h）", quit_o="離開", which="寫哪些說明？", missing_o="還沒有或已經過時的",
+        rewrite_o="全部重寫（--rewrite）", status_o="只看進度（--status）", min_ago="{n} 分鐘前", hour_ago="{n} 小時前",
+        day_ago="{n} 天前", now="剛剛", tty="codemap：在終端機執行可以選擇要做什麼；所有指令：codemap -h"),
+    "en": dict(
+        sep=" ", no_index="This project's code has not been read yet.", index="Index: {n} functions, built {when}.",
+        changed="The code changed since.", desc="Descriptions: {done} of {total} functions.",
+        old="{n} of them without parameter roles, return values and contract yet.", what="What next?",
+        index_o="Read the code (codemap index)", describe_o="Write descriptions (codemap describe)",
+        serve_o="Open the map in a browser (codemap serve)", export_o="Export one HTML file (codemap export --html)",
+        check_o="Check the notes and descriptions (codemap check)", help_o="List every command (codemap -h)",
+        quit_o="Quit", which="Which descriptions?", missing_o="Missing or out of date", rewrite_o="All of them again (--rewrite)",
+        status_o="Only how far it is (--status)", min_ago="{n} min ago", hour_ago="{n} h ago", day_ago="{n} days ago",
+        now="just now", tty="codemap: run it in a terminal to choose what to do; every command: codemap -h"),
+}
+
+
+def _ago(t, w):
+    s = time.time() - t
+    return w["now"] if s < 60 else w["min_ago"].format(n=int(s // 60)) if s < 3600 else \
+        w["hour_ago"].format(n=int(s // 3600)) if s < 86400 else w["day_ago"].format(n=int(s // 86400))
+
+
+def start(a):
+    """`codemap` alone: where the project stands, and a question with the next step picked to start with. It asks
+    again after each step, until the map is opened or the answer is to quit."""
+    w = START["zh-TW" if describe.screen_lang().startswith("zh") else "en"]
+    if not term.can_ask():
+        print(w["tty"])
+        return
+    root = Path(a.root).resolve()
+    while True:
+        idx_path = root / INDEX
+        pending = None
+        print()
+        if not idx_path.exists():
+            print(w["no_index"])
+        else:
+            idx = json.loads(idx_path.read_text(encoding="utf-8"))
+            funcs = [nid for f in describe.project_files(idx) for nid in describe.funcs_in(idx, f)]
+            t = idx_path.stat().st_mtime
+            newer = any((root / f).stat().st_mtime > t for f in {idx["nodes"][x]["file"] for x in funcs} if (root / f).exists())
+            print(w["index"].format(n=len(funcs), when=_ago(t, w)) + (w["sep"] + w["changed"] if newer else ""))
+            pending = len(describe.pending(root, idx, describe.project_files(idx), only_missing=True))
+            have = describe.load(root)
+            old = sum(1 for x in funcs if x in have and describe.old(have[x]) and describe.state(root, idx, x, have[x]) == "ok")
+            print(w["desc"].format(done=len(funcs) - pending + old, total=len(funcs)) + (w["sep"] + w["old"].format(n=old) if old else ""))
+        opts = [("index", w["index_o"]), ("describe", w["describe_o"]), ("serve", w["serve_o"]),
+                ("export", w["export_o"]), ("check", w["check_o"]), ("help", w["help_o"]), ("quit", w["quit_o"])]
+        first = 0 if not idx_path.exists() or newer else 1 if pending else 2
+        pick = term.choose(w["what"], opts, first)
+        args = ["-C", str(root)]
+        if pick == "quit":
+            return
+        if pick == "help":
+            print(__doc__)
+            continue
+        if pick == "describe":
+            how = term.choose(w["which"], [("", w["missing_o"]), ("--rewrite", w["rewrite_o"]), ("--status", w["status_o"])], 0)
+            args += ["describe"] + ([how] if how else [])
+        elif pick == "export":
+            args += ["export", "--html"]
+        else:
+            args += [pick]
+        try:
+            main(args)
+        except SystemExit:
+            pass                                     # a step that ends with a status (describe, check) asks again
+        if pick == "serve":
+            return
 
 
 if __name__ == "__main__":

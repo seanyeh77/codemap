@@ -11,6 +11,7 @@ to run, and on code that is half rewritten.
 ```sh
 uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
 cd your-repository
+codemap                       # says where the project stands and asks what to do next (arrow keys, Enter)
 codemap index                 # 1. read the code; run again after it changes
 codemap describe              # 2. optional: prompts for an AI to say what each function does (below)
 codemap serve                 # 3. open http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)
@@ -64,7 +65,7 @@ the side bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer,
 the panel and the side bar; the layout is kept in the browser (設定 › 版面 puts it
 back). Narrower screens draw the side bar and then the explorer over the code,
 and phones pull the panel up from below. Ctrl K or Ctrl P searches. The **?** in
-the top bar walks through the layout; `codemap` alone lists every command.
+the top bar walks through the layout; `codemap -h` lists every command.
 
 ## How it works
 
