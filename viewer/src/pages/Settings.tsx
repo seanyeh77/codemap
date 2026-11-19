@@ -82,13 +82,13 @@ export function Settings(p: Props) {
     <>
       <UI.SettingsSection title={t('目前的資料來源')}>
         <UI.DetailList items={[
-          { label: t('模式'), value: isLive ? <span><UI.Term text={t('由 codemap serve 提供，讀取目前磁碟上的程式碼，可重新檢查筆記。')}>{t('即時')}</UI.Term>{t('（codemap serve）')}</span> : <span><UI.Term text={t('匯出當時的索引與原始碼，只能瀏覽。')}>{t('快照')}</UI.Term>{t('（.codemap 檔）')}</span> },
+          { label: t('模式'), value: isLive ? <span><UI.Term variant="inline" text={t('由 codemap serve 提供，讀取目前磁碟上的程式碼，可重新檢查筆記。')}>{t('即時')}</UI.Term>{t('（codemap serve）')}</span> : <span><UI.Term variant="inline" text={t('匯出當時的索引與原始碼，只能瀏覽。')}>{t('快照')}</UI.Term>{t('（.codemap 檔）')}</span> },
           isLive ? { label: t('主機'), value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: t('檔案'), value: <UI.InlineCode>{p.snapName ?? t('此頁面')}</UI.InlineCode> },
           { label: t('路徑'), value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
-          { label: t('索引'), value: <span><UI.Term text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
+          { label: t('索引'), value: <span><UI.Term variant="inline" text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term variant="inline" text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
           // one row per language analyzer: how many calls each resolved, and how
-          ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: BACKEND[b] ?? LANG[b] ?? b, value: <span><UI.Term text={b === 'go'
+          ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: BACKEND[b] ?? LANG[b] ?? b, value: <span><UI.Term variant="inline" text={b === 'go'
             ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值，interface 只連到確實實作它的型別。找不到目標的呼叫不畫線。')
             : b === 'typescript' ? t('以 TypeScript 官方編譯器解析 import、類別、繼承、型別、interface、函式值與 JSX；.d.ts 與 node_modules 只提供型別。找不到目標的呼叫不畫線。')
             : t('以 Python 的 ast 解析 import、類別與簡單型別，不依名稱猜測。找不到目標的呼叫不畫線。')}>{t('靜態分析')}</UI.Term>{st.compilers?.[b] ? t('（TypeScript {v1}）', { v1: st.compilers[b].version }) : ''}{t('：')}{t('{v1} 條確定、{v2} 條型別推論、{v3} 條有多個可能目標、{v4} 處無法解析', { v1: r.exact ?? 0, v2: r.inferred ?? 0, v3: r.ambiguous ?? 0, v4: r.unresolved ?? 0 })}
@@ -110,7 +110,7 @@ export function Settings(p: Props) {
             {l.incomplete ? <>{t('{v1} 個檔案的型別檢查不完整，可能漏掉部分呼叫。這些函式的詳細資料會註明。', { v1: l.incomplete })}<br /></> : null}
             {l.messages ? <span className="muted">{t('型別檢查訊息 {v1} 則。這不代表分析失敗，其餘呼叫照常解析。', { v1: l.messages })}</span> : null}
           </span> })),
-          ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term text={t('以 tree-sitter 讀取定義與呼叫，依名稱對應定義，未經編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l] && !(l === 'javascript' && st.resolution?.typescript)).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對應的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
+          ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term variant="inline" text={t('以 tree-sitter 讀取定義與呼叫，依名稱對應定義，未經編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l] && !(l === 'javascript' && st.resolution?.typescript)).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對應的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
           isLive ? { label: t('索引建立時間'), value: <span>{when(p.meta!.indexed)}<br />{p.meta!.changed?.length
             ? <span className="warn-text">{t('之後有 {v1} 個原始檔變更，呼叫關係可能已過時：{v2}。請在 build 環境執行 codemap index 後重新載入。', { v1: p.meta!.changed.length, v2: p.meta!.changed.slice(0, 5).join(t('、')) + (p.meta!.changed.length > 5 ? t(' 等') : '') })}</span>
             : <span className="muted">{t('之後沒有原始檔變更，頁面與磁碟上的程式碼一致。')}</span>}</span> } : { label: t('匯出時間'), value: when(g.generated) },

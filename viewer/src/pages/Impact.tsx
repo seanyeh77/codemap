@@ -83,10 +83,10 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
             {vars.length ? <p className="small">{t('其中 {v1} 個與它共用全域變數（{v2}），即使沒有呼叫關係也會受影響。', { v1: rows.filter((r) => r.kind === 'state').length, v2: vars.join(t('、')) })}</p> : null}
             {entries.length ? (
               <p className="small">
-                {/* one sentence, the term last before its own list: a break after the ⓘ left 「. They run」 alone on a line */}
+                {/* one sentence, the term underlined inside it */}
                 {t('受影響的函式中有 {v1} 個，會在被追蹤的程式呼叫 {v2} 的同名函式時直接執行（repo 中共有 {v3} 個這樣的', { v1: entries.length, v2: apis.join(t('、')),
                   v3: Object.values(p.ix.funcs).filter((f) => f.api).length })}
-                <UI.Term text={entryTerm(apis.join(t('、')))}>{t('外部進入點')}</UI.Term>
+                <UI.Term variant="inline" text={entryTerm(apis.join(t('、')))}>{t('外部進入點')}</UI.Term>
                 {t('：{v1}）。', { v1: Object.entries(Object.values(p.ix.funcs).reduce<Record<string, number>>((m, f) => (f.api ? { ...m, [f.api]: (m[f.api] ?? 0) + 1 } : m), {})).sort().map(([a, n]) => `${a} ${n}`).join(t('、')) })}
               </p>
             ) : null}

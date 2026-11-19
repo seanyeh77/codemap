@@ -165,7 +165,7 @@ export function Detail(p: Props) {
         ...(f.entry ? [{ label: t('由框架呼叫'), value: <span>{t('{v1}：{v2}', { v1: f.entry.framework, v2: entryText(f.entry) })}</span> }] : []),
         // two rows, each number right after its own word: 「1 個 caller · 0 個 callee」 was read as caller · 0
         { label: t('被誰呼叫'),
-          value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term text={t('呼叫此函式的 repo 內函式，同一函式只算一次，推測的關係另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}
+          value: <span>{t('{v1} 個 ', { v1: nCallers })}<UI.Term variant="inline" text={t('呼叫此函式的 repo 內函式，同一函式只算一次，推測的關係另外註明。')}>{noun(nCallers, 'caller')}</UI.Term>{who.guessed ? (who.guessed === nCallers ? t('（推測）') : t('（其中 {v1} 個是推測）', { v1: who.guessed })) : ''}
             {/* the callers by name, compiler-seen first: a count alone sends people to the flow page to learn who */}
             {/* each caller with the line it calls from, so a file:line needs no detour through the impact page */}
             {nCallers ? <span className="entry-list">{callSites.slice(0, 6).map((g) => (
@@ -178,7 +178,7 @@ export function Detail(p: Props) {
         ...(twins.length ? [{ label: t('同名'), value: <span className="entry-list">{twins.map(([id, g]) => (
           <span key={id} className="entry-row"><FnLink id={id} go={p.goFlow}>{g.name}</FnLink>{' '}{link(g.file, g.line)}{t('（{v1}）', { v1: g.comp })}</span>))}</span> }] : []),
         { label: t('呼叫誰'),
-          value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term text={t('此函式呼叫的 repo 內函式，同一函式只算一次。流程樹的 ×N 為呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}
+          value: <span>{t('{v1} 個 ', { v1: nCallees })}<UI.Term variant="inline" text={t('此函式呼叫的 repo 內函式，同一函式只算一次。流程樹的 ×N 為呼叫次數。')}>{noun(nCallees, 'callee')}</UI.Term>{ext ? t('（另呼叫 {v1} 個 repo 外的函式）', { v1: ext }) : ''}
             {calleeSites.length ? <span className="entry-list">{calleeSites.slice(0, 12).map((g) => (
               <span key={g[0].d} className="entry-row"><FnLink id={g[0].d} go={p.goFlow}>{p.ix.funcs[g[0].d].name}</FnLink>{' '}
                 {g.map((c, i) => <span key={c.f + c.l}>{i ? t('、') : ''}{link(c.f, c.l)}</span>)}{inferred(g[0]) ? <span className="muted">{t('（推測）')}</span> : g.every((c) => c.k === 'ref') ? <span className="muted">{t('（當作值傳出）')}</span> : null}</span>))}
@@ -198,7 +198,7 @@ export function Detail(p: Props) {
         // calls the compiler never saw: inside #if/#ifdef blocks this build leaves out
         ...((u) => u?.length ? [{ label: t('條件編譯'), value: <span>{t('另有 {v1} 處呼叫在條件編譯中，本次 build 未編入，因此未計入上方：', { v1: u.length })}{u.map((x, i) => (
           <span key={i} className="write-row">{x.by}{t('（{v1}）', { v1: x.cond })}{' '}{link(x.f, x.l)}</span>))}</span> }] : [])(p.ix.g.uncompiled?.[p.sel.id]),
-        ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term text={t('與 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會優先執行此版本。呼叫者在 repo 外，因此 caller 可能為 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
+        ...(f.api ? [{ label: t('進入方式'), value: <span><UI.Term variant="inline" text={t('與 {v1} 程式庫的函式同名，以 LD_PRELOAD 載入後會優先執行此版本。呼叫者在 repo 外，因此 caller 可能為 0 個。', { v1: f.api })}>{t('外部進入點')}</UI.Term>{t('：攔截 {v1} 的同名函式', { v1: f.api })}</span> }] : []),
         ...(e && !inside ? [{ label: t('呼叫位置'), value: sites.length > 1
           ? <span>{sites.map((s, i) => <span key={s.l}>{i ? t('、') : ''}{link(s.f, s.l)}</span>)}</span> : link(e.f, e.l) }] : []),
         ...(sameLine.length ? [{ label: t('同一行'), value: t('這一行另呼叫 {v1}，兩個呼叫位於同一個運算式。', { v1: sameLine.join(t('、')) }) }] : []),
