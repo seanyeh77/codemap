@@ -1064,4 +1064,5 @@ export const EN: Record<string, string> = {
   "這個檔案不執行外部指令，也不讀寫環境變數或檔案。": "This file runs no command and reads or writes no environment variable or file.",
   "看它出現的地方": "Where it is used",
   "專案的說明文件": "The project's documents",
+  "沒有說明": "No description",
 }

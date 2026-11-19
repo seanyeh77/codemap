@@ -53,22 +53,33 @@ export function Info(p: { ix: Index; at: At; fn: string | null; isLive: boolean;
       <Found found={found} />
     </div>
   }
-  return p.fn ? <FnInfo ix={ix} isLive={p.isLive} sourceId={p.sourceId} openFn={p.openFn} chain={p.chain} f={at.f} l={at.l} id={p.fn} /> : <FileInfo ix={ix} f={at.f} l={at.l} />
+  return p.fn ? <FnInfo ix={ix} isLive={p.isLive} sourceId={p.sourceId} openFn={p.openFn} chain={p.chain} f={at.f} l={at.l} id={p.fn} /> : <FileInfo ix={ix} f={at.f} l={at.l} openFn={p.openFn} />
 }
 
-function FileInfo(p: { ix: Index; f: string; l: number }) {
+function FileInfo(p: { ix: Index; f: string; l: number; openFn: (id: string) => void }) {
   const order = useDescOrder()
   const ai = aiItem(p.ix, 'file:' + p.f, order)
   const doc = p.ix.g.files?.[p.f]
   const role = roleOf(p.ix.g, p.f)
   const byRules = Object.keys(p.ix.g.roles ?? {}).some((x) => p.f === x || p.f.startsWith(x.replace(/\/$/, '') + '/'))
-  const n = (p.ix.byFile().get(p.f) ?? []).length
+  // the file's outline: each function in line order with the first line of what it does
+  const fns = (p.ix.byFile().get(p.f) ?? []).filter((id) => p.ix.funcs[id].kind !== 'module').sort((a, b) => p.ix.funcs[a].line - p.ix.funcs[b].line)
+  const n = fns.length
   return <div className="info">
     {ai ? <p><DescText d={ai} tag full /></p> : null}
     {doc ? <p className="small">{doc.text.split('\n\n')[0]}</p> : null}
     {!ai && !doc ? <p className="small muted">{t('沒有說明註解。')}</p> : null}
-    {n ? <p className="small muted">{t('{v1} 個函式', { v1: n })}</p> : null}
     <Notes flat ix={p.ix} f={p.f} why={role ? (byRules ? t('可修改／受保護的依據：.codemap/rules.json 的 roles') : t('可修改／受保護的依據：檔案開頭註解的第一個詞')) : undefined} />
+    {n ? <section className="info-notes" aria-label={t('函式')}>
+      <h3 className="info-h">{t('函式')}</h3>
+      <ul className="info-outline">{fns.map((id) => {
+        const d = descriptions(p.ix, id, order).find((x) => x.kind !== 'facts')
+        return <li key={id}>
+          <UI.InlineCode look="name" href={'#'} onClick={(e) => { e.preventDefault(); p.openFn(id) }}>{p.ix.funcs[id].name.split('.').pop()!}</UI.InlineCode>
+          {d ? <span className="info-outline-desc"><DescText d={d} tag /></span> : <span className="small muted">{t('沒有說明')}</span>}
+        </li>
+      })}</ul>
+    </section> : null}
   </div>
 }
 
