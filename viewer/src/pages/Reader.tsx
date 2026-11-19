@@ -39,7 +39,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   /** The workbench: only the code, without the file's function list (the explorer has it) or the detail column. */
   bare?: boolean
   /** The line the reader clicked or moved to. */
-  onLine?: (n: number) => void
+  onLine?: (n: number, how: 'click' | 'key') => void
   /** A Markdown file shown as its preview or its source, when the page above chooses it (the workbench's bar) */
   mdMode?: 'preview' | 'source'
   /** A line marked from outside, e.g. while an item in 說明 about it is pointed at. */
@@ -74,8 +74,9 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
     if (src.data && shown === 'source') view.current?.focusTarget()
   }, [src.data, p.at.f, p.at.l, shown])
   // the line the reader clicks or moves to with the keyboard (selecting text to copy is not a move)
-  const follow = (n: number) => {
-    if (n !== cur) { moved.current = true; setCur(n); p.onLine?.(n) }
+  const follow = (n: number, how: 'click' | 'key') => {
+    if (n !== cur) { moved.current = true; setCur(n) }
+    p.onLine?.(n, how)
   }
   const local = (href: string) => {
     if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return null

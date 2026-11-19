@@ -72,12 +72,14 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
   const total = SECTIONS.reduce((n, s) => n + items[s.k].length, 0)
   const here = (x: Item) => p.line != null && ((x.line <= p.line && p.line <= (x.end ?? x.line)) || !!x.at?.includes(p.line))
   const n = SECTIONS.reduce((k, s) => k + items[s.k].filter(here).length, 0)
+  // the item the line itself defines, to bring into view before the ones it only uses
+  const defines = (x: Item) => p.line != null && x.line <= p.line && p.line <= (x.end ?? x.line)
   const match = (x: Item) => !q || x.name.toLowerCase().includes(q.toLowerCase())
 
   // follow the line: bring its first item into view, unless the reader is in the view
   useEffect(() => {
     if (busy || p.line == null) return
-    const el = box.current?.querySelector('.fp-it.is-here') as HTMLElement | null
+    const el = (box.current?.querySelector('.fp-it.is-def') ?? box.current?.querySelector('.fp-it.is-here')) as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }, [p.line, p.file])   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -102,7 +104,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
       const shown = long ? xs.filter((x, i) => i < SHOWN || here(x)) : xs
       return <section key={k} className="fp-sec" aria-label={t(title)}>
         <h3 className="info-h">{t(title)}<span className="fp-cnt">{t('{v1} 項', { v1: xs.length })}</span></h3>
-        <ul className="fp-rows">{shown.map((x) => <li key={x.key} className={'fp-it has-line' + (here(x) ? ' is-here' : '')}
+        <ul className="fp-rows">{shown.map((x) => <li key={x.key} className={'fp-it has-line' + (here(x) ? ' is-here' : '') + (defines(x) ? ' is-def' : '')}
           onPointerEnter={() => peek(x.line)} onPointerLeave={() => peek(null)}>
           <div className="defs-head">
             <button type="button" className="defs-name" onClick={() => p.open(p.file!, x.line)}>{x.name}</button>

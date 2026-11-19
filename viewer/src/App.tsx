@@ -195,6 +195,19 @@ function Shell(p: ShellProps) {
   }
   /** Shows a view wherever the reader has put it, opening its area. */
   const show = (v: ViewId) => wb.current?.show(v)
+  // a click in the code turns its area to the view about what was clicked: 說明 inside a function, 定義 on a line that
+  // defines a type, variable, constant or import. Only where that area is open and beside the code, not laid over it
+  const turnTo = (f: string, n: number) => {
+    const l = wb.current?.getLayout()
+    if (!l || window.innerWidth < 960) return
+    const inFn = Object.values(ix.funcs).some((x) => x.file === f && (x.kind ?? 'function') !== 'module' && x.kind !== 'class' && x.line <= n && n <= (x.end ?? x.line))
+    const d = ix.g.defs?.[f]
+    const defines = !!d && ([...d.types, ...d.vars, ...d.consts, ...d.imports] as { line: number; end?: number }[]).some((x) => x.line <= n && n <= (x.end ?? x.line))
+    const v: ViewId | null = inFn ? 'info' : defines ? 'defs' : null
+    if (!v) return
+    const r = l.side.includes(v) ? 'side' : l.panel.includes(v) ? 'panel' : null
+    if (r && l.open[r] && l.active[r] !== v) wb.current?.show(v)
+  }
   const flags = useMemo(() => flagged(ix.g, ix), [ix])
   const explorerOpen = (id: string) => {
     // what is already open, picked again: nothing moves
@@ -449,7 +462,7 @@ function Shell(p: ShellProps) {
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
       : <Arch ix={ix} sel={at.id} onSel={openComp} edge={edge} onEdge={(e) => { setEdge(e); if (e) show('info') }} />)
     : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare mdMode={isMd ? mdShown : undefined} peek={peekLine}
-        onLine={(n) => { setPicked(true); setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a)) }} />
+        onLine={(n, how) => { setPicked(true); setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a)); if (how === 'click' && at.kind === 'file') turnTo(at.f, n) }} />
 
   // where the open thing is: each step up is a link (the address handles it, like a step back)
   const crumbs: UI.BreadcrumbItem[] = [{ label: p.graph.repo, href: '#overview' }]

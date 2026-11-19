@@ -42,7 +42,10 @@ variables, constants and macros (with their values), includes and imports (a
 project file opens on click), and exports. Each item gives its line and the
 functions that use it, found by name in the file and in the files that include or
 import it, so marked as inferred. It follows the code as 說明 does: the items a line
-defines or uses are marked, and pointing at one marks its line. Files with more
+defines or uses are marked, and pointing at one marks its line. A click in the code
+turns the side bar to the view about it: 說明 inside a function, 定義 on a line
+that defines a type, variable, constant or import (where that area is open beside
+the code), and 定義 brings the item the line defines into view. Files with more
 than 30 items get a filter. With the code inside a function, 說明 is that function
 for reading it: Execution context, Shared state, Parameters (each one's role, in,
 out or in-out, and how the language passes it), Return value, Side effects,
