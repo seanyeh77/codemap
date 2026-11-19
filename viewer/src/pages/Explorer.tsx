@@ -56,9 +56,13 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; q: string; o
         .map(([id, f]) => ({ ...fnNode(id), name: f.name, path: `${f.file}:${f.line}` }))
       return [...fs, ...fns]
     }
+    // the project's documents (README, docs/…) after its components: files too, opened in the stage like code
+    const docs = ix.g.docs ?? []
     return [{ id: 'proj', name: ix.g.repo, icon: 'house' as const, mark: mark('proj'),
-      children: ix.g.comps.map((c) => ({ id: 'comp:' + c.id, name: c.id, icon: 'squares-four' as const, mark: mark('comp:' + c.id),
-        children: (files.get(c.id) ?? []).sort().map(fileNode) })) }]
+      children: [...ix.g.comps.map((c) => ({ id: 'comp:' + c.id, name: c.id, icon: 'squares-four' as const, mark: mark('comp:' + c.id),
+        children: (files.get(c.id) ?? []).sort().map(fileNode) })),
+        ...(docs.length ? [{ id: 'docs', name: t('文件'), icon: 'file' as const, ariaLabel: t('專案的說明文件'),
+          children: docs.map((d) => ({ id: 'file:' + d.file, name: d.file, icon: 'file-text' as const })) }] : [])] }]
   }, [q, files, ix, flags])   // eslint-disable-line react-hooks/exhaustive-deps
   const cur = nodeOf(p.at, p.fn)
   // the path to what is open is opened; whatever else the reader opened stays open
@@ -67,6 +71,7 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; q: string; o
     const comp = p.at.kind === 'comp' ? p.at.id : p.at.kind === 'file' ? ix.funcs[ix.byFile().get(p.at.f)?.[0] ?? '']?.comp : undefined
     if (comp) ids.push('comp:' + comp)
     if (p.at.kind === 'file') ids.push('file:' + p.at.f)
+    if (p.at.kind === 'file' && ix.g.docs?.some((d) => d.file === (p.at as { f: string }).f)) ids.push('docs')
     return ids
   }, [p.at, ix])
   const [open, setOpen] = useState<string[]>(path)

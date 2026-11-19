@@ -28,24 +28,27 @@ too). Piped, in CI or with `CODEMAP_PLAIN=1` it prints plain `==> step` lines;
 `NO_COLOR` turns colours off.
 
 The map is laid out like a code editor. On the left, the explorer: the project,
-its components, their files and each file's functions, with a filter on top and
-a dot wherever something is worth a note. In the middle, what is open: the
-project opens as its overview (what it does, where to start reading, its terms
-and documents, and how it meets the world: entry points, commands, environment
-variables, files read and written), a component as the architecture diagram,
-a file or a function as its code. On the right, 說明: what the open thing is and
-what is worth a note. Below, three tabs follow the open function: callee (what it
-calls, level by level; a name clicked there opens that function above while the
-tree keeps its start), caller (what calls it, with how far a change to it reaches,
-as a tree or a table) and 檢查 (whether the notes still match the code, and what
-the checks found worth checking). With a file or a component open, callee and
-caller list the files or components instead. The self-test (guess each level
-before it opens) is in 設定. Every border can be dragged, every tab can be dragged between the side
-bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer, the panel
-and the side bar; the layout is kept in the browser (設定 › 版面 puts it back).
-Narrower screens draw the side bar and then the explorer over the code, and
-phones pull the panel up from below. Ctrl K or Ctrl P searches. The **?** in the
-top bar walks through the layout; `codemap` alone lists every command.
+its components, their files and each file's functions, then its documents
+(README and the like), with a filter on top and a dot wherever something is
+worth a note. In the middle, what is open: the project opens as its overview
+(what it does, where to start reading, its components), a component as the
+architecture diagram, a file or a function as its code. On the right, 說明: what
+the open thing is and what is worth a note; the project's own words (its terms)
+are explained where they appear, and the search finds them. Below, four tabs
+follow what is open: callee (what the function calls, level by level; a name
+clicked there opens that function above while the tree keeps its start), caller
+(what calls it, with how far a change reaches, as a tree or a table), 對外介面
+(the entry points, commands, environment variables, build products and files
+read and written, of the whole project or only of the open component, file or
+function) and 檢查 (whether the notes still match the code, and what the checks
+found worth checking). With a file or a component open, callee and caller list
+the files or components instead. The self-test (guess each level before it
+opens) is in 設定. Every border can be dragged, every tab can be dragged between
+the side bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer,
+the panel and the side bar; the layout is kept in the browser (設定 › 版面 puts it
+back). Narrower screens draw the side bar and then the explorer over the code,
+and phones pull the panel up from below. Ctrl K or Ctrl P searches. The **?** in
+the top bar walks through the layout; `codemap` alone lists every command.
 
 ## How it works
 

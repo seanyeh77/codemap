@@ -540,9 +540,16 @@ function From(p: { doc: Doc }) {
  *  order with their contents on the left. On the check page (mode 'bare') only the parts asked for, one after another. */
 export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onComp: (id: string) => void; onPick: (id: string) => void
   mode?: 'page' | 'bare'; only?: string[]; skip?: string[]
-  /** 檢查's panel: only the checks that found something, each folded to its title and count */
-  compact?: boolean }) {
+  /** the panel (檢查, 對外介面): the checks that found something only, and every part folded to its title and count */
+  compact?: boolean
+  /** 對外介面 for what is open: only what a function, a file or a component does itself; the build only for the project */
+  within?: (fid: string | undefined, file: string) => boolean
+  /** shown in bare mode when no part has anything */
+  empty?: ReactNode }) {
   const g = p.ix.g
+  // what is in scope: everything, or what the open function, file or component holds
+  const inFn = (fid: string | undefined, f?: string) => !p.within || p.within(fid, f ?? (fid ? p.ix.funcs[fid]?.file ?? '' : ''))
+  const inRef = (r: string) => !p.within || p.within(p.ix.at(r)?.id, r.slice(0, r.lastIndexOf(':')))
   const refs = useCodeRefs(p.ix)
   const openFile = useContext(OpenFile)
   const [copied, setCopied] = useState(false)
@@ -550,18 +557,18 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   const descOrder = useDescOrder()
   const ai = (key: string, inTable = false) => aiMd(aiItem(p.ix, key, descOrder), inTable)
   const fname = (ref: string) => { const hit = p.ix.at(ref); return hit ? p.ix.funcs[hit.id].name : null }
-  const lifecycle = g.edges.filter((e) => e.k === 'constructor' || e.k === 'destructor').filter((e) => p.ix.funcs[e.d])
+  const lifecycle = g.edges.filter((e) => e.k === 'constructor' || e.k === 'destructor').filter((e) => p.ix.funcs[e.d] && inFn(e.d))
   const apis = new Map<string, number>()
-  for (const f of Object.values(p.ix.funcs)) if (f.api) apis.set(f.api, (apis.get(f.api) ?? 0) + 1)
+  for (const [id, f] of Object.entries(p.ix.funcs)) if (f.api && inFn(id)) apis.set(f.api, (apis.get(f.api) ?? 0) + 1)
   // functions nothing in the repo calls directly, put into a function pointer that code outside the repo calls
   // (an ops table, a UCT table, a signal handler): grouped by the function that installs them
-  const installed = pointerEntries(p.ix)
+  const installed = new Map([...pointerEntries(p.ix)].map(([k, ids]) => [k, ids.filter((id) => inFn(id))] as const).filter(([, ids]) => ids.length))
   const fwEntries = useMemo(() => {
     const m = new Map<string, string[]>()
-    for (const [id, f] of Object.entries(p.ix.funcs)) if (f.entry) m.set(`${f.entry.framework}.${f.entry.kind}`, [...(m.get(`${f.entry.framework}.${f.entry.kind}`) ?? []), id])
+    for (const [id, f] of Object.entries(p.ix.funcs)) if (f.entry && inFn(id)) m.set(`${f.entry.framework}.${f.entry.kind}`, [...(m.get(`${f.entry.framework}.${f.entry.kind}`) ?? []), id])
     for (const ids of m.values()) ids.sort((a, b) => p.ix.funcs[a].file.localeCompare(p.ix.funcs[b].file) || p.ix.funcs[a].line - p.ix.funcs[b].line)
     return new Map([...m].sort(([a], [b]) => a.localeCompare(b)))
-  }, [p.ix])
+  }, [p.ix, p.within])   // eslint-disable-line react-hooks/exhaustive-deps
   // variables the program reads: in a C repository, a C file's reads (Python there is tools and tests);
   // in a repository of Python, Go or TypeScript, a read inside any of its functions that is not a test
   const cRepo = g.stats.backends ? g.stats.backends.includes('gcc') : true
@@ -577,7 +584,7 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   const skipped = WORTH.filter(([k]) => !applies(k))
   // the commands the program runs (outside C): tests and grading scripts are left to the search
   // test code's commands (tests/grade.py's docker exec) stay out, also while the tests setting hides its functions
-  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => prod(c.fid))
+  const cmds = cRepo ? [] : (g.commands ?? []).filter((c) => prod(c.fid) && inFn(c.fid, c.f))
   // by file, the files people may change first (the controller before the grader's checks.py)
   const rank = (f: string) => ((r) => (r === 'editable' ? 0 : r === 'protected' ? 2 : 1))(roleOf(g, f))
   const cmdGroups = [...cmds.map((c, i) => [c, i] as const).reduce((m, x) => {
@@ -598,11 +605,11 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
     return [...m].filter(([, ids]) => new Set(ids.map((id) => p.ix.funcs[id].file)).size > 1).sort(([a], [b]) => a.localeCompare(b))
   }, [p.ix])
   // outside C, a function named main that is not a test: the command line's entry
-  const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module').map(([id]) => id)
+  const mains = cRepo ? [] : Object.entries(p.ix.funcs).filter(([id, f]) => f.name === 'main' && f.scope !== 'test' && f.kind !== 'module' && inFn(id)).map(([id]) => id)
   // in a C repository the program is its C code: Python there is tools and tests, as with the variables above
   const cFile = (f: string) => /\.(c|h|cc|cpp|cxx|hpp|hh)$/.test(f)
   const stops = (g.worth?.stops ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
-  const writes = (g.writes ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
+  const writes = (g.writes ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)) && inFn(x.fid, x.f))
   // test and grading code: left out of the diagram, but a reader needs to know it is there
   const testComps = useMemo(() => {
     const all = g.hidden_tests ?? Object.entries(p.ix.funcs).filter(([, f]) => f.scope === 'test').map(([id, f]) => ({ id, name: f.name, file: f.file, line: f.line, comp: f.comp }))
@@ -611,12 +618,12 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
     return [...m].sort(([a], [b]) => a.localeCompare(b))
   }, [p.ix, g])
   // argparse programs and their commands (python3 harness/lab3.py status --json)
-  const clis = cRepo ? [] : (g.cli ?? [])
-  const spawns = (g.spawns ?? []).filter((x) => p.ix.funcs[x.target] && p.ix.funcs[x.fid]?.scope !== 'test')
-  const reads = cRepo ? [] : (g.reads ?? []).filter((x) => prod(x.fid))
+  const clis = cRepo ? [] : (g.cli ?? []).filter((x) => inFn(p.ix.at(`${x.f}:${x.l}`)?.id, x.f))
+  const spawns = (g.spawns ?? []).filter((x) => p.ix.funcs[x.target] && p.ix.funcs[x.fid]?.scope !== 'test' && (inFn(x.fid, x.f) || inFn(x.target)))
+  const reads = cRepo ? [] : (g.reads ?? []).filter((x) => prod(x.fid) && inFn(x.fid, x.f))
   const unsetEnv = (g.worth?.env_if_unset ?? []).filter((x) => (cRepo ? cFile(x.f) : prod(x.fid)))
   // a variable the program only sets (PYTHONPATH for a child process) belongs here too, outside a C repository
-  const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some(inProgram) || (!cRepo && v.set.some(inProgram)))
+  const env = Object.entries(g.env ?? {}).filter(([, v]) => v.get.some((r) => inProgram(r) && inRef(r)) || (!cRepo && v.set.some((r) => inProgram(r) && inRef(r))))
   const others = Object.keys(g.env ?? {}).length - env.length
   // the line beside each part's title: the numbers that say whether it is worth opening
   const join = (xs: (string | false | 0 | undefined)[]) => xs.filter(Boolean).join(t('、'))
@@ -795,8 +802,9 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
     ].filter(Boolean).join('\n\n') })
   }
 
-  if (g.build && (g.build.built.length || g.build.install.length)) parts.push(buildPart(g.build))
-  if (g.writes) parts.push(writesPart(p.ix, writes, inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS), (w) => (w.name || w.expr ? ai('data:' + (w.name || w.expr)) : '')))
+  if (g.build && (g.build.built.length || g.build.install.length) && !p.within) parts.push(buildPart(g.build))
+  // the whole project says when nothing is written; a function or file in 對外介面 just leaves the part out
+  if (g.writes && (writes.length || !p.within)) parts.push(writesPart(p.ix, writes, inLangs('writes', cRepo ? { c: WRITE_CALLS.c } : WRITE_CALLS), (w) => (w.name || w.expr ? ai('data:' + (w.name || w.expr)) : '')))
   // 內容: what the file holds, when an AI has written it
   const dataAi = (r: { name?: string; expr?: string }) => (r.name || r.expr ? ai('data:' + (r.name || r.expr), true) : '')
   const readsAi = reads.some((r) => dataAi(r))
@@ -853,16 +861,23 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   const shownParts = parts.filter((x) => (!p.only || p.only.includes(x.id)) && !p.skip?.includes(x.id))
     .sort((a, b) => READING.indexOf(a.id) - READING.indexOf(b.id))
   // the whole overview, the same text the page shows
-  const all = [`# ${t('{v1} 的概觀', { v1: g.repo })}`, ...shownParts.map(partText)].join('\n\n') + '\n'
+  // the page shows two parts; the copy is still the whole overview, as before its parts moved to the panel
+  const all = [`# ${t('{v1} 的概觀', { v1: g.repo })}`, ...(p.mode === 'page' && !p.within ? [...parts].sort((a, b) => READING.indexOf(a.id) - READING.indexOf(b.id)) : shownParts).map(partText)].join('\n\n') + '\n'
   const copy = () => navigator.clipboard.writeText(all).then(() => { setCopied(true); UI.announce(t('已複製概觀的 Markdown')); setTimeout(() => setCopied(false), 2000) },
     () => UI.announce(t('瀏覽器不允許寫入剪貼簿，請改用選取後複製。')))
-  const body = (x: PartMd) => (
+  const body = (x: PartMd) => p.compact && x.id !== 'ov-worth' ? (
+    // the panel: one line per part, its title and numbers, opened in place
+    <section key={x.id} id={x.id} className="ov-sec ov-fold" aria-label={x.title}>
+      <OvMd>{details(x.summary ? t('{v1}：{v2}', { v1: x.title, v2: x.summary }) : x.title, x.md)}</OvMd>
+    </section>
+  ) : (
     <section key={x.id} id={x.id} className="ov-sec" aria-labelledby={x.id + '-h'}>
       <h2 id={x.id + '-h'} tabIndex={-1}>{x.title}</h2>
       {x.summary ? <p className="small muted">{x.summary}</p> : null}
       <OvMd>{x.md}</OvMd>
     </section>
   )
+  if (p.mode === 'bare' && !shownParts.length && p.empty) return <>{p.empty}</>
   if (p.mode === 'bare') return <RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>{shownParts.map(body)}</MdLinksCtx.Provider></RepoKey.Provider>
   if (p.mode === 'page') return (
     // no contents column beside it: the card takes the stage's width, and the search finds a section

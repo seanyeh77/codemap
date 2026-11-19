@@ -22,6 +22,7 @@ import { Info, fnAt, type At } from './pages/Info'
 import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
 import { Explorer } from './pages/Explorer'
+import { TermsCtx, termsOf } from './components/Terms'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
@@ -116,11 +117,14 @@ interface ShellProps {
 }
 
 // 說明; 呼叫 (what it calls, down) and 被呼叫 (what calls it, up, with what a change reaches); 檢查
-type ViewId = 'info' | 'down' | 'up' | 'check'
-const VIEW_IDS: ViewId[] = ['info', 'down', 'up', 'check']
+// 對外介面: the commands, environment variables, files and entry points of what is open
+type ViewId = 'info' | 'down' | 'up' | 'world' | 'check'
+const VIEW_IDS: ViewId[] = ['info', 'down', 'up', 'world', 'check']
+// the overview's parts in 對外介面; the overview page keeps what the project is and its components
+const WORLD = ['ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-reads']
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
-const LAYOUT = { side: ['info'], panel: ['down', 'up', 'check'] }
+const LAYOUT = { side: ['info'], panel: ['down', 'up', 'world', 'check'] }
 // the tour points at the explorer, the search, the stage and three of the views, wherever the reader moved them
 const TOUR_TARGETS = ['tree', 'search', 'stage', ...['info', 'down', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
 
@@ -177,6 +181,7 @@ function Shell(p: ShellProps) {
     else if (id.startsWith('comp:')) setAt({ kind: 'comp', id: id.slice(5) })
     else if (id.startsWith('file:')) openFile(id.slice(5), 1)
     else if (id.startsWith('fn:')) openFn(id.slice(3))
+    // 文件 is a folder: choosing it only opens it
   }
 
   // the address: what is open (each a step back can return to) and the panel's view (replaced, not a new step)
@@ -324,8 +329,10 @@ function Shell(p: ShellProps) {
     else if (g.type === 'line' || g.type === 'file') openFile(g.f, g.l)
     else if (g.type === 'ext') { setPin({ id: g.id, for: fn }); show('up') }
     else if (g.type === 'overview') {
-      // what to check is in 檢查; the rest of the overview is the project's page
+      // what to check is in 檢查; how the program meets the world in 對外介面 (for the whole project); the rest is the
+      // project's page. The ideas without a section (constructors, LD_PRELOAD, environment variables) are 對外介面's
       if (g.sec && WORTH_SECTIONS.has(g.sec)) show('check')
+      else if (!g.sec || WORLD.includes(g.sec)) { setAt({ kind: 'proj' }); show('world') }
       else setAt({ kind: 'proj' })
       const sec = g.sec
       if (sec) for (const ms of [150, 500, 900]) setTimeout(() => jump(sec), ms)
@@ -357,6 +364,12 @@ function Shell(p: ShellProps) {
         </>}
     </div> }
   }
+  // 對外介面 follows what is open: the whole project, a component, a file, or the function the code is in
+  const within = at.kind === 'comp' ? (fid: string | undefined, f: string) => (fid ? ix.funcs[fid]?.comp === at.id : compOfFile(ix, f) === at.id)
+    : at.kind === 'file' ? (fn ? (fid: string | undefined) => fid === fn : (_: string | undefined, f: string) => f === at.f)
+    : undefined
+  // the project's words, explained where they appear (說明, the call trees' descriptions) and found by the search
+  const termsCtx = useMemo(() => ({ terms: termsOf(ix, descOrder), open: (f: string, l: number) => openFile(f, l) }), [ix, descOrder])   // eslint-disable-line react-hooks/exhaustive-deps
   const views: (UI.WorkbenchView & { id: ViewId })[] = [
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
@@ -369,6 +382,11 @@ function Shell(p: ShellProps) {
         }} />}</div> },
     flowView('down', 'callee'),
     flowView('up', 'caller'),
+    { id: 'world', title: t('對外介面'), render: () => <div className="view world-view">
+      <Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={WORLD} compact within={within}
+        empty={<p className="small muted">{at.kind === 'comp' ? t('這個元件不執行外部指令，也不讀寫環境變數或檔案。')
+          : fn ? t('這個函式不執行外部指令，也不讀寫環境變數或檔案。') : t('這個檔案不執行外部指令，也不讀寫環境變數或檔案。')}</p>} />
+    </div> },
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <div className="check-cols">
       <Check compact ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
@@ -385,7 +403,7 @@ function Shell(p: ShellProps) {
         onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} resetLayout={() => wb.current?.resetLayout()}
         openAt={(f, l) => openFile(f, l)} /></div>
     : empty ? <UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} />
-    : at.kind === 'proj' ? <div className="stage-scroll"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="page" skip={['ov-worth']} /></div>
+    : at.kind === 'proj' ? <div className="stage-scroll"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="page" only={['ov-project', 'ov-comps']} /></div>
     : at.kind === 'comp' ? (comp?.lang
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
       : <Arch ix={ix} sel={at.id} onSel={openComp} edge={edge} onEdge={(e) => { setEdge(e); if (e) show('info') }} />)
@@ -420,7 +438,7 @@ function Shell(p: ShellProps) {
   ) : null
 
   return (
-    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}>
+    <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}><TermsCtx.Provider value={termsCtx}>
     <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
       crumbs={crumbs}
@@ -452,7 +470,7 @@ function Shell(p: ShellProps) {
       { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee 是目前函式呼叫的函式；caller 是呼叫它的函式，以及修改它會影響的範圍。點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
       { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
     ]} />
-    </OpenFunc.Provider></OpenFile.Provider>
+    </TermsCtx.Provider></OpenFunc.Provider></OpenFile.Provider>
   )
 }
 
@@ -514,6 +532,11 @@ function paletteItems(ix: Index, order: DescOrder): PaletteItem[] {
     [t('執行期設定（環境變數）'), ['env', 'getenv', 'environment', t('設定')]]] as const) {
     items.push({ id: 'k:' + label, kind: '概觀', label, detail: t('總覽'), keywords: [...keywords], target: { type: 'overview' } })
   }
+  // the project's words: a term found by name, its description beside it, opening where it is used
+  for (const x of termsOf(ix, order)) {
+    items.push({ id: 't:' + x.term, kind: '名詞', label: x.term, code: true, detail: x.text.length > 80 ? x.text.slice(0, 79) + '…' : x.text,
+      target: x.at ? { type: 'file' as const, f: x.at.f, l: x.at.l } : { type: 'overview' as const } })
+  }
   // every section of the overview, by its heading
   for (const [sec, label] of OVERVIEW_SECTIONS) {
     items.push({ id: 'k:' + sec, kind: '概觀', label: t(label), detail: t('總覽'), keywords: [label, t(label), ...(SECTION_WORDS[sec] ?? [])], target: { type: 'overview', sec } })
@@ -535,7 +558,7 @@ function paletteItems(ix: Index, order: DescOrder): PaletteItem[] {
 
 /** Each kind of search result and its icon; the kinds stay in Chinese inside (the ranking orders by
  *  them) and are shown in the current language. */
-const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 測試: 'check-square', 註解: 'info', Python: 'terminal-window', 文件: 'file', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house' }
+const KIND_ICONS: Record<string, UI.IconSource> = { 程式碼: 'file-code', 測試: 'check-square', 註解: 'info', Python: 'terminal-window', 文件: 'file', 函式: 'brackets-curly', 環境變數: 'terminal-window', 元件: 'squares-four', 外部函式: 'arrow-square-out', 概觀: 'info', 檔案: 'file-text', 巨集: 'hash', 全域變數: 'database', 頁面: 'house', 名詞: 'chat-centered' }
 const localKind = <T extends { kind?: string }>(i: T): T => ({ ...i, kind: i.kind && t(i.kind) })
 
 /** What a line of text found in a file is: the project's C code first, then its tests, its Python tools, its documents. */

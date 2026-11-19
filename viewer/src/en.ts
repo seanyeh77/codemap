@@ -1059,4 +1059,9 @@ export const EN: Record<string, string> = {
   "{v1} 檢查": "Checked {v1}",
   "匯出時的結果・": "As exported · ",
   "開啟全文": "Open the whole file",
+  "這個元件不執行外部指令，也不讀寫環境變數或檔案。": "This component runs no command and reads or writes no environment variable or file.",
+  "這個函式不執行外部指令，也不讀寫環境變數或檔案。": "This function runs no command and reads or writes no environment variable or file.",
+  "這個檔案不執行外部指令，也不讀寫環境變數或檔案。": "This file runs no command and reads or writes no environment variable or file.",
+  "看它出現的地方": "Where it is used",
+  "專案的說明文件": "The project's documents",
 }

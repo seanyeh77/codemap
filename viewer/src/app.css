@@ -281,3 +281,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
   .check-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); align-items: start; }
   .check-cols > .chk-sec + .chk-sec { padding-top: 0; border-top: 0; padding-left: var(--space-6); border-left: 1px solid var(--line); }
 }
+/* 對外介面: one line per part, close together */
+.world-view { gap: 0; }
+.world-view .ov-fold .ui-md-details { margin: 0; }
+.world-view .ov-fold .ui-md-summary { padding-block: 6px; }
