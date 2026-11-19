@@ -74,9 +74,6 @@ export function Impact(p: { ix: Index; start: string; sourceId: string; onSel: (
   return (
     <div className="pane">
       <UI.Card data-tour="impact" className="stack">
-        <div className="row">
-          <UI.Button icon="magnifying-glass" onClick={p.openSearch}>{t('更換函式')}</UI.Button>
-        </div>
         {rows.length ? (
           // the summary takes the card's whole width, so the call lines below are not wrapped at the text's own width
           <div className="impact-sum">

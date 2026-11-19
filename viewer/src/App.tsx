@@ -19,6 +19,7 @@ import { Check, DescHealth } from './pages/Check'
 import { Settings } from './pages/Settings'
 import { FileReader, compOfFile } from './pages/Reader'
 import { Info, fnAt, type At } from './pages/Info'
+import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
 import { Explorer } from './pages/Explorer'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
@@ -417,7 +418,6 @@ function Shell(p: ShellProps) {
     <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}>
     <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
-      crumbs={crumbs}
       explorerHead={<UI.SearchField className="ex-filter" value={q} onChange={setQ} label={t('篩選檔案與函式')} placeholder={t('篩選檔案與函式')} />}
       explorer={<Explorer ix={ix} at={at} fn={fn} q={q} open={explorerOpen} />}
       explorerFoot={<button type="button" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} onClick={() => setAt({ kind: 'settings' })}><UI.Icon name="gear" />{t('設定')}</button>}
@@ -431,6 +431,9 @@ function Shell(p: ShellProps) {
           footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</a>} />
       </>}>
       {snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
+      {/* where the open thing is, in a bar as high as the side bar's and the panel's tab bars */}
+      <div className="stage-bar"><UI.Breadcrumb className="stage-crumb" items={crumbs} />
+        {isFile ? <EditorButton ix={ix} file={at.f} line={at.l} /> : null}</div>
       <div className="stage" data-tour="stage">{stage}</div>
     </UI.Workbench>
     <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}

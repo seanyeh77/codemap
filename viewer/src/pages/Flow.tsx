@@ -184,11 +184,9 @@ export function Flow(p: FlowProps) {
 
   return (
     <UI.Card className="pane">
-      <div className="row" ref={cardRef}>
+      {/* one row: the direction, then the switches; the start follows the code above (or the search, Ctrl K) */}
+      <div className="row flow-bar" ref={cardRef}>
         <UI.Tabs label={t('方向')} items={[{ id: 'down', label: t('往下：callee') }, { id: 'up', label: t('往上：caller') }]} value={p.dir} onChange={(d) => p.setDir(d as 'down' | 'up')} />
-      </div>
-      <div className="row">
-        <UI.Button icon="magnifying-glass" onClick={p.openSearch}>{t('更換起點函式')}</UI.Button>
         <div className="grow" />
         {/* self-test last, so its field follows it in the Tab order */}
         <label className="row nowrap"><UI.Switch checked={p.showExt} onChange={p.setShowExt} label={t('顯示外部函式')} disabled={p.dir !== 'down'} /><span>{t('外部函式')}</span></label>

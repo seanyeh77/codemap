@@ -10,7 +10,7 @@ import { vscodeURL } from '../prefs'
 /** 「用 VS Code 開啟」, only once an editor is chosen in settings. */
 export function EditorButton(p: { ix: Index; file: string; line: number }) {
   const url = vscodeURL(p.file, p.line, p.ix.g.root, p.ix.g.host)
-  return url ? <UI.IconButton icon="arrow-square-out" label={t('用 VS Code 開啟')} onClick={() => { location.href = url }} /> : null
+  return url ? <UI.IconButton variant="quiet" icon="arrow-square-out" label={t('用 VS Code 開啟')} onClick={() => { location.href = url }} /> : null
 }
 
 /** A file:line that shows its code inside codemap, plus the VS Code button when one is set up. */
