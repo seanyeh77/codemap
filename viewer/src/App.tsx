@@ -22,7 +22,7 @@ import { Info, fnAt, type At } from './pages/Info'
 import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
 import { Explorer } from './pages/Explorer'
-import { TermsCtx, termsOf } from './components/Terms'
+import { TermsCtx, termDefs, termsOf } from './components/Terms'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
@@ -369,7 +369,7 @@ function Shell(p: ShellProps) {
     : at.kind === 'file' ? (fn ? (fid: string | undefined) => fid === fn : (_: string | undefined, f: string) => f === at.f)
     : undefined
   // the project's words, explained where they appear (說明, the call trees' descriptions) and found by the search
-  const termsCtx = useMemo(() => ({ terms: termsOf(ix, descOrder), open: (f: string, l: number) => openFile(f, l) }), [ix, descOrder])   // eslint-disable-line react-hooks/exhaustive-deps
+  const termsCtx = useMemo(() => { const terms = termsOf(ix, descOrder), open = (f: string, l: number) => openFile(f, l); return { terms, defs: termDefs(terms, open), open } }, [ix, descOrder])   // eslint-disable-line react-hooks/exhaustive-deps
   const views: (UI.WorkbenchView & { id: ViewId })[] = [
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />

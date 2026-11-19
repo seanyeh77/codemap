@@ -20,11 +20,17 @@ export function termsOf(ix: Index, order: DescOrder): Term[] {
   return out.sort((a, b) => b.term.length - a.term.length)
 }
 
-export const TermsCtx = createContext<{ terms: Term[]; open: (f: string, l: number) => void }>({ terms: [], open: () => {} })
+/** The same terms as the design system takes them (CodeView and Markdown `terms`): the card's action opens where the
+ *  term is used. */
+export function termDefs(terms: Term[], open: (f: string, l: number) => void): UI.TermDef[] {
+  return terms.map((x) => ({ term: x.term, text: x.text, ...(x.at ? { action: { label: t('看它出現的地方'), onClick: () => open(x.at!.f, x.at!.l) } } : {}) }))
+}
+
+export const TermsCtx = createContext<{ terms: Term[]; defs: UI.TermDef[]; open: (f: string, l: number) => void }>({ terms: [], defs: [], open: () => {} })
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Text with each term's first appearance explained in place: the word, its small question mark, and the AI's
+/** Text with each term's first appearance explained in place: the word underlined, and on resting on it the AI's
  *  description with a link to where the term is used. `seen` keeps one explanation per block of text. */
 export function TermText(p: { text: string; seen: Set<string> }) {
   const { terms, open } = useContext(TermsCtx)
@@ -37,7 +43,7 @@ export function TermText(p: { text: string; seen: Set<string> }) {
     const term = terms.find((x) => x.term === m[0])
     if (!term || p.seen.has(term.term)) continue
     p.seen.add(term.term)
-    out.push(p.text.slice(last, m.index), <UI.Term key={m.index} title={term.term} text={term.text}
+    out.push(p.text.slice(last, m.index), <UI.Term key={m.index} variant="inline" title={term.term} text={term.text}
       action={term.at ? { label: t('看它出現的地方'), onClick: () => open(term.at!.f, term.at!.l) } : undefined}>{m[0]}</UI.Term>)
     last = m.index! + m[0].length
   }

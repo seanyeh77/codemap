@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import { UI } from '../ui'
 import { t } from '../i18n'
 import type { Index } from '../data/graph'
+import { TermsCtx } from './Terms'
 
 /** Opens a file at a line in the side panel; App provides it. */
 export const OpenFile = createContext<(f: string, l: number) => void>(() => {})
@@ -33,9 +34,10 @@ export function DocRefs(p: { ix: Index; lines: string[] | undefined }) {
 }
 
 /** Paths written in the code's comments and strings (docs/design/ring-overrun.md, ring.c:47) as links that open
- *  the file in the side panel: CodeView's refHref and onRef. A path the project cannot show stays plain text. */
+ *  the file in the side panel: CodeView's refHref and onRef. A path the project cannot show stays plain text. Also the project's terms. */
 export function useCodeRefs(ix: Index) {
   const open = useContext(OpenFile)
+  const { defs } = useContext(TermsCtx)
   const readable = ix.g.readable ?? []
   const find = (ref: string) => {
     const m = /^(.*?)(?::(\d+))?$/.exec(ref.replace(/^\.\//, ''))
@@ -46,6 +48,8 @@ export function useCodeRefs(ix: Index) {
   return {
     refHref: (ref: string) => (find(ref) ? '#' + ref : undefined),
     onRef: (ref: string) => { const hit = find(ref); if (hit) open(hit.file, hit.line) },
+    // the project's terms, explained in comments and strings and in Markdown text
+    terms: defs,
   }
 }
 
