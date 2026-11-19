@@ -86,7 +86,7 @@ function FileArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
     <>
     <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
       selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('檔案'), edges: t('關係') }}
-      label={t('檔案和它們之間的呼叫')} nodeWidth={232} resizable heightKey={`codemap:graph:${p.ix.g.repo}:files`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" toolbar={p.toolbar} />
+      label={t('檔案及其間的呼叫')} nodeWidth={232} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用檔案')} sharedMeta={t('{a} 個檔案使用，共 {b} 次')} scrollKey="files" toolbar={p.toolbar} />
     </>
   )
 }
@@ -114,9 +114,9 @@ function CompArch(p: { ix: Index; sel: string; onSel: (id: string) => void; edge
     <>
       <UI.LayerGraph nodes={nodes} edges={edges} selected={p.sel || null} onSelect={(id) => p.onSel(id ?? '')}
         selectedEdge={p.edge || null} onSelectEdge={(id) => p.onEdge(id ?? '')} listLabels={{ nodes: t('元件'), edges: t('關係') }}
-        externalLabel={t('repo 外')} label={t('元件和它們之間的呼叫')} toolbar={p.toolbar}
+        externalLabel={t('repo 外')} label={t('元件及其間的呼叫')} toolbar={p.toolbar}
         // a handle under the diagram stretches it (the layers apart) or shortens it (it scrolls); kept per repository
-        resizable heightKey={`codemap:graph:${g.repo}:comps`} sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
+        sizeLabel={(n) => t('{n} 個函式', { n })} countLabel={(n) => t('{n} 次', { n })} sharedLabel={t('共用元件')} sharedMeta={t('{a} 個元件使用，共 {b} 次')}
         inferredText={t('函式指標、環境變數、`LD_PRELOAD` 攔截等編譯器看不到的關係，由原始碼文字推得。')}
         inferredLabel={t('推測')} declaredLabel={t('專案宣告')} declaredLegend={t('專案宣告的關係')} declaredText={t('寫在 .codemap/rules.json 的 channels，例如兩個程式共用的 ring。')} />
     </>
@@ -184,7 +184,7 @@ function EntryDetail(p: { ix: Index; id: string; onPick: (id: string) => void; o
       actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
       <p>{t('以 LD_PRELOAD 載入 repo 程式庫的程式，呼叫下列同名函式時會優先執行 repo 中的版本。此為推測的關係。')}</p>
       {((xs) => xs.length ? <p className="small muted">{t('repo 中的 {v1} 也以此方式被追蹤，見其連到 {v2} 的線。', { v1: list(xs.map((l) => l.a)), v2: list([...new Set(xs.map((l) => l.b))]) })}</p> : null)(p.ix.g.links.filter((l) => l.kind === 'interpose'))}
-      {((xs) => xs.length ? <p className="small muted">{t('啟動它的是 {v1}。', { v1: list(xs.map((x) => x.comp)) })}</p> : null)(launchers(p.ix))}
+      {((xs) => xs.length ? <p className="small muted">{t('由 {v1} 啟動。', { v1: list(xs.map((x) => x.comp)) })}</p> : null)(launchers(p.ix))}
       {((n) => n ? <p className="small muted">{t('另有 {n} 個函式裝入函式指標或表格，由被追蹤的程式經由指標呼叫，未列於此清單。', { n })}</p> : null)(
         [...pointerEntries(p.ix).values()].flat().length)}
       {groups.map((x) => (
@@ -432,7 +432,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
           // a controller's event handlers have no caller in the repo: the framework calls them
           ...[...new Set(ids.map((id) => p.ix.funcs[id].entry?.framework).filter(Boolean))].map((fw) => ({ label: t('由框架呼叫'),
             value: t('{v1} 呼叫其中 {v2} 個函式', { v1: fw!, v2: ids.filter((id) => p.ix.funcs[id].entry?.framework === fw).length }) })),
-          { label: t('呼叫它的檔案'), value: inn.length ? <span className="entry-list">{other(inn, 'a')}</span> : t('（無）') },
+          { label: t('呼叫此檔案的檔案'), value: inn.length ? <span className="entry-list">{other(inn, 'a')}</span> : t('（無）') },
           { label: t('它呼叫的檔案'), value: out.length ? <span className="entry-list">{other(out, 'b')}</span> : t('（無）') },
         ]} />
         </Q>
@@ -440,7 +440,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
         </Parts>
       </UI.Card>
       <div className="tree-panel grow-panel">
-        <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；點選函式讀它的程式碼', { v1: ids.length })} height="100%"
+        <UI.TreeList key={p.file} kind="plain" title={base(p.file)} subtitle={t('{v1} 個函式；選取函式即開啟其程式碼', { v1: ids.length })} height="100%"
           label={t('{v1} 的函式', { v1: base(p.file) })} items={ids.map((id) => {
             // what it does when someone wrote it (the author, or an AI); otherwise who calls it, by name
             const d = descLine(p.ix, id, descOrder)
@@ -1102,7 +1102,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
   const comp = p.ix.g.comps.find((c) => c.id === p.comp)
   const uses = useMemo(() => (comp?.shared ? usesOf(p.ix, p.comp) : null), [p.ix, p.comp, comp])
   const tree = (
-    <UI.TreeList key={p.comp} kind="plain" title={t('檔案與函式')} subtitle={((h) => (h ? t('{v1} 個原始檔、{v2} 個標頭檔', { v1: items.length - h, v2: h }) : t('{v1} 個檔案', { v1: items.length })) + t('；點選檔案往下一層，點選函式讀它的程式碼'))(items.filter((i) => i.name.endsWith('.h')).length)} height="100%"
+    <UI.TreeList key={p.comp} kind="plain" title={t('檔案與函式')} subtitle={((h) => (h ? t('{v1} 個原始檔、{v2} 個標頭檔', { v1: items.length - h, v2: h }) : t('{v1} 個檔案', { v1: items.length })) + t('；選取檔案即進入下一層，選取函式即開啟其程式碼'))(items.filter((i) => i.name.endsWith('.h')).length)} height="100%"
       label={p.comp + t(' 的函式')} items={items} defaultOpen={[]}
       onSelect={(n) => { const f = p.ix.funcs[n.id]; if (f) openFile(f.file, f.line); else if (n.id.startsWith('file:')) p.onComp(n.id) }} />
   )

@@ -38,8 +38,8 @@ export function Relations(p: { ix: Index; at: At; mode: 'down' | 'up'; openFile:
   const what = at.kind === 'file' ? t('檔案') : at.kind === 'comp' ? t('元件') : ''
   const lead = at.kind === 'proj' || at.kind === 'settings'
     ? (p.mode === 'down' ? t('元件之間的呼叫。選取元件、檔案或函式，即改列其呼叫關係。') : t('選取元件、檔案或函式，即列出修改後受影響的範圍。'))
-    : p.mode === 'down' ? t('這個{v1}呼叫的其他{v1}。選一個函式，這裡會改成它呼叫的函式。', { v1: what })
-    : t('修改這個{v1}，可能影響這些{v1}（往上找呼叫者）。選一個函式，可以看到函式層級的影響範圍。', { v1: what })
+    : p.mode === 'down' ? t('此{v1}呼叫的其他{v1}。選取函式即改列其呼叫的函式。', { v1: what })
+    : t('修改此{v1}可能影響的{v1}（向上追溯呼叫者）。選取函式即顯示函式層級的影響範圍。', { v1: what })
   return <div className="rel">
     <p className="small muted">{lead}</p>
     {rows.length ? <ul className="rel-list">
@@ -48,7 +48,7 @@ export function Relations(p: { ix: Index; at: At; mode: 'down' | 'up'; openFile:
         <UI.InlineCode look="name" href={'#'} onClick={(e) => { e.preventDefault(); if (r.id.startsWith('file:')) p.openFile(r.id.slice(5)); else p.openComp(r.id.slice(5)) }}>{r.name}</UI.InlineCode>
         {r.text ? <span className="small muted rel-text">{r.text}</span> : null}
       </li>)}
-    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，沒有可列的呼叫。') : p.mode === 'down' ? t('它沒有呼叫其他{v1}。', { v1: what }) : t('沒有其他{v1}呼叫它。', { v1: what })}</p> : null}
+    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，沒有可列的呼叫。') : p.mode === 'down' ? t('未呼叫其他{v1}。', { v1: what }) : t('沒有其他{v1}呼叫它。', { v1: what })}</p> : null}
   </div>
 }
 

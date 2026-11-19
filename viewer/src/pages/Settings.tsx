@@ -89,7 +89,7 @@ export function Settings(p: Props) {
           { label: t('索引'), value: <span><UI.Term variant="inline" text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面都依它顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term variant="inline" text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
           // one row per language analyzer: how many calls each resolved, and how
           ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: BACKEND[b] ?? LANG[b] ?? b, value: <span><UI.Term variant="inline" text={b === 'go'
-            ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值，interface 只連到確實實作它的型別。找不到目標的呼叫不畫線。')
+            ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值，interface 僅連到確實實作的型別。找不到目標的呼叫不畫線。')
             : b === 'typescript' ? t('以 TypeScript 官方編譯器解析 import、類別、繼承、型別、interface、函式值與 JSX；.d.ts 與 node_modules 只提供型別。找不到目標的呼叫不畫線。')
             : t('以 Python 的 ast 解析 import、類別與簡單型別，不依名稱猜測。找不到目標的呼叫不畫線。')}>{t('靜態分析')}</UI.Term>{st.compilers?.[b] ? t('（TypeScript {v1}）', { v1: st.compilers[b].version }) : ''}{t('：')}{t('{v1} 條確定、{v2} 條型別推論、{v3} 條有多個可能目標、{v4} 處無法解析', { v1: r.exact ?? 0, v2: r.inferred ?? 0, v3: r.ambiguous ?? 0, v4: r.unresolved ?? 0 })}
             {st.compilers?.[b]?.cache ? <><br /><span className="muted">{cacheText(st.compilers[b].cache!)}</span></> : null}

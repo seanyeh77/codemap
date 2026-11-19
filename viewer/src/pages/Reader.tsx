@@ -39,7 +39,9 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   /** The workbench: only the code, without the file's function list (the explorer has it) or the detail column. */
   bare?: boolean
   /** The line the reader clicked or moved to. */
-  onLine?: (n: number) => void }) {
+  onLine?: (n: number) => void
+  /** A Markdown file shown as its preview or its source, when the page above chooses it (the workbench's bar) */
+  mdMode?: 'preview' | 'source' }) {
   const src = useFileSource(p.at.f, p.isLive, p.sourceId)
   const view = useRef<UI.CodeViewHandle>(null)
   const refs = useCodeRefs(p.ix)
@@ -51,7 +53,12 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
   const md = /\.(md|markdown)$/i.test(p.at.f)
   // a Markdown file opens as its preview, unless a line in it was asked for: the preview has no line numbers
   const [mode, setMode] = useState<'preview' | 'source'>(p.at.l > 1 ? 'source' : 'preview')
-  if (was.f !== p.at.f || was.l !== p.at.l) { setWas(p.at); setCur(p.at.l); setMode(p.at.l > 1 ? 'source' : 'preview') }
+  // the reader's own click moves the line: the code keeps its place and the text being selected
+  const moved = useRef(false)
+  if (was.f !== p.at.f || was.l !== p.at.l) {
+    setWas(p.at); setCur(p.at.l)
+    if (!moved.current) setMode(p.at.l > 1 ? 'source' : 'preview')
+  }
   // the file's functions fold away to give the code the room; kept in the browser
   const [rail, setRail] = useState(() => { try { return localStorage.getItem('codemap:rail') !== '0' } catch { return true } })
   const toggleRail = () => { setRail(!rail); try { localStorage.setItem('codemap:rail', rail ? '0' : '1') } catch { /* storage off */ } }
@@ -59,13 +66,18 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
     .sort(([, a], [, b]) => a.line - b.line), [p.ix, p.at.f])
   const names = useMemo(() => new Set(fns.map(([, f]) => f.name)), [fns])
   const inFn = fns.filter(([, f]) => f.line <= cur && cur <= (f.end ?? f.line)).sort(([, a], [, b]) => b.line - a.line)[0]?.[0]
-  const shown = md ? mode : 'source'
-  useEffect(() => { if (src.data && shown === 'source') view.current?.focusTarget() }, [src.data, p.at.f, p.at.l, shown])
+  const shown = md ? p.mdMode ?? mode : 'source'
+  useEffect(() => {
+    if (moved.current) { moved.current = false; return }
+    if (src.data && shown === 'source') view.current?.focusTarget()
+  }, [src.data, p.at.f, p.at.l, shown])
   // the line under a click or the keyboard in the code: the code view has no event for it, so it is read from the line
   const follow = (e: React.SyntheticEvent) => {
     const row = (e.target as HTMLElement).closest?.('.ui-cv-line')
     const n = Number(row?.querySelector('.ui-cv-num')?.textContent)
-    if (n && n !== cur) { setCur(n); p.onLine?.(n) }
+    // selecting text to copy is not moving to a line: the selection must survive
+    if (e.type === 'click' && String(window.getSelection() ?? '').length) return
+    if (n && n !== cur) { moved.current = true; setCur(n); p.onLine?.(n) }
   }
   const local = (href: string) => {
     if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return null
@@ -93,7 +105,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
         {!p.isLive ? <p className="small muted">{t('快照只含函式的原始碼，無法顯示整個檔案。請在 build 環境執行 codemap serve 查看。')}</p>
           : src.isPending ? <UI.Skeleton width="80%" height={16} />
           : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
-          : <>{md ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
+          : <>{md && !p.mdMode ? <UI.Tabs label={t('顯示方式')} items={[{ id: 'preview', label: t('預覽') }, { id: 'source', label: t('原始碼') }]} value={shown} onChange={(v) => setMode(v as 'preview' | 'source')} /> : null}
             {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
               onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
               : <UI.CodeView {...refs} {...calls} ref={view}

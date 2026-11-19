@@ -178,6 +178,7 @@ function Shell(p: ShellProps) {
   // a function picked in callee or caller becomes what everything shows (code, 說明, both trees); the way there is
   // kept as a trail above the trees, each step a way back
   const [trail, setTrail] = useState<string[]>([])
+  const [mdMode, setMdMode] = useState<{ f: string; m: 'preview' | 'source' } | null>(null)
   const fromPanel = (id: string, a: At | null) => {
     if (!a) return
     setTrail((tr) => {
@@ -193,6 +194,11 @@ function Shell(p: ShellProps) {
   const show = (v: ViewId) => wb.current?.show(v)
   const flags = useMemo(() => flagged(ix.g, ix), [ix])
   const explorerOpen = (id: string) => {
+    // what is already open, picked again: nothing moves
+    if (id === 'proj' && at.kind === 'proj') return
+    if (id.startsWith('comp:') && at.kind === 'comp' && at.id === id.slice(5)) return
+    if (id.startsWith('file:') && at.kind === 'file' && at.f === id.slice(5) && !fn) return
+    if (id.startsWith('fn:') && fn === id.slice(3)) return
     if (id === 'proj') setAt({ kind: 'proj' })
     else if (id.startsWith('comp:')) setAt({ kind: 'comp', id: id.slice(5) })
     else if (id.startsWith('file:')) openFile(id.slice(5), 1)
@@ -361,6 +367,9 @@ function Shell(p: ShellProps) {
 
   const empty = !p.graph.comps.length
   const isFile = at.kind === 'file'
+  // a Markdown file: its preview or its source, chosen in the bar above the code (no row of its own)
+  const isMd = isFile && /\.(md|markdown)$/i.test(at.f)
+  const mdShown = isMd ? (mdMode?.f === at.f ? mdMode.m : at.l > 1 ? 'source' : 'preview') : 'preview'
   const flowStart = start && (ix.funcs[start] || ix.inn.has(start)) ? start : null
   /** 呼叫 or 被呼叫: the call tree one way from the function above (or where the panel was pinned); with no function
    *  open, the files or components it is tied to. */
@@ -428,7 +437,7 @@ function Shell(p: ShellProps) {
     : at.kind === 'comp' ? (comp?.lang
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
       : <Arch ix={ix} sel={at.id} onSel={openComp} edge={edge} onEdge={(e) => { setEdge(e); if (e) show('info') }} />)
-    : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare
+    : <FileReader key={at.f} ix={ix} at={at} isLive={isLive} sourceId={p.sourceId} onFunc={openFn} bare mdMode={isMd ? mdShown : undefined}
         onLine={(n) => { setPicked(true); setAtState((a) => (a.kind === 'file' ? { ...a, l: n } : a)) }} />
 
   // where the open thing is: each step up is a link (the address handles it, like a step back)
@@ -463,7 +472,9 @@ function Shell(p: ShellProps) {
     <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
       crumbs={crumbs}
-      mainBar={isFile ? <EditorButton ix={ix} file={at.f} line={at.l} /> : undefined}
+      mainBar={isFile ? <>{isMd ? <UI.IconButton variant="quiet" icon={mdShown === 'preview' ? 'file-code' : 'eye'}
+        label={mdShown === 'preview' ? t('顯示原始碼') : t('顯示預覽')} onClick={() => setMdMode({ f: at.f, m: mdShown === 'preview' ? 'source' : 'preview' })} /> : null}
+        <EditorButton ix={ix} file={at.f} line={at.l} /></> : undefined}
       explorerFilter={{ value: q, onChange: setQ, label: t('篩選檔案與函式') }}
       explorer={<Explorer ix={ix} at={at} fn={fn} q={q} open={explorerOpen} />}
       explorerFoot={<button type="button" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} onClick={() => setAt({ kind: 'settings' })}><UI.Icon name="gear" />{t('設定')}</button>}
@@ -488,7 +499,7 @@ function Shell(p: ShellProps) {
       { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
       { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案：總覽；元件：架構圖；檔案與函式：程式碼。程式碼中的藍色名稱為連結。') },
       { target: TOUR_TARGETS[3], title: t('說明'), text: t('開啟項目的說明與值得注意之處。缺少說明的函式可執行 codemap describe 由 AI 補上。') },
-      { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee 是目前函式呼叫的函式；caller 是呼叫它的函式，以及修改它會影響的範圍。點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
+      { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee：目前函式呼叫的函式。caller：呼叫目前函式的函式，以及修改後的影響範圍。選取名稱即開啟該函式；分頁可拖曳至右側欄或下方面板。') },
       { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
     ]} />
     </TermsCtx.Provider></OpenFunc.Provider></OpenFile.Provider>
