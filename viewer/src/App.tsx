@@ -372,8 +372,8 @@ function Shell(p: ShellProps) {
           if (keys) { setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setFlowSel((x) => ({ ...x, down: { start: ids[0], key: keys[keys.length - 1] } })) }
           show('down')
         }} />}</div> },
-    flowView('down', t('呼叫')),
-    flowView('up', t('被呼叫')),
+    flowView('down', 'callee'),
+    flowView('up', 'caller'),
     { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
       <DescHealth ix={ix} />
@@ -453,7 +453,7 @@ function Shell(p: ShellProps) {
       { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('點這裡搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
       { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案是總覽，元件是架構圖，檔案與函式是程式碼。程式碼裡藍色的名稱可以點。') },
       { target: TOUR_TARGETS[3], title: t('說明'), text: t('打開的東西是什麼、值得注意什麼。沒有說明的函式可以用 codemap describe 請 AI 補上。') },
-      { target: TOUR_TARGETS[4], title: t('呼叫與被呼叫'), text: t('目前函式呼叫的函式，以及呼叫它的函式與修改它會影響的範圍；點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
+      { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee 是目前函式呼叫的函式；caller 是呼叫它的函式，以及修改它會影響的範圍。點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。') },
       { target: TOUR_TARGETS[5], title: t('檢查'), text: t('比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。') },
     ]} />
     </OpenFunc.Provider></OpenFile.Provider>

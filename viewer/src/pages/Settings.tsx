@@ -156,7 +156,7 @@ export function Settings(p: Props) {
           <UI.Switch label={t('預設顯示 repo 外的函式')} checked={pr.showExtDefault} onChange={(v) => save('showExtDefault', v)} />
         </label>
         <label className="set-row">
-          <span className="grow"><span className="block">{t('自我測驗')}</span><span className="small muted block">{t('呼叫與被呼叫的樹每展開一層，先寫下你猜的函式，再揭曉比對。用於練習讀程式。')}</span></span>
+          <span className="grow"><span className="block">{t('自我測驗')}</span><span className="small muted block">{t('callee 與 caller 的樹每展開一層，先寫下你猜的函式，再揭曉比對。用於練習讀程式。')}</span></span>
           <UI.Switch label={t('自我測驗')} checked={pr.selfTest} onChange={(v) => save('selfTest', v)} />
         </label>
         {g.stats.tests ? <label className="set-row">

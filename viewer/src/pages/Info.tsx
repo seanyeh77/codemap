@@ -115,7 +115,7 @@ function FnInfo(p: { ix: Index; f: string; l: number; id: string; isLive: boolea
         {path && path.length > 1 ? <div className="info-path">
           <p className="small muted">{t('從進入點到這裡')}</p>
           <ol className="info-chain">{path.map((c) => <li key={c.id}>{name(c.id)}</li>)}</ol>
-          <button type="button" className="linklike small" onClick={() => p.chain(path.map((c) => c.id))}>{t('在「呼叫」分頁展開這條路徑')}</button>
+          <button type="button" className="linklike small" onClick={() => p.chain(path.map((c) => c.id))}>{t('在 callee 分頁展開這條路徑')}</button>
         </div> : null}
       </Q>
       <Notes ix={p.ix} f={p.f} id={p.id} extra={[
