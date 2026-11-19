@@ -5,7 +5,7 @@ import { roleOf } from '../data/files'
 import { aiItem, descriptions, useDescOrder } from '../data/describe'
 import { DescText } from '../components/DescText'
 import { Notes, worthAt } from './Reader'
-import { FnPanel } from './FnPanel'
+import { FnPanel, InfoTitle } from './FnPanel'
 import { TRACED } from './Arch'
 
 /** What is open in the workbench: the project, a component, or a place in a file. */
@@ -33,6 +33,7 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
     const project = aiItem(ix, 'project', order)
     const found = worthAt(g, (x) => !!ix.funcs[x.fid] && ix.funcs[x.fid].scope !== 'test')
     return <div className="info">
+      <InfoTitle kind={t('專案')} name={g.repo} code={false} />
       {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
       <p className="small muted">{t('{v1} 個元件、{v2} 個函式', { v1: g.comps.length, v2: Object.keys(ix.funcs).length })}</p>
       <Found found={found} />
@@ -43,6 +44,7 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
     const ai = aiItem(ix, 'comp:' + at.id, order)
     const found = worthAt(g, (x) => ix.funcs[x.fid]?.comp === at.id)
     return <div className="info">
+      <InfoTitle kind={t('元件')} name={at.id === TRACED ? t('被追蹤的程式') : at.id} code={false} />
       {at.id === TRACED ? <p className="small muted">{t('被追蹤的程式（repo 外）')}</p> : null}
       {ai ? <p><DescText d={ai} tag full /></p> : null}
       {c?.doc ? <p className="small">{c.doc.text}</p> : null}
@@ -64,6 +66,7 @@ function FileInfo(p: { ix: Index; f: string; openFn: (id: string) => void }) {
   const byRules = Object.keys(p.ix.g.roles ?? {}).some((x) => p.f === x || p.f.startsWith(x.replace(/\/$/, '') + '/'))
   const fns = (p.ix.byFile().get(p.f) ?? []).filter((id) => p.ix.funcs[id].kind !== 'module').sort((a, b) => p.ix.funcs[a].line - p.ix.funcs[b].line)
   return <div className="info">
+    <InfoTitle kind={t('檔案')} name={p.f.split('/').pop()!} where={p.f} />
     {ai ? <p><DescText d={ai} tag full /></p> : null}
     {doc ? <p className="small">{doc.text.split('\n\n')[0]}</p> : null}
     {!ai && !doc ? <p className="small muted">{t('沒有說明註解。')}</p> : null}

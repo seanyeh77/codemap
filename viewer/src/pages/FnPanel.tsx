@@ -100,8 +100,8 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
   const empty = useMemo(() => SECTIONS.every((s) => !rows[s].length), [rows])   // eslint-disable-line react-hooks/exhaustive-deps
   return <div className="info fp" ref={box} onPointerEnter={() => setBusy(true)} onPointerLeave={() => setBusy(false)}
     onFocus={() => setBusy(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setBusy(false) }}>
-    <p className="fp-status small muted" aria-live="polite">{(busy ? t('暫停跟隨（正在看說明）· ') : '')
-      + (p.line == null ? t('在程式碼點一行，這裡會標出與那一行有關的資料。') : n ? t('第 {v1} 行：{v2} 筆相關資料', { v1: p.line, v2: n }) : t('第 {v1} 行：沒有相關資料', { v1: p.line }))}</p>
+    <InfoTitle kind={t('函式')} name={f.name.split('.').pop()!} where={`${f.file}:${f.line}`} />
+    <p className="fp-status small muted" aria-live="polite">{(p.line == null ? t('在程式碼點一行，這裡會標出與那一行有關的資料。') : n ? t('第 {v1} 行：{v2} 筆相關資料', { v1: p.line, v2: n }) : t('第 {v1} 行：沒有相關資料', { v1: p.line }))}</p>
     {d ? <p><DescText d={d} full />{d.kind === 'ai' ? <Src s="ai" /> : null}</p> : <p className="small muted">{t('還沒有說明。在 repo 執行 codemap describe 可請 AI 撰寫。')}</p>}
     {SECTIONS.map((s) => rows[s].length ? <section key={s} className="fp-sec" aria-label={s}>
       <h3 className="info-h">{term(s)}<span className="fp-cnt">{t('{v1} 項', { v1: rows[s].length })}</span></h3>
@@ -155,4 +155,13 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
       {n ? t('修改它可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫它。')}
       {tests ? t('另有 {v1} 個測試函式呼叫它。', { v1: tests }) : ''}</p>
   </section>
+}
+
+/** What 說明 is about: its kind, its name and where it is, so the panel says whose description it shows. */
+export function InfoTitle(p: { kind: string; name: string; where?: string; code?: boolean }) {
+  return <header className="info-what">
+    <span className="small muted">{p.kind}</span>
+    <h2 className={'info-title' + (p.code === false ? '' : ' mono')}>{p.name}</h2>
+    {p.where ? <span className="small muted mono">{p.where}</span> : null}
+  </header>
 }

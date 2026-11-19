@@ -311,3 +311,7 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .fp-legend { padding-top: var(--space-3); border-top: 1px solid var(--line); margin: var(--space-2) 0 0; }
 .fp-it.has-line:hover { background: var(--surface-sub); }
 .ui-cv-line.cm-peek { background: var(--surface-sub); box-shadow: inset 2px 0 0 var(--accent); }
+/* whose description 說明 shows: kind, name, where */
+.info-what { display: flex; flex-direction: column; gap: 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); }
+.info-what .info-title { font-size: 16px; line-height: 24px; font-weight: 600; }
+.info-what .info-title.mono { font-family: var(--font-mono); }
