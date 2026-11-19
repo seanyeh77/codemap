@@ -203,88 +203,23 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .reader-sig { margin: 0; padding: var(--space-3); background: var(--surface-sub); border-radius: var(--radius-sm); font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .desc-health { flex: 0 0 auto; }
 
-/* the workbench: explorer | stage over the panel | side bar, each divider dragged, each view tab dragged between the
-   side bar and the panel (components/Workbench.tsx) */
-.wb { height: 100%; display: flex; flex-direction: column; background: var(--bg); }
-.wb-top { flex: none; height: 48px; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); background: var(--surface); border-bottom: 1px solid var(--line); }
-.wb-brand { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink); text-decoration: none; font-weight: 700; padding: 0 var(--space-2); border-radius: var(--radius-sm); }
-.wb-brand:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); }
-.wb-brand .brand-mark { flex-basis: 20px; width: 20px; height: 20px; border-radius: 5px; }
-.wb-crumbs { min-width: 0; overflow: hidden; padding-left: var(--space-3); border-left: 1px solid var(--line); }
-.wb-crumb { white-space: nowrap; }
-.wb-crumb ol { flex-wrap: nowrap; }
-.wb-crumb li { flex: none; }
-/* narrow screens: only where the reader is; the way up is the explorer */
-.wb-phone .wb-crumb li:not(:last-child), .wb-narrow .wb-crumb li:not(:last-child) { display: none; }
-.wb-phone .wb-crumb li:last-child, .wb-narrow .wb-crumb li:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; }
-.wb-phone .wb-brand { display: none; }
+/* the design system's editor layout (UI.Workbench) fills the window; codemap's stage, notices and explorer inside it */
+.wb { height: 100vh; height: 100dvh; }
 .grow { flex: 1; min-width: 0; }
-.wb-row { flex: 1; min-height: 0; display: flex; position: relative; }
-.wb-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.wb-stage { flex: 1; min-height: 0; display: flex; overflow: hidden; outline: none; background: var(--bg); }
 .wb-notice { flex: none; padding: var(--space-3) var(--space-4) 0; display: grid; gap: var(--space-2); }
-.stage { flex: 1; min-width: 0; min-height: 0; display: flex; padding: var(--space-4); }
+.stage { flex: 1; min-width: 0; min-height: 0; height: 100%; display: flex; padding: var(--space-4); box-sizing: border-box; }
 .stage > * { flex: 1; min-width: 0; min-height: 0; }
 .stage-scroll { overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); }
-.stage > .reader-stage.is-bare { display: flex; }
 .reader-stage.is-bare > .reader-code { flex: 1; }
-
-.wb-tree { flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--line); }
-.wb-tree-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.wb-tree-foot { flex: none; border-top: 1px solid var(--line); padding: var(--space-2); }
+.ui-wb-brand .brand-mark { flex-basis: 20px; width: 20px; height: 20px; border-radius: 5px; }
 .ex-foot { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 6px var(--space-2); border-radius: var(--radius-sm); font-size: 14px; color: var(--ink-muted); }
 .ex-foot:hover { background: var(--surface-sub); color: var(--ink); }
 .ex-foot.is-on { background: var(--accent-soft); color: var(--accent-text); }
 .ex-foot:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); }
-.ex { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2) 0; }
-.ex-head { padding: 0 var(--space-2); }
-.ex-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--ink-muted); }
-.ex-filter { margin: 0 var(--space-1); }
-.ex-tree { flex: 1; min-height: 0; }
-
-.wb-side { flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
-.wb-panel { flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
-.wb-strip { flex: none; height: 40px; display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--line); }
-.wb-strip.is-hot { background: var(--accent-soft); }
-.wb-tabs { display: flex; align-items: stretch; height: 100%; gap: var(--space-4); min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.wb-tab { all: unset; -webkit-user-drag: element; box-sizing: border-box; cursor: grab; display: flex; align-items: center; gap: 6px; padding: 0 2px; font-size: 13px; color: var(--ink-muted); white-space: nowrap; box-shadow: inset 0 -2px 0 transparent; transition: color 150ms, box-shadow 150ms; }
-.wb-tab:hover { color: var(--ink); }
-.wb-tab.is-on { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
-.wb-tab:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: -2px; }
-.wb-tab.is-dragged { opacity: .4; }
-.wb-tab.is-before { box-shadow: inset 2px 0 0 var(--accent); }
-.wb-count { font-family: var(--font-mono); font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--surface-sub); color: var(--ink-muted); }
-.wb-body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3) var(--space-4); position: relative; display: flex; flex-direction: column; gap: var(--space-3); }
-.wb-body > .pane, .wb-body > .ui-card { flex: 0 0 auto; overflow: visible; box-shadow: none; padding: 0; background: transparent; }
-.wb-drop-hint { position: absolute; inset: var(--space-2); display: flex; align-items: center; justify-content: center; border: 2px dashed var(--accent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent-soft) 85%, transparent); color: var(--accent-text); font-weight: 600; pointer-events: none; }
-.wb-ghost { flex: none; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--accent); border-radius: var(--radius-md); color: var(--accent-text); background: var(--accent-soft); font-size: 13px; font-weight: 600; margin: var(--space-2); }
-.wb-ghost-panel { height: 72px; }
-.wb-ghost-side { width: 160px; }
-.wb-ghost.is-hot { background: color-mix(in srgb, var(--accent) 20%, var(--surface)); }
-
-/* the dividers: a thin line with a wide grip, accent while dragged or focused */
-.wb-sash { flex: none; position: relative; z-index: 3; background: var(--line); touch-action: none; }
-.wb-sash-x { width: 1px; margin: 0 -3px; border: 0 solid transparent; border-width: 0 3px; background-clip: padding-box; cursor: col-resize; }
-.wb-sash-y { height: 1px; margin: -3px 0; border: 0 solid transparent; border-width: 3px 0; background-clip: padding-box; cursor: row-resize; }
-.wb-sash:hover, .wb-sash:focus-visible { background-color: var(--accent); outline: none; }
-.wb-sash-x:hover, .wb-sash-x:focus-visible { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-.wb-sash-y:hover, .wb-sash-y:focus-visible { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-body.wb-dragging-x, body.wb-dragging-x * { cursor: col-resize !important; user-select: none; }
-body.wb-dragging-y, body.wb-dragging-y * { cursor: row-resize !important; user-select: none; }
-
-/* narrow screens: the side bar, then the explorer, drawn over the stage; on phones the panel is a sheet */
-.wb-tree.is-over, .wb-side.is-over { position: absolute; top: 0; bottom: 0; z-index: 20; box-shadow: var(--shadow-lg, 0 8px 24px rgb(16 24 40 / .18)); }
-.wb-tree.is-over { left: 0; width: min(300px, 86vw); }
-.wb-side.is-over { right: 0; width: min(380px, 92vw); }
-.wb-side.is-full { width: 100%; }
-.wb-scrim { position: absolute; inset: 0; z-index: 10; background: rgb(0 0 0 / .18); }
-.wb-panel.is-sheet { position: absolute; left: 0; right: 0; bottom: 0; height: 64%; z-index: 15; border-radius: var(--radius-lg) var(--radius-lg) 0 0; box-shadow: 0 -8px 24px rgb(16 24 40 / .18); }
-.wb-sheet-handle { all: unset; box-sizing: border-box; cursor: pointer; flex: none; height: 48px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); background: var(--surface); border-top: 1px solid var(--line); font-size: 13px; }
-.wb-sheet-handle:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: -2px; }
-.wb-grip { width: 32px; height: 4px; border-radius: 2px; background: var(--line-strong); }
-.wb-phone .wb-brand-name, .wb-narrow .wb-brand-name { display: none; }
-.wb-phone .wb-crumbs { border-left: 0; padding-left: 0; }
-.wb-phone .stage { padding: var(--space-2); }
+.ex, .ex-tree { height: 100%; min-height: 0; }
+/* views in the side bar and the panel: their cards sit flat in the region, which scrolls */
+.view { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.ui-wb-body .pane { box-shadow: none; padding: 0; background: transparent; overflow: visible; }
 
 /* 說明 in the side bar */
 .info { display: flex; flex-direction: column; gap: var(--space-2); }

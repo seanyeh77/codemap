@@ -21,7 +21,6 @@ import { FileReader, compOfFile } from './pages/Reader'
 import { Info, fnAt, type At } from './pages/Info'
 import { Relations } from './pages/Relations'
 import { Explorer } from './pages/Explorer'
-import { Workbench, useLayout, type WbLayout, type WbView } from './components/Workbench'
 import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
@@ -118,10 +117,10 @@ interface ShellProps {
 type ViewId = 'info' | 'flow' | 'impact' | 'check'
 const VIEW_IDS: ViewId[] = ['info', 'flow', 'impact', 'check']
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
-const LAYOUT: WbLayout<ViewId> = { side: ['info'], panel: ['flow', 'impact', 'check'], sideOn: 'info', panelOn: 'flow',
-  tree: true, sideOpen: true, panelOpen: true, treeW: 260, sideW: 380, panelH: 280 }
+// the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
+const LAYOUT = { side: ['info'], panel: ['flow', 'impact', 'check'] }
 // the tour points at the explorer, the search, the stage and three of the views, wherever the reader moved them
-const TOUR_TARGETS = ['tree', 'search', 'stage', 'view-info', 'view-flow', 'view-check']
+const TOUR_TARGETS = ['tree', 'search', 'stage', ...['info', 'flow', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
 
 function Shell(p: ShellProps) {
   const pr = usePrefs()
@@ -133,7 +132,10 @@ function Shell(p: ShellProps) {
   const init = useMemo(() => readHash(ix), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const [at, setAtState] = useState<At>(init.at ?? { kind: 'proj' })
   const [edge, setEdge] = useState('')          // a line of the architecture diagram, explained in 說明
-  const [layout, setLayout, resetLayout] = useLayout<ViewId>('codemap:workbench', LAYOUT, VIEW_IDS)
+  // the design system's editor layout keeps where each view is; codemap asks it to show one and reads which is open
+  const wb = useRef<UI.WorkbenchHandle>(null)
+  const [layout, setLayout] = useState<UI.WorkbenchLayout | null>(null)
+  const [q, setQ] = useState('')
   // the function the code is in: what 說明, 呼叫流程 and 影響範圍 are about
   const fn = at.kind === 'file' ? fnAt(ix, at.f, at.l) : null
   // the panel keeps its start while the reader follows it: a name clicked in the call tree opens that function above,
@@ -153,11 +155,10 @@ function Shell(p: ShellProps) {
   const [cat, setCatState] = useState(lastCat)
   const setCat = (c: string) => { lastCat = c; setCatState(c) }
   const [alertOpen, setAlertOpen] = useState(true)
-  const [picked, setPicked] = useState(0)
   const [paletteKey, setPaletteKey] = useState(0)
 
   // where to go; every move clears the diagram's chosen line and tells a narrow screen's explorer to close
-  const setAt = (a: At) => { setEdge(''); setAtState(a); setPicked((n) => n + 1) }
+  const setAt = (a: At) => { setEdge(''); setAtState(a) }
   const openFile = (f: string, l: number) => setAt({ kind: 'file', f, l })
   const placeOf = (id: string): At | null => (ix.funcs[id] ? { kind: 'file', f: ix.funcs[id].file, l: ix.funcs[id].line } : null)
   const openFn = (id: string) => {
@@ -169,7 +170,7 @@ function Shell(p: ShellProps) {
   /** Opens a place from the panel: the panel stays on its start. */
   const fromPanel = (a: At | null) => { if (!a) return; if (start) setPin({ id: start, for: a.kind === 'file' ? fnAt(ix, a.f, a.l) : null }); setAt(a) }
   /** Shows a view wherever the reader has put it, opening its area. */
-  const show = (v: ViewId) => setLayout((x) => (x.side.includes(v) ? { ...x, sideOn: v, sideOpen: true } : { ...x, panelOn: v, panelOpen: true }))
+  const show = (v: ViewId) => wb.current?.show(v)
   const explorerOpen = (id: string) => {
     if (id === 'proj') setAt({ kind: 'proj' })
     else if (id.startsWith('comp:')) setAt({ kind: 'comp', id: id.slice(5) })
@@ -179,7 +180,7 @@ function Shell(p: ShellProps) {
 
   // the address: what is open (each a step back can return to) and the panel's view (replaced, not a new step)
   const base = hashOf(at, start !== fn ? start : null, dir)
-  const here = base + (layout.panelOpen && layout.panelOn ? (base.includes('?') ? '&' : '?') + 'v=' + layout.panelOn : '')
+  const here = base + (layout?.open.panel && layout.active.panel ? (base.includes('?') ? '&' : '?') + 'v=' + layout.active.panel : '')
   const placed = useRef(false)
   const lastBase = useRef(base)
   useEffect(() => {
@@ -203,7 +204,12 @@ function Shell(p: ShellProps) {
     return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
   }, [ix])   // eslint-disable-line react-hooks/exhaustive-deps
   // an address that asks for a view shows it once, at start
-  useEffect(() => { if (init.v) show(init.v) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  // after the layout has measured its width: on a phone it first closes what lies over the code, which would undo this
+  useEffect(() => {
+    if (!init.v) return
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => show(init.v!)))
+    return () => cancelAnimationFrame(id)
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   // what changed on screen, for screen readers
   useEffect(() => { if (at.kind === 'file') UI.announce(t('已開啟 {v1} 第 {v2} 行', { v1: at.f.split('/').pop(), v2: at.l })) }, [at])
   useEffect(() => { try { if (fn) localStorage.setItem(`codemap:last:${p.graph.repo}`, fn) } catch { /* private mode */ } }, [fn, p.graph.repo])
@@ -334,8 +340,8 @@ function Shell(p: ShellProps) {
   const empty = !p.graph.comps.length
   const isFile = at.kind === 'file'
   const flowStart = start && (ix.funcs[start] || ix.inn.has(start)) ? start : null
-  const views: WbView<ViewId>[] = [
-    { id: 'info', title: t('說明'), render: () => edge
+  const views: (UI.WorkbenchView & { id: ViewId })[] = [
+    { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
       : <Info ix={ix} at={at} fn={fn} isLive={isLive} sourceId={p.sourceId} openFn={openFn} chain={(ids) => {
           // the chain opens in the call tree from its entry point, the last function selected; the code stays here
@@ -343,8 +349,8 @@ function Shell(p: ShellProps) {
           setPin({ id: ids[0], for: fn }); setDirState('down'); setPredict(false)
           if (keys) { setAlong({ start: ids[0], keys: keys.slice(0, -1) }); setFlowSel({ start: ids[0], key: keys[keys.length - 1] }) }
           show('flow')
-        }} /> },
-    { id: 'flow', title: t('呼叫流程'), render: () => flowStart && ix.funcs[flowStart]
+        }} />}</div> },
+    { id: 'flow', title: t('呼叫流程'), render: () => <div className="view">{flowStart && ix.funcs[flowStart]
       ? <Flow key={flowStart + dir} ix={ix} start={flowStart} dir={dir} setDir={setDir} dirMoved={dirMoved} predict={predict} setPredict={setPredict}
           showExt={showExt} setShowExt={setShowExt} selKey={selKey} along={along?.start === flowStart ? along.keys : undefined} openSearch={() => setPalette(true)}
           onSel={(id, e, key) => {
@@ -354,12 +360,12 @@ function Shell(p: ShellProps) {
             if (moved && key !== 'root') fromPanel(placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))
             else if (moved && key === 'root' && flowStart !== fn) openFn(flowStart)
           }} />
-      : <Relations ix={ix} at={at} mode="flow" openFile={(f) => openFile(f, 1)} openComp={openComp} /> },
-    { id: 'impact', title: t('影響範圍'), render: () => flowStart
+      : <Relations ix={ix} at={at} mode="flow" openFile={(f) => openFile(f, 1)} openComp={openComp} />}</div> },
+    { id: 'impact', title: t('影響範圍'), render: () => <div className="view">{flowStart
       ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
           onSel={(id, e) => fromPanel(e ? { kind: 'file', f: e.f, l: e.l } : placeOf(id))} />
-      : <Relations ix={ix} at={at} mode="impact" openFile={(f) => openFile(f, 1)} openComp={openComp} /> },
-    { id: 'check', title: t('檢查'), render: () => <div className="check-view">
+      : <Relations ix={ix} at={at} mode="impact" openFile={(f) => openFile(f, 1)} openComp={openComp} />}</div> },
+    { id: 'check', title: t('檢查'), render: () => <div className="view check-view">
       <Check ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
       <DescHealth ix={ix} />
       <UI.Card className="worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} /></UI.Card>
@@ -370,7 +376,7 @@ function Shell(p: ShellProps) {
   const stage = at.kind === 'settings'
     ? <div className="stage-scroll"><Settings graph={p.graph} meta={p.meta} cat={cat} setCat={setCat} snapName={p.snapName} hasLive={p.hasLive}
         backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
-        onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} resetLayout={resetLayout}
+        onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} resetLayout={() => wb.current?.resetLayout()}
         openAt={(f, l) => openFile(f, l)} /></div>
     : empty ? <UI.EmptyState title={t('索引中沒有函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} />
     : at.kind === 'proj' ? <div className="stage-scroll"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="page" skip={['ov-worth']} /></div>
@@ -409,13 +415,12 @@ function Shell(p: ShellProps) {
 
   return (
     <OpenFile.Provider value={openFile}><OpenFunc.Provider value={openFn}>
-    <Workbench views={views} layout={layout} setLayout={setLayout} picked={picked}
-      brand={<a className="wb-brand" href="#overview" onClick={(e) => { e.preventDefault(); setAt({ kind: 'proj' }) }}><span className="brand-mark" /><span className="wb-brand-name">codemap</span></a>}
-      crumbs={<UI.Breadcrumb className="wb-crumb" items={crumbs} />}
-      explorer={<Explorer ix={ix} at={at} fn={fn} open={explorerOpen} />}
+    <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
+      brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
+      crumbs={crumbs}
+      explorerHead={<UI.SearchField className="ex-filter" value={q} onChange={setQ} label={t('篩選檔案與函式')} placeholder={t('篩選檔案與函式')} />}
+      explorer={<Explorer ix={ix} at={at} fn={fn} q={q} open={explorerOpen} />}
       explorerFoot={<button type="button" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} onClick={() => setAt({ kind: 'settings' })}><UI.Icon name="gear" />{t('設定')}</button>}
-      notice={snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
-      stage={<div className="stage" data-tour="stage">{stage}</div>}
       actions={<>
         <UI.IconButton variant="quiet" icon="magnifying-glass" label={t('搜尋（Ctrl K）')} onClick={() => setPalette(true)} data-tour="search" />
         {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
@@ -424,7 +429,10 @@ function Shell(p: ShellProps) {
         <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
           value={p.sourceId} onChange={p.setSource} options={p.sources}
           footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</a>} />
-      </>} />
+      </>}>
+      {snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
+      <div className="stage" data-tour="stage">{stage}</div>
+    </UI.Workbench>
     <UI.CommandPalette key={paletteKey} open={searchOpen} onOpenChange={setPalette} items={found.map(localKind)} recent={recent.map(localKind)} filter={false} onQueryChange={setQuery} loading={searching} total={total}
       noResultsText={(q) => noResults(q)}
       placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}

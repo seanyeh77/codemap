@@ -27,9 +27,9 @@ function flagged(g: Graph, ix: Index): Set<string> {
 
 /** The explorer: the project, its components, their files and each file's functions. The path to what is open stays
  *  expanded and selected; a filter above it lists every file and function whose name has the words. */
-export function Explorer(p: { ix: Index; at: At; fn: string | null; open: (id: string) => void }) {
-  const { ix } = p
-  const [q, setQ] = useState('')
+export function Explorer(p: { ix: Index; at: At; fn: string | null; q: string; open: (id: string) => void }) {
+  const { ix, q } = p
+  const wb = UI.useWorkbench()
   const flags = useMemo(() => flagged(ix.g, ix), [ix])
   const mark = (id: string) => (flags.has(id) ? { label: t('有值得注意的地方') } : undefined)
   const files = useMemo(() => {
@@ -77,11 +77,9 @@ export function Explorer(p: { ix: Index; at: At; fn: string | null; open: (id: s
     return () => cancelAnimationFrame(id)
   }, [cur])
   return <div className="ex">
-    <div className="ex-head"><span className="ex-label">{t('檔案總管')}</span></div>
-    <UI.SearchField className="ex-filter" value={q} onChange={setQ} label={t('篩選檔案與函式')} placeholder={t('篩選檔案與函式')} />
     <div className="ex-tree" data-tour="tree">
       <UI.TreeList kind="plain" density="compact" bare height="100%" label={t('專案的元件、檔案與函式')} items={items} selectedId={cur}
-        open={q.trim() ? [] : open} onToggle={(_, __, ids) => setOpen(ids)} onSelect={(n) => p.open(n.id)} />
+        open={q.trim() ? [] : open} onToggle={(_, __, ids) => setOpen(ids)} onSelect={(n) => { p.open(n.id); wb.explorerPicked() }} />
     </div>
   </div>
 }
