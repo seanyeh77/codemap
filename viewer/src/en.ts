@@ -1150,4 +1150,8 @@ export const EN: Record<string, string> = {
   "enum 值": "enum value",
   "專案內的檔案": "project file",
   "系統或程式庫": "system or library",
+  "收合 {v1} 的值": "Collapse the values of {v1}",
+  "收合 {v1} 的欄位": "Collapse the fields of {v1}",
+  "展開 {v1} 的值": "Expand the values of {v1}",
+  "展開 {v1} 的欄位": "Expand the fields of {v1}",
 }

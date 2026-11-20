@@ -29,7 +29,8 @@ const VAR_KIND: Record<string, [string, string?]> = {
 }
 const CONST_KIND: Record<string, [string, string?]> = { macro: ['巨集', 'macro'], const: ['常數'], enum: ['enum 值', 'enum'] }
 
-interface Item { key: string; name: string; line: number; end?: number; at?: number[]; kind: ReactNode; detail?: ReactNode; more?: ReactNode; users?: string[]; users_n?: number }
+interface Fold { id: string; open: boolean; toggle: () => void; label: string; list: ReactNode }
+interface Item { fold?: Fold; key: string; name: string; line: number; end?: number; at?: number[]; kind: ReactNode; detail?: ReactNode; more?: ReactNode; users?: string[]; users_n?: number }
 
 export function Defs(p: { ix: Index; file: string | null; line: number | null; open: (f: string, l: number) => void; openFn: (id: string) => void }) {
   const peek = useContext(PeekLine)
@@ -51,14 +52,17 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
     return <UI.Term variant="inline" title={k} text={conceptText(k)} code={conceptEx(k, lang)}>{t(shown)}</UI.Term>
   }
 
+  const fold = (id: string, of: string, values: boolean, list: ReactNode): Fold => ({
+    id, list, open: !!openTypes[id], toggle: () => setOpenTypes((o) => ({ ...o, [id]: !o[id] })),
+    label: (openTypes[id] ? (values ? t('收合 {v1} 的值') : t('收合 {v1} 的欄位')) : (values ? t('展開 {v1} 的值') : t('展開 {v1} 的欄位'))).replace('{v1}', of),
+  })
   const items: Record<Kind, Item[]> = { types: [], vars: [], consts: [], imports: [], exports: [] }
   if (d) {
     items.types = d.types.map((x) => ({ key: 't' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: <>{kindText(TYPE_KIND[x.kind] ?? [x.kind])}{x.typedef ? <>{t('、')}{kindText(TYPE_KIND.typedef)}</> : null}</>,
       detail: x.of ? <>{t('即 ')}<span className="defs-type">{x.of}</span></> : null,
-      more: x.fields.length ? <Fields id={'t' + x.name + x.line} fields={x.fields} enumLike={x.kind === 'enum' || x.of === 'enum'}
-        open={!!openTypes['t' + x.name + x.line]} toggle={() => setOpenTypes({ ...openTypes, ['t' + x.name + x.line]: !openTypes['t' + x.name + x.line] })}
-        go={(l) => p.file && p.open(p.file, l)} peek={peek} /> : null }))
+      fold: x.fields.length ? fold('t' + x.name + x.line, x.name, x.kind === 'enum' || x.of === 'enum',
+        <Fields fields={x.fields} go={(l) => p.file && p.open(p.file, l)} peek={peek} back={() => peek(x.line, x.end)} />) : undefined }))
     items.vars = d.vars.map((x) => ({ key: 'v' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(VAR_KIND[x.scope] ?? [x.scope]), detail: x.type ? <span className="defs-type">{x.type}</span> : null }))
     items.consts = d.consts.map((x) => ({ key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
@@ -104,17 +108,24 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
       const shown = long ? xs.filter((x, i) => i < SHOWN || here(x)) : xs
       return <section key={k} className="fp-sec" aria-label={t(title)}>
         <h3 className="info-h">{t(title)}<span className="fp-cnt">{t('{v1} 項', { v1: xs.length })}</span></h3>
-        <ul className="fp-rows">{shown.map((x) => <li key={x.key} className={'fp-it has-line' + (here(x) ? ' is-here' : '') + (defines(x) ? ' is-def' : '')}
-          onPointerEnter={() => peek(x.line, x.end)} onPointerLeave={() => peek(null)}>
+        <ul className={'fp-rows' + (k === 'types' ? ' defs-tree' : '')}>{shown.map((x) => <li key={x.key}
+          className={'fp-it has-line' + (here(x) ? ' is-here' : '') + (defines(x) ? ' is-def' : '') + (x.fold ? ' is-fold' : '')}
+          onPointerEnter={() => peek(x.line, x.end)} onPointerLeave={() => peek(null)}
+          // the whole block opens and closes its fields, except on what does something of its own, or after selecting text
+          onClick={x.fold ? (e) => { if (!(e.target as HTMLElement).closest('a, button, input') && !String(window.getSelection() ?? '')) x.fold!.toggle() } : undefined}>
           <div className="defs-head">
+            {k === 'types' ? (x.fold ? <button type="button" className="defs-arrow" aria-expanded={x.fold.open} aria-controls={x.fold.id}
+              aria-label={x.fold.label} onClick={x.fold.toggle}><UI.Icon name="caret-right" /></button> : <span className="defs-arrow" aria-hidden="true" />) : null}
             <button type="button" className="defs-name" onClick={() => p.open(p.file!, x.line)}>{x.name}</button>
             <span className="small muted">{x.kind ? <>{x.kind}{t(' · ')}</> : null}{t('第 {v1} 行', { v1: x.line })}</span>
           </div>
+          <div className="defs-rest">
           {x.detail ? <div className="small muted">{x.detail}</div> : null}
           {x.users?.length ? <div className="small muted">{t('用到的函式：')}{x.users.slice(0, 3).map((id, i) => <span key={id}>{i ? t('、') : ''}
             <UI.InlineCode look="name" href="#" onClick={(e) => { e.preventDefault(); p.openFn(id) }}>{name(id)}</UI.InlineCode></span>)}
             {(x.users_n ?? x.users.length) > 3 ? t(' 等 {v1} 個', { v1: x.users_n ?? x.users.length }) : ''}<UI.AiMark text={t('推測')} /></div> : null}
-          {x.more}
+          {x.fold?.open ? <div id={x.fold.id}>{x.fold.list}</div> : null}
+          </div>
         </li>)}</ul>
         {long ? <button type="button" className="linklike small" onClick={() => setAll({ ...all, [k]: true })}>{t('顯示其餘 {v1} 項', { v1: xs.length - shown.length })}</button> : null}
       </section>
@@ -128,15 +139,10 @@ function i18nExport(name: string) {
   return name === 'default' ? <span>{t('預設匯出')}</span> : null
 }
 
-function Fields(p: { id: string; fields: { name: string; type: string; line: number }[]; enumLike: boolean; open: boolean; toggle: () => void
-  go: (l: number) => void; peek: (l: number | null) => void }) {
-  const label = p.enumLike ? t('值 {v1} 個', { v1: p.fields.length }) : t('欄位 {v1} 個', { v1: p.fields.length })
-  return <div className="defs-fields">
-    <button type="button" className="defs-toggle small" aria-expanded={p.open} aria-controls={p.id} onClick={p.toggle}>
-      <UI.Icon name={p.open ? 'caret-down' : 'caret-right'} />{label}</button>
-    {p.open ? <ul id={p.id} className="defs-field-list">{p.fields.map((f) => <li key={f.name + f.line}
-      onPointerEnter={(e) => { e.stopPropagation(); p.peek(f.line) }}>
-      <button type="button" className="defs-field mono" onClick={() => p.go(f.line)}>{f.name}</button>
-      {f.type ? <span className="defs-type small">{f.type}</span> : null}</li>)}</ul> : null}
-  </div>
+function Fields(p: { fields: { name: string; type: string; line: number }[]; go: (l: number) => void
+  peek: (l: number | null, end?: number) => void; back: () => void }) {
+  return <ul className="defs-field-list">{p.fields.map((f) => <li key={f.name + f.line}
+    onPointerEnter={(e) => { e.stopPropagation(); p.peek(f.line) }} onPointerLeave={p.back}>
+    <button type="button" className="defs-field mono" onClick={() => p.go(f.line)}>{f.name}</button>
+    {f.type ? <span className="defs-type small">{f.type}</span> : null}</li>)}</ul>
 }

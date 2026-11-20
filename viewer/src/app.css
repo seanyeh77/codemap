@@ -325,12 +325,22 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .defs-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .defs-name { all: unset; cursor: pointer; font-family: var(--font-mono); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .defs-name:hover { text-decoration: underline; }
-.defs-name:focus-visible, .defs-toggle:focus-visible, .defs-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 2px; }
+.defs-name:focus-visible, .defs-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 2px; }
 .defs-type { font-family: var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
 .defs-filter { margin-top: var(--space-3); }
-.defs-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--ink-muted); }
-.defs-toggle:hover { color: var(--ink); }
-.defs-field-list { list-style: none; margin: var(--space-1) 0 0; padding: 0 0 0 var(--space-5); display: flex; flex-direction: column; gap: 2px; }
+.defs-field-list { list-style: none; margin: var(--space-1) 0 0 7px; padding: 0 0 0 var(--space-3); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+/* types: a tree arrow left of the name, as in the explorer; the whole block opens and closes the fields */
+.defs-tree .defs-head { flex-wrap: nowrap; gap: 4px var(--space-2); }
+.defs-tree .defs-head > .small { min-width: 0; }
+.defs-tree .defs-rest { padding-left: 20px; }
+.defs-arrow { all: unset; flex: none; width: 16px; height: 20px; display: inline-flex; align-items: center; justify-content: center; align-self: center; color: var(--ink-muted); }
+button.defs-arrow { cursor: pointer; }
+button.defs-arrow:hover { color: var(--ink); }
+button.defs-arrow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 2px; }
+.defs-arrow svg { width: 12px; height: 12px; transition: transform 150ms; }
+.defs-arrow[aria-expanded="true"] svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .defs-arrow svg { transition: none; } }
+.fp-it.is-fold { cursor: pointer; }
 .defs-field-list li { display: flex; gap: var(--space-2); align-items: baseline; }
 .defs-field { all: unset; cursor: pointer; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
 .defs-field:hover { text-decoration: underline; }
