@@ -104,7 +104,8 @@ def items(root, idx, g, tests=False):
         lines = sorted({r for _, r in cs}, key=lambda r: (_at(r)[0], _at(r)[1]))
         out[d] = dict(level=2, title=d[4:], files=sorted({_at(r)[0] for r in lines}), funcs=sorted({s for s, _ in cs}), lines=lines[:6])
     # the types and file-level variables each file defines; constants and macros only where their author wrote a
-    # comment (most are plain, but a comment is in its author's language and the reader's may be another)
+    # comment (most are plain; a commented one is worth explaining, and the comment may be in another language than
+    # the reader's)
     for f, d in sorted((g.get("defs") or {}).items()):
         if test(f):
             continue
@@ -392,10 +393,11 @@ HEAD = {
        "For a type, a file-level variable or a commented constant or macro (ids def:...), say what it holds and what "
        "it is for in this program, from its definition, its author's comment and the functions that use it; for a "
        "variable, who writes it and who reads it when the functions show that. For a type with fields, add "
-       "\"info\": {\"fields\": [...]} with a short phrase for every field the author commented (the comment in both "
-       "languages, as a reader of either needs it, keeping to what it says) and for each other field whose meaning, "
-       "unit or allowed values are not plain from its name (skip the plain ones). Its evidence is lines of its "
-       "definition.\n\n",
+       "\"info\": {\"fields\": [...]} with a short phrase for every field the author commented and for each other "
+       "field whose meaning, unit or allowed values are not plain from its name (skip the plain ones). Explain, do "
+       "not translate: the author's comment is shown as it is, so say what it leaves out (what the field is for, "
+       "its unit or allowed values, who sets it), not the same words in another language. Its evidence is lines "
+       "of its definition.\n\n",
     3: "Describe each component in one or two sentences: what it is responsible for in the program, "
        "from what its files do.\n\n",
     4: "Describe the project as a whole, then give a reading route and a glossary.\n"
