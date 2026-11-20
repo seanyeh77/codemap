@@ -275,7 +275,9 @@ described yet, in four rounds, each resting on the one below it:
 
 1. functions: what each does
 2. files, the commands of an argparse program and the allowed values of their
-   arguments, environment variables, the files the code reads and writes
+   arguments, environment variables, the files the code reads and writes,
+   the functions outside the repository it calls, and the types and file-level
+   variables each file defines (with a note on the fields that need one)
 3. components, from what their files do
 4. the project (two or three sentences), a reading route (the functions to read
    first, in order) and a glossary of the project's own words
@@ -307,6 +309,14 @@ asks again for just what changed.
 Hovering a call to a function outside the repository (`accept`, `memcpy`) shows
 what it does and each parameter's role, from round 2, where the AI describes the
 outside functions the project calls from what it knows of them.
+
+The 定義 view shows, under each type, variable and constant, what its author
+wrote about it (the comment above it, or after it on its line; a Python
+docstring), and under each field the comment beside it. The types and file-level
+variables also get an AI description in round 2, from their definition and the
+functions that use it; which one shows follows the same order setting as a
+function's. A type's description turns stale when its definition changes, not
+when the functions that use it do. Constants and macros are not sent to the AI.
 
 A function's description comes with `info`, short facts a reader needs to use or
 change it, each about one line where it can be: what runs it and what that

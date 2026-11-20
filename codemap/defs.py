@@ -371,11 +371,98 @@ def _java(tree, out):
                     out["vars"].append(dict(name=txt(d.child_by_field_name("name")), scope="field", type=txt(n.child_by_field_name("type")), line=_line(n)))
 
 
+# ---- what the author wrote about each one ----------------------------------
+
+COMMENT_TYPES = ("comment", "line_comment", "block_comment")
+
+
+def _clean(text):
+    """A comment's words, without its markers, as one paragraph (the first, when there are several)."""
+    from . import docs
+    lines = [re.sub(r"^\s*#+\s?", "", ln) for ln in text.splitlines()]
+    paras = docs._comment_text(lines)
+    t = " ".join(paras[0].split()) if paras else ""
+    return t[:300] if len(t) > 3 else ""
+
+
+def _comments(tree, src):
+    """{last row: (first row, text)} of the comments alone on their lines, and {row: text} of the comments that
+    follow code on their line."""
+    alone, after = {}, {}
+    stack = [tree.root_node]
+    while stack:
+        n = stack.pop()
+        if n.type in COMMENT_TYPES:
+            r0, c0 = n.start_point
+            line = src[r0] if r0 < len(src) else ""
+            if line[:c0].strip():
+                after[r0] = txt(n)
+            else:
+                alone[n.end_point[0]] = (r0, txt(n))
+        stack.extend(n.children)
+    return alone, after
+
+
+def _doc_for(line, end, alone, after):
+    """What the author wrote about a definition: the comment after the code on its line for a one-line definition
+    (int pid; /* Main process pid */, the comment above it is often a heading for a group); else the block of
+    adjacent comments right above it, else a comment after the code on its last line."""
+    rows = (line - 1,) if line == end else (end - 1,)
+    trailing = next((_clean(after[r]) for r in rows if r in after and _clean(after[r])), None)
+    if line == end and trailing:
+        return trailing
+    row, block = line - 2, []
+    while row in alone:
+        r0, text = alone[row]
+        block.insert(0, text)
+        row = r0 - 1
+    return (_clean("\n".join(block)) if block else None) or trailing
+
+
+def _py_docstrings(tree):
+    """{line of a class or an assignment: its docstring}: a class's first statement, or a string right after a
+    module-level assignment."""
+    out = {}
+    for n in tree.root_node.children:
+        d = n.child_by_field_name("definition") if n.type == "decorated_definition" else n
+        if d is not None and d.type == "class_definition":
+            body = d.child_by_field_name("body")
+            first = body.named_children[0] if body is not None and body.named_children else None
+            if first is not None and first.type == "expression_statement" and first.named_children and first.named_children[0].type == "string":
+                out[_line(d)] = txt(first).strip("\"' \n")
+        if n.type == "expression_statement" and n.named_children and n.named_children[0].type == "string":
+            prev = n.prev_named_sibling
+            if prev is not None and prev.type == "expression_statement" and prev.named_children and prev.named_children[0].type == "assignment":
+                out[_line(prev)] = txt(n).strip("\"' \n")
+    return {k: " ".join(v.split("\n\n")[0].split())[:300] for k, v in out.items() if v.strip()}
+
+
+def _docs(tree, root, file, lg, out):
+    src = (Path(root) / file).read_text(errors="replace").splitlines()
+    alone, after = _comments(tree, src)
+    pydoc = _py_docstrings(tree) if lg == "python" else {}
+    for k in ("types", "vars", "consts"):
+        for x in out[k]:
+            d = pydoc.get(x["line"]) or _doc_for(x["line"], x.get("end", x["line"]), alone, after)
+            m = re.search(r"/\*|//", x.get("value") or "") if x.get("kind") == "macro" else None
+            if m:
+                # #define X 16 /* ... */: the comment is part of the macro's text
+                d = d or _clean(x["value"][m.start():])
+                x["value"] = x["value"][:m.start()].strip() or None
+            if d:
+                x["doc"] = d
+            for f in x.get("fields", []):
+                fd = _doc_for(f["line"], f["line"], alone, after)
+                if fd:
+                    f["doc"] = fd
+
+
 READERS = {"c": _c, "cpp": _c, "python": _python, "go": _go, "typescript": _ts, "tsx": _ts, "javascript": _ts, "java": _java}
 
 
 def of(root, file):
-    lg = signature._lang(file, None)
+    # by the file's extension only: a README or a Makefile is not C
+    lg = signature.EXT.get(Path(file).suffix.lower())
     if lg not in READERS:
         return None
     tree = signature._tree(root, file, lg)
@@ -383,6 +470,7 @@ def of(root, file):
         return None
     out = dict(types=[], vars=[], consts=[], imports=[], exports=[])
     READERS[lg](tree, out)
+    _docs(tree, root, file, lg, out)
     for k in ("types", "vars", "consts", "exports"):
         seen, keep = set(), []
         for x in out[k]:
@@ -476,7 +564,7 @@ def run(root, funcs, readable=()):
             for x in d[k]:
                 lo, hi = x["line"], x.get("end", x["line"])
                 x["at"] = [i for i in at.get(x["name"], []) if not lo <= i <= hi][:200]
-                static = x.get("scope") == "static" or (k != "vars" and not f.endswith(HEADERS) and signature._lang(f, None) in ("c", "cpp"))
+                static = x.get("scope") == "static" or (k != "vars" and not f.endswith(HEADERS) and signature.EXT.get(Path(f).suffix.lower()) in ("c", "cpp"))
                 users = [fid for g in ([f] if static else scope) for fid in sorted(by_file.get(g, ()), key=lambda i: funcs[i]["line"])
                          if x["name"] in body_words(fid)]
                 x["users"] = users[:USERS_MAX]

@@ -539,7 +539,7 @@ def main(argv=None):
     s.add_argument("--tests", action="store_true", help="the test files too")
     s.add_argument("--rewrite", action="store_true", help="also what has an up-to-date description")
     s.add_argument("--level", type=int, choices=(1, 2, 3, 4), help="this round, even if one below it is not done: "
-                   "1 functions, 2 files/commands/values/env/data files, 3 components, 4 project/route/glossary")
+                   "1 functions, 2 files/commands/values/env/data files/types and variables, 3 components, 4 project/route/glossary")
     s.add_argument("--batch", type=int, help="functions or items per prompt when there are many (default 12 functions, "
                    "each with its parameters and contract, or 30 items)")
     s.add_argument("-o", "--output", help="write the prompt here; with several prompts, the folder (default .codemap/prompts)")

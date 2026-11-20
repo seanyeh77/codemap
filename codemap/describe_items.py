@@ -1,8 +1,10 @@
 """AI descriptions beyond functions: files, components, the project, commands and their allowed values, environment
-variables, the data files the code reads and writes, a glossary of the project's terms, and a reading route.
+variables, the data files the code reads and writes, the types and file-level variables a file defines, a glossary
+of the project's terms, and a reading route.
 
 They are written in rounds, each resting on the one below it (describe.py has round 1, the functions):
-  2  files, commands, argument values, environment variables, data files, functions outside the repository
+  2  files, commands, argument values, environment variables, data files, functions outside the repository,
+     types and file-level variables (def:FILE:NAME, from defs.py)
   3  components (from their files)
   4  the project, the reading route and the glossary (from the components and the commands)
 
@@ -19,9 +21,9 @@ from pathlib import Path
 
 from . import describe
 
-LEVELS = {1: "functions", 2: "files, commands, values, environment variables, data files, outside functions", 3: "components",
+LEVELS = {1: "functions", 2: "files, commands, values, environment variables, data files, outside functions, types and variables", 3: "components",
           4: "the project, its reading route and glossary"}
-KIND_LEVEL = {"file": 2, "cmd": 2, "value": 2, "env": 2, "data": 2, "ext": 2, "comp": 3, "project": 4, "route": 4, "term": 4}
+KIND_LEVEL = {"file": 2, "cmd": 2, "value": 2, "env": 2, "data": 2, "ext": 2, "def": 2, "comp": 3, "project": 4, "route": 4, "term": 4}
 # info an outside function's description may carry (it has no body here: no lines, no checks)
 EXT_INFO = ("context", "params", "returns", "effects", "contract")
 
@@ -101,6 +103,17 @@ def items(root, idx, g, tests=False):
     for d, cs in calls.items():
         lines = sorted({r for _, r in cs}, key=lambda r: (_at(r)[0], _at(r)[1]))
         out[d] = dict(level=2, title=d[4:], files=sorted({_at(r)[0] for r in lines}), funcs=sorted({s for s, _ in cs}), lines=lines[:6])
+    # the types and file-level variables each file defines (constants and macros are too many and mostly plain)
+    for f, d in sorted((g.get("defs") or {}).items()):
+        if test(f):
+            continue
+        for x in d.get("types", []) + [v for v in d.get("vars", []) if v.get("scope") != "extern"]:
+            key = f"def:{f}:{x['name']}"
+            if key in out:
+                continue                                    # a second definition of the name (#ifdef branches)
+            end = min(x.get("end", x["line"]), x["line"] + 39)
+            out[key] = dict(level=2, title=x["name"], files=[f], funcs=[u for u in x.get("users", []) if u in nodes][:6],
+                            lines=[f"{f}:{ln}" for ln in range(x["line"], end + 1)], define=x)
     for c in g.get("comps") or []:
         if c["id"].endswith("(tests)"):
             continue
@@ -127,6 +140,8 @@ def basis(root, idx, info, key, entry=None):
         return _h(*(_line(root, *_at(r)) for r in (entry or {}).get("evidence", [])))
     if k == "ext":
         return _h(key)
+    if k == "def":                                          # its definition: not the functions that use it
+        return _h(*(_line(root, *_at(r)) for r in info.get("lines", [])))
     lines = [_line(root, *_at(r)) for r in info.get("lines", [])]
     return _h(*lines, *(describe.digest(root, idx["nodes"][x]) for x in info.get("funcs", []) if x in idx["nodes"]))
 
@@ -184,6 +199,17 @@ def problems(root, idx, info, key, entry):
                 if part == "contract" and it.get("kind") not in describe.CONTRACT:
                     out.append(where + f"kind must be one of {', '.join(describe.CONTRACT)}")
         return out
+    if k == "def":
+        fields = {f["name"] for f in (info.get("define") or {}).get("fields", [])}
+        info_ = entry.get("info") or {}
+        for i, it in enumerate(info_.get("fields") or [] if isinstance(info_, dict) else []):
+            where = f"info.fields[{i}] "
+            if not isinstance(it, dict):
+                out.append(where + "is not an object")
+            elif str(it.get("name", "")) not in fields:
+                out.append(where + f"{it.get('name')!r} is not a field of {info['title']}")
+            else:
+                out += [where + f"has no {lang} text" for lang in describe.LANGS if not str(it.get(lang, "")).strip()]
     # where the evidence may be: the item's files (the project: any file of the repository)
     files = info.get("files")
     code_files = {n["file"] for n in nodes.values() if n.get("file") and n.get("line")}
@@ -304,6 +330,14 @@ def prompt(root, idx, g, level, keys):
             parts.append(head + f"- a file the program {' and '.join(info.get('ways', []))}: {info['title']}\n- where:\n"
                          + "".join(f"  {r}: {_line(root, *_at(r))}\n" for r in info["lines"])
                          + "- by:\n" + "".join(f"  - {fn(x)}\n" for x in info["funcs"]))
+        elif k == "def":
+            x = info["define"]
+            what = x.get("kind") or f'{x.get("scope")} variable'
+            src = "".join(f"  {r}: {_line(root, *_at(r))}\n" for r in info["lines"])
+            parts.append(head + f"- {what} {x['name']} in {info['files'][0]}" + (f" (type {x['type']})" if x.get("type") else "") + "\n"
+                         + (f"- the author wrote: {x['doc']}\n" if x.get("doc") else "")
+                         + f"- its definition:\n{src}"
+                         + ("- functions that use it (found by name):\n" + "".join(f"  - {fn(u)}\n" for u in info["funcs"]) if info["funcs"] else ""))
         elif k == "ext":
             lang = nodes[info["funcs"][0]].get("lang", "c") if info["funcs"] else "c"
             parts.append(head + f"- a function outside the repository ({lang}): {info['title']}\n- where the project calls it:\n"
@@ -346,7 +380,12 @@ HEAD = {
        "as declared, its role (in, out, in-out) and what it holds; what its return values mean; its side effects; "
        "whether it blocks or which thread it needs (context); its contract (kind pre, post, error, ownership). Its "
        "evidence is the lines that call it. Leave a part out when you are not sure of it; do not describe a "
-       "function you do not know.\n\n",
+       "function you do not know.\n"
+       "For a type or a file-level variable (ids def:...), say what it holds and what it is for in this program, from "
+       "its definition, its author's comment and the functions that use it; for a variable, who writes it and who "
+       "reads it when the functions show that. For a type with fields, add \"info\": {\"fields\": [...]} with a short "
+       "phrase for each field whose meaning, unit or allowed values are not plain from its name and comment (skip "
+       "the plain ones). Its evidence is lines of its definition.\n\n",
     3: "Describe each component in one or two sentences: what it is responsible for in the program, "
        "from what its files do.\n\n",
     4: "Describe the project as a whole, then give a reading route and a glossary.\n"
@@ -362,7 +401,9 @@ FORM = {
     2: '{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]},\n'
        ' {"id": "ext:...", "zh-TW": "...", "en": "...", "evidence": ["file:line"],\n'
        '  "info": {"params": [{"name": "addrlen", "type": "socklen_t *", "role": "in-out", "zh-TW": "...", "en": "..."}],\n'
-       '           "returns": [{"zh-TW": "...", "en": "..."}], "contract": [{"kind": "ownership", "zh-TW": "...", "en": "..."}]}}]}',
+       '           "returns": [{"zh-TW": "...", "en": "..."}], "contract": [{"kind": "ownership", "zh-TW": "...", "en": "..."}]}},\n'
+       ' {"id": "def:...", "zh-TW": "...", "en": "...", "evidence": ["file:line"],\n'
+       '  "info": {"fields": [{"name": "head", "zh-TW": "...", "en": "..."}]}}]}',
     3: '{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}]}',
     4: '{"descriptions": [{"id": "project", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}],\n'
        ' "route": {"zh-TW": "one line on the route", "en": "...", "steps": [{"id": "function id", "zh-TW": "...", "en": "..."}]},\n'
@@ -393,8 +434,11 @@ def apply(root, idx, g, data, by="ai"):
                      "evidence": [str(x) for x in it.get("evidence", [])], "by": by, "at": today}
             if kind(key) == "ext" and it.get("info") is not None:
                 entry["info"] = it["info"]
+            if kind(key) == "def" and isinstance(it.get("info"), dict) and it["info"].get("fields"):
+                entry["info"] = {"fields": [{"name": str(f.get("name", "")), **{l: str(f.get(l, "")).strip() for l in describe.LANGS}}
+                                            for f in it["info"]["fields"] if isinstance(f, dict)]}
             keep(key, entry, its[key])
-            if key in have["items"] and "info" in have["items"][key]:
+            if kind(key) == "ext" and key in have["items"] and "info" in have["items"][key]:
                 inf = describe.clean_info(have["items"][key]["info"], keep=("type",))
                 if inf:
                     have["items"][key]["info"] = inf

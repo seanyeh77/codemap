@@ -8,6 +8,8 @@ import type { Index } from '../data/graph'
 import type { FileDefs } from '../data/types'
 import { conceptEx, conceptText } from '../data/glossary'
 import { PeekLine } from '../components/DocRefs'
+import { DescText } from '../components/DescText'
+import { defDesc, fieldDesc, useDescOrder, type Desc } from '../data/describe'
 import { InfoTitle } from './FnPanel'
 
 const SHOWN = 15            // items a section shows before 「顯示其餘」
@@ -30,7 +32,7 @@ const VAR_KIND: Record<string, [string, string?]> = {
 const CONST_KIND: Record<string, [string, string?]> = { macro: ['巨集', 'macro'], const: ['常數'], enum: ['enum 值', 'enum'] }
 
 interface Fold { id: string; open: boolean; toggle: () => void; label: string; list: ReactNode }
-interface Item { fold?: Fold; key: string; name: string; line: number; end?: number; at?: number[]; kind: ReactNode; detail?: ReactNode; more?: ReactNode; users?: string[]; users_n?: number }
+interface Item { desc?: Desc | null; fold?: Fold; key: string; name: string; line: number; end?: number; at?: number[]; kind: ReactNode; detail?: ReactNode; more?: ReactNode; users?: string[]; users_n?: number }
 
 export function Defs(p: { ix: Index; file: string | null; line: number | null; open: (f: string, l: number) => void; openFn: (id: string) => void }) {
   const peek = useContext(PeekLine)
@@ -42,6 +44,8 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
   useEffect(() => { setQ(''); setAll({}); setOpenTypes({}) }, [p.file])
   useEffect(() => () => peek(null), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const d: FileDefs | undefined = p.file ? p.ix.g.defs?.[p.file] : undefined
+  const order = useDescOrder()
+  const dkey = (name: string) => `def:${p.file}:${name}`
   const lang = useMemo(() => Object.values(p.ix.funcs).find((f) => f.file === p.file)?.lang, [p.ix, p.file])
 
   // a kind is underlined where it first appears in the view, plain text after that
@@ -58,14 +62,14 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
   })
   const items: Record<Kind, Item[]> = { types: [], vars: [], consts: [], imports: [], exports: [] }
   if (d) {
-    items.types = d.types.map((x) => ({ key: 't' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
+    items.types = d.types.map((x) => ({ desc: defDesc(p.ix, dkey(x.name), x.doc, order), key: 't' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: <>{kindText(TYPE_KIND[x.kind] ?? [x.kind])}{x.typedef ? <>{t('、')}{kindText(TYPE_KIND.typedef)}</> : null}</>,
       detail: x.of ? <>{t('即 ')}<span className="defs-type">{x.of}</span></> : null,
       fold: x.fields.length ? fold('t' + x.name + x.line, x.name, x.kind === 'enum' || x.of === 'enum',
-        <Fields fields={x.fields} go={(l) => p.file && p.open(p.file, l)} peek={peek} back={() => peek(x.line, x.end)} />) : undefined }))
-    items.vars = d.vars.map((x) => ({ key: 'v' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
+        <Fields fields={x.fields} desc={(f) => fieldDesc(p.ix, dkey(x.name), f.name, f.doc, order)} go={(l) => p.file && p.open(p.file, l)} peek={peek} back={() => peek(x.line, x.end)} />) : undefined }))
+    items.vars = d.vars.map((x) => ({ desc: defDesc(p.ix, dkey(x.name), x.doc, order), key: 'v' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(VAR_KIND[x.scope] ?? [x.scope]), detail: x.type ? <span className="defs-type">{x.type}</span> : null }))
-    items.consts = d.consts.map((x) => ({ key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
+    items.consts = d.consts.map((x) => ({ desc: order === 'facts' || !x.doc ? null : { kind: 'author', text: x.doc }, key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(CONST_KIND[x.kind] ?? [x.kind]), detail: x.value ? <span className="defs-type">= {x.value}</span> : null }))
     items.imports = d.imports.map((x) => ({ key: 'i' + x.line + x.text, name: x.text, line: x.line, at: x.at,
       kind: x.local === undefined ? null : kindText(x.local ? ['專案內的檔案', 'include'] : ['系統或程式庫', 'include']),
@@ -120,6 +124,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
             <span className="small muted">{x.kind ? <>{x.kind}{t(' · ')}</> : null}{t('第 {v1} 行', { v1: x.line })}</span>
           </div>
           <div className="defs-rest">
+          {x.desc ? <div className="defs-desc"><DescText d={x.desc} tag /></div> : null}
           {x.detail ? <div className="small muted">{x.detail}</div> : null}
           {x.users?.length ? <div className="small muted">{t('用到的函式：')}{x.users.slice(0, 3).map((id, i) => <span key={id}>{i ? t('、') : ''}
             <UI.InlineCode look="name" href="#" onClick={(e) => { e.preventDefault(); p.openFn(id) }}>{name(id)}</UI.InlineCode></span>)}
@@ -139,10 +144,15 @@ function i18nExport(name: string) {
   return name === 'default' ? <span>{t('預設匯出')}</span> : null
 }
 
-function Fields(p: { fields: { name: string; type: string; line: number }[]; go: (l: number) => void
-  peek: (l: number | null, end?: number) => void; back: () => void }) {
-  return <ul className="defs-field-list">{p.fields.map((f) => <li key={f.name + f.line}
-    onPointerEnter={(e) => { e.stopPropagation(); p.peek(f.line) }} onPointerLeave={p.back}>
-    <button type="button" className="defs-field mono" onClick={() => p.go(f.line)}>{f.name}</button>
-    {f.type ? <span className="defs-type small">{f.type}</span> : null}</li>)}</ul>
+function Fields(p: { fields: { name: string; type: string; line: number; doc?: string }[]; desc: (f: { name: string; doc?: string }) => Desc | null
+  go: (l: number) => void; peek: (l: number | null, end?: number) => void; back: () => void }) {
+  return <ul className="defs-field-list">{p.fields.map((f) => {
+    const d = p.desc(f)
+    return <li key={f.name + f.line} onPointerEnter={(e) => { e.stopPropagation(); p.peek(f.line) }} onPointerLeave={p.back}>
+      <span className="defs-field-row">
+        <button type="button" className="defs-field mono" onClick={() => p.go(f.line)}>{f.name}</button>
+        {f.type ? <span className="defs-type small">{f.type}</span> : null}
+      </span>
+      {d ? <span className="defs-field-desc small"><DescText d={d} tag /></span> : null}</li>
+  })}</ul>
 }

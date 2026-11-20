@@ -327,7 +327,9 @@ export interface Described {
   text: Record<string, string>; state?: 'ok' | 'stale' | 'wrong'; by?: string
   steps?: ({ id: string } & Record<string, string>)[]; term?: string; evidence?: string[]
   /** a function outside the repository (ext:...): its parameters (with their declared type), returns, contract */
-  info?: Omit<FuncInfo, 'params'> & { params?: (InfoItem & { type?: string })[] }
+  info?: Omit<FuncInfo, 'params'> & { params?: (InfoItem & { type?: string })[]
+    /** a type (def:...): what its fields hold, where the name and comment do not say */
+    fields?: ({ name: string } & Record<string, string>)[] }
 }
 export interface CliArg { name: string; opt: boolean; choices?: string[]; choices_from?: string; choices_at?: number; handled?: Record<string, [string, number]>; default?: string; help?: string; action?: string; nargs?: string; metavar?: string; required?: boolean }
 export interface CliCommand { name: string; l: number; help?: string; args?: CliArg[]; run: string[]; at?: [number, number] }
@@ -390,9 +392,9 @@ export interface FileWrite {
   via?: { fid: string; f: string; l: number; name: string }[]
 }
 
-interface DefUse { at?: number[]; users?: string[]; users_n?: number }
+interface DefUse { at?: number[]; users?: string[]; users_n?: number; doc?: string }
 export interface FileDefs {
-  types: (DefUse & { name: string; kind: string; typedef?: boolean; line: number; end?: number; of?: string | null; fields: { name: string; type: string; line: number }[] })[]
+  types: (DefUse & { name: string; kind: string; typedef?: boolean; line: number; end?: number; of?: string | null; fields: { name: string; type: string; line: number; doc?: string }[] })[]
   vars: (DefUse & { name: string; scope: string; type?: string; line: number; end?: number })[]
   consts: (DefUse & { name: string; kind: 'macro' | 'const' | 'enum'; line: number; end?: number; value?: string | null; params?: string; type?: string })[]
   imports: { text: string; line: number; file?: string; names?: string[]; at?: number[]; local?: boolean }[]

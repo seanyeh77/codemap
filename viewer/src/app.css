@@ -341,7 +341,10 @@ button.defs-arrow:focus-visible { outline: 2px solid var(--focus-ring); outline-
 .defs-arrow[aria-expanded="true"] svg { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .defs-arrow svg { transition: none; } }
 .fp-it.is-fold { cursor: pointer; }
-.defs-field-list li { display: flex; gap: var(--space-2); align-items: baseline; }
+.defs-field-list li { display: flex; flex-direction: column; }
+.defs-field-row { display: flex; gap: var(--space-2); align-items: baseline; }
+.defs-field-desc { color: var(--ink); padding-bottom: 2px; }
+.defs-desc { font-size: 14px; line-height: 22px; }
 .defs-field { all: unset; cursor: pointer; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
 .defs-field:hover { text-decoration: underline; }
 .defs .fp-sec > .linklike { align-self: flex-start; }

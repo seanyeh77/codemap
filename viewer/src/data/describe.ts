@@ -132,5 +132,31 @@ export function aiItem(ix: Index, key: string, order: DescOrder): Desc | null {
   return a && a.state !== 'wrong' ? { kind: 'ai', ...a } : null
 }
 
+/** A definition's description (定義): the AI's (def:FILE:NAME) or its author's comment, the first there is in the
+ *  reader's order; an AI's the code no longer matches comes after the author's, one that cites what is not there never. */
+export function defDesc(ix: Index, key: string, doc: string | undefined, order: DescOrder): Desc | null {
+  let late: Desc | null = null
+  for (const k of ORDERS.find((o) => o.id === order)!.kinds) {
+    if (k === 'ai') {
+      const a = aiText(ix.g.described?.[key])
+      if (a && a.state === 'stale') late = { kind: 'ai', ...a }
+      else if (a && a.state !== 'wrong') return { kind: 'ai', ...a }
+    }
+    if (k === 'author' && doc) return { kind: 'author', text: doc }
+  }
+  return late
+}
+
+/** What a field holds, the same way: the AI's (in its type's info) or the comment beside it. */
+export function fieldDesc(ix: Index, key: string, field: string, doc: string | undefined, order: DescOrder): Desc | null {
+  const d = ix.g.described?.[key]
+  const f = d && d.state !== 'wrong' ? d.info?.fields?.find((x) => x.name === field) : undefined
+  for (const k of ORDERS.find((o) => o.id === order)!.kinds) {
+    if (k === 'ai' && f) { const a = aiText({ text: f }); if (a) return { kind: 'ai', ...a } }
+    if (k === 'author' && doc) return { kind: 'author', text: doc }
+  }
+  return null
+}
+
 /** A route step's text in the reader's language. */
 export const stepText = (s: Record<string, string>) => s[lang()] || s['zh-TW'] || s.en || ''

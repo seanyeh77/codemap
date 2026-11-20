@@ -690,3 +690,46 @@ def test_defs_lists_what_a_file_defines_besides_functions(tmp_path):
     assert [x["name"] for x in py["consts"]] == ["MAX"] and [x["name"] for x in py["vars"]] == ["count"]
     assert py["exports"] == [{"name": "Foo", "line": 2}] and py["types"][0]["fields"][0]["name"] == "x"
     assert py["imports"][0]["names"] == ["Path"]
+
+
+def test_defs_read_the_authors_comments(tmp_path):
+    from codemap import defs
+    (tmp_path / "d.c").write_text(
+        "/* A ring buffer of samples. */\ntypedef struct {\n    int16_t buf[64];   /* the samples */\n"
+        "    // where the writer is\n    size_t head;\n    size_t tail;\n} ring_t;\n\n"
+        "/* General */\nint pid;  /* Main process pid. */\n#define MAX_CTX 16 /* contexts per process */\nint g_n;\n")
+    (tmp_path / "d.py").write_text("# How long to wait.\nINTERVAL = 3\ncount = 0\n\"\"\"Calls so far.\"\"\"\nclass Foo:\n    \"\"\"A foo.\"\"\"\n    x: int = 1  # the x\n")
+    c = defs.of(tmp_path, "d.c")
+    assert c["types"][0]["doc"] == "A ring buffer of samples."
+    assert [(f["name"], f.get("doc")) for f in c["types"][0]["fields"]] == [("buf", "the samples"), ("head", "where the writer is"), ("tail", None)]
+    v = {x["name"]: x.get("doc") for x in c["vars"]}
+    assert v == {"pid": "Main process pid.", "g_n": None}        # the comment on its line, not the heading above it
+    assert c["consts"][0]["doc"] == "contexts per process" and c["consts"][0]["value"] == "16"
+    py = defs.of(tmp_path, "d.py")
+    assert py["consts"][0]["doc"] == "How long to wait." and py["vars"][0]["doc"] == "Calls so far."
+    assert py["types"][0]["doc"] == "A foo." and py["types"][0]["fields"][0]["doc"] == "the x"
+
+
+def test_describe_writes_types_and_variables(tmp_path):
+    import json
+    from codemap import describe_items
+    (tmp_path / "a.c").write_text("typedef struct { int head, tail; } ring_t;\nstatic ring_t r;\n"
+                                  "void put(void) {\n    r.head++;\n}\n")
+    idx = {"nodes": {"a.c:put": dict(name="put", file="a.c", line=3, end=5, kind="function", lang="c")}, "edges": []}
+    funcs = {"a.c:put": dict(file="a.c", line=3, end=5, name="put", kind="function")}
+    from codemap import defs
+    g = {"defs": defs.run(tmp_path, funcs, ["a.c"])}
+    its = describe_items.items(tmp_path, idx, g)
+    assert {k for k in its if k.startswith("def:")} == {"def:a.c:ring_t", "def:a.c:r"}
+    assert "def:a.c:r" in describe_items.prompt(tmp_path, idx, g, 2, ["def:a.c:r"])
+    (tmp_path / ".codemap").mkdir()
+    kept, bad = describe_items.apply(tmp_path, idx, g, {"descriptions": [
+        {"id": "def:a.c:ring_t", "zh-TW": "環狀緩衝區", "en": "A ring buffer.", "evidence": ["a.c:1"],
+         "info": {"fields": [{"name": "head", "zh-TW": "寫入位置", "en": "where the writer is"}]}},
+        {"id": "def:a.c:r", "zh-TW": "唯一的緩衝區", "en": "The one buffer.", "evidence": ["a.c:2"],
+         "info": {"fields": [{"name": "nope", "zh-TW": "x", "en": "x"}]}}]})
+    assert kept == ["def:a.c:ring_t"] and "not a field" in bad["def:a.c:r"][0]
+    out = describe_items.described(tmp_path, idx, g)
+    assert out["def:a.c:ring_t"]["state"] == "ok" and out["def:a.c:ring_t"]["info"]["fields"][0]["name"] == "head"
+    (tmp_path / "a.c").write_text("typedef struct { int head, tail, size; } ring_t;\nstatic ring_t r;\nvoid put(void) {\n    r.head++;\n}\n")
+    assert describe_items.described(tmp_path, idx, g)["def:a.c:ring_t"]["state"] == "stale"     # its definition changed
