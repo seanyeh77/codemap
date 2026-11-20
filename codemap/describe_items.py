@@ -24,6 +24,10 @@ from . import describe
 LEVELS = {1: "functions", 2: "files, commands, values, environment variables, data files, outside functions, types and variables", 3: "components",
           4: "the project, its reading route and glossary"}
 KIND_LEVEL = {"file": 2, "cmd": 2, "value": 2, "env": 2, "data": 2, "ext": 2, "def": 2, "comp": 3, "project": 4, "route": 4, "term": 4}
+# a type's fields go to the AI this many at a time: a long struct (redis's redisServer has 537) is one item for the
+# type and its first fields, then one item per further group (def:FILE:NAME#fields-2, ...), so every field is
+# asked for and no answer has to cover hundreds of them
+FIELDS_PER_ITEM = 60
 # info an outside function's description may carry (it has no body here: no lines, no checks)
 EXT_INFO = ("context", "params", "returns", "effects", "contract")
 
@@ -115,8 +119,13 @@ def items(root, idx, g, tests=False):
             if key in out:
                 continue                                    # a second definition of the name (#ifdef branches)
             end = min(x.get("end", x["line"]), x["line"] + 39)
+            fields = x.get("fields") or []
             out[key] = dict(level=2, title=x["name"], files=[f], funcs=[u for u in x.get("users", []) if u in nodes][:6],
-                            lines=[f"{f}:{ln}" for ln in range(x["line"], end + 1)], define=x)
+                            lines=[f"{f}:{ln}" for ln in range(x["line"], end + 1)], define=x, chunk=(0, FIELDS_PER_ITEM))
+            for n, start in enumerate(range(FIELDS_PER_ITEM, len(fields), FIELDS_PER_ITEM), 2):
+                part = fields[start:start + FIELDS_PER_ITEM]
+                out[f"{key}#fields-{n}"] = dict(level=2, title=f"{x['name']} fields {start + 1}-{start + len(part)}", files=[f], funcs=[],
+                                                lines=[f"{f}:{fl['line']}" for fl in part], define=x, chunk=(start, start + len(part)))
     for c in g.get("comps") or []:
         if c["id"].endswith("(tests)"):
             continue
@@ -153,10 +162,11 @@ def problems(root, idx, info, key, entry):
     """What an item's text cites that the code does not have."""
     out = []
     text = entry.get("text") or {}
-    for lang in describe.LANGS:
-        if not str(text.get(lang, "")).strip():
-            out.append(f"no {lang} text")
     k = kind(key)
+    part = "#fields-" in key                                # more fields of a long type: only info.fields
+    for lang in describe.LANGS:
+        if not part and not str(text.get(lang, "")).strip():
+            out.append(f"no {lang} text")
     nodes = idx["nodes"]
     if k == "route":
         steps = entry.get("steps") or []
@@ -203,14 +213,15 @@ def problems(root, idx, info, key, entry):
                     out.append(where + f"kind must be one of {', '.join(describe.CONTRACT)}")
         return out
     if k == "def":
-        fields = {f["name"] for f in (info.get("define") or {}).get("fields", [])}
+        a, b = info.get("chunk") or (0, None)
+        fields = {f["name"] for f in (info.get("define") or {}).get("fields", [])[a:b]}
         info_ = entry.get("info") or {}
         for i, it in enumerate(info_.get("fields") or [] if isinstance(info_, dict) else []):
             where = f"info.fields[{i}] "
             if not isinstance(it, dict):
                 out.append(where + "is not an object")
             elif str(it.get("name", "")) not in fields:
-                out.append(where + f"{it.get('name')!r} is not a field of {info['title']}")
+                out.append(where + f"{it.get('name')!r} is not one of the fields this item covers ({info['title']})")
             else:
                 out += [where + f"has no {lang} text" for lang in describe.LANGS if not str(it.get(lang, "")).strip()]
     # where the evidence may be: the item's files (the project: any file of the repository)
@@ -337,15 +348,23 @@ def prompt(root, idx, g, level, keys):
             x = info["define"]
             what = {"macro": "macro", "const": "constant", "enum": "enum value"}.get(x.get("kind"), x.get("kind")) or f'{x.get("scope")} variable'
             src = "".join(f"  {r}: {_line(root, *_at(r))}\n" for r in info["lines"])
-            # every field with its author's comment: a long struct's definition is cut above
+            # the fields this item covers, with their type and author's comment: a long struct's definition is cut
+            # above, and its later fields are items of their own
             fields = x.get("fields") or []
-            noted = [fl for fl in fields if fl.get("doc")]
-            flist = "".join(f"  - {fl['name']}" + (f": {fl['doc']}" if fl.get("doc") else "") + "\n" for fl in fields[:120])
+            a, b = info["chunk"]
+            mine = fields[a:b]
+            flist = "".join(f"  - {fl['name']}" + (f" ({fl['type']})" if fl.get("type") else "") + (f": {fl['doc']}" if fl.get("doc") else "")
+                            + "\n" for fl in mine)
+            cover = f"fields {a + 1} to {a + len(mine)} of {len(fields)}" if len(fields) > len(mine) else f"its fields ({len(fields)})"
+            if "#fields-" in key:
+                parts.append(head + f"- more fields of {what} {x['name']} in {info['files'][0]} (described as def:{info['files'][0]}:{x['name']});"
+                             + f" only info.fields for these, no text:\n- {cover}:\n{flist}")
+                continue
             parts.append(head + f"- {what} {x['name']} in {info['files'][0]}" + (f" (type {x['type']})" if x.get("type") else "")
                          + (f" = {x['value']}" if x.get("value") else "") + "\n"
                          + (f"- the author wrote: {x['doc']}\n" if x.get("doc") else "")
                          + f"- its definition{' (the first 40 lines)' if len(info['lines']) >= 40 else ''}:\n{src}"
-                         + (f"- its fields ({len(fields)}, {len(noted)} with the author's comment){', the first 120' if len(fields) > 120 else ''}:\n{flist}" if fields else "")
+                         + (f"- {cover}{'; the rest are items of their own' if len(fields) > len(mine) else ''}:\n{flist}" if fields else "")
                          + ("- functions that use it (found by name):\n" + "".join(f"  - {fn(u)}\n" for u in info["funcs"]) if info["funcs"] else ""))
         elif k == "ext":
             lang = nodes[info["funcs"][0]].get("lang", "c") if info["funcs"] else "c"
@@ -397,7 +416,7 @@ HEAD = {
        "field whose meaning, unit or allowed values are not plain from its name (skip the plain ones). Explain, do "
        "not translate: the author's comment is shown as it is, so say what it leaves out (what the field is for, "
        "its unit or allowed values, who sets it), not the same words in another language. Its evidence is lines "
-       "of its definition.\n\n",
+       "of its definition. An id ending in #fields-N covers more fields of a long type: give only its info.fields.\n\n",
     3: "Describe each component in one or two sentences: what it is responsible for in the program, "
        "from what its files do.\n\n",
     4: "Describe the project as a whole, then give a reading route and a glossary.\n"
@@ -415,7 +434,8 @@ FORM = {
        '  "info": {"params": [{"name": "addrlen", "type": "socklen_t *", "role": "in-out", "zh-TW": "...", "en": "..."}],\n'
        '           "returns": [{"zh-TW": "...", "en": "..."}], "contract": [{"kind": "ownership", "zh-TW": "...", "en": "..."}]}},\n'
        ' {"id": "def:...", "zh-TW": "...", "en": "...", "evidence": ["file:line"],\n'
-       '  "info": {"fields": [{"name": "head", "zh-TW": "...", "en": "..."}]}}]}',
+       '  "info": {"fields": [{"name": "head", "zh-TW": "...", "en": "..."}]}},\n'
+       ' {"id": "def:...#fields-2", "info": {"fields": [{"name": "...", "zh-TW": "...", "en": "..."}]}}]}',
     3: '{"descriptions": [{"id": "...", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}]}',
     4: '{"descriptions": [{"id": "project", "zh-TW": "...", "en": "...", "evidence": ["file:line"]}],\n'
        ' "route": {"zh-TW": "one line on the route", "en": "...", "steps": [{"id": "function id", "zh-TW": "...", "en": "..."}]},\n'

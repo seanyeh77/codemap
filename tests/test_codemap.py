@@ -728,8 +728,26 @@ def test_describe_writes_types_and_variables(tmp_path):
          "info": {"fields": [{"name": "head", "zh-TW": "寫入位置", "en": "where the writer is"}]}},
         {"id": "def:a.c:r", "zh-TW": "唯一的緩衝區", "en": "The one buffer.", "evidence": ["a.c:2"],
          "info": {"fields": [{"name": "nope", "zh-TW": "x", "en": "x"}]}}]})
-    assert kept == ["def:a.c:ring_t"] and "not a field" in bad["def:a.c:r"][0]
+    assert kept == ["def:a.c:ring_t"] and "not one of the fields" in bad["def:a.c:r"][0]
     out = describe_items.described(tmp_path, idx, g)
     assert out["def:a.c:ring_t"]["state"] == "ok" and out["def:a.c:ring_t"]["info"]["fields"][0]["name"] == "head"
     (tmp_path / "a.c").write_text("typedef struct { int head, tail, size; } ring_t;\nstatic ring_t r;\nvoid put(void) {\n    r.head++;\n}\n")
     assert describe_items.described(tmp_path, idx, g)["def:a.c:ring_t"]["state"] == "stale"     # its definition changed
+
+
+def test_describe_splits_a_long_types_fields(tmp_path):
+    from codemap import defs, describe_items
+    body = "".join(f"    int f{i};  /* field {i} */\n" for i in range(130))
+    (tmp_path / "big.h").write_text("struct big {\n" + body + "};\n")
+    idx = {"nodes": {}, "edges": []}
+    g = {"defs": defs.run(tmp_path, {}, ["big.h"])}
+    its = describe_items.items(tmp_path, idx, g)
+    keys = sorted(k for k in its if k.startswith("def:big.h:big"))
+    assert keys == ["def:big.h:big", "def:big.h:big#fields-2", "def:big.h:big#fields-3"]
+    text = describe_items.prompt(tmp_path, idx, g, 2, keys)
+    assert "fields 1 to 60 of 130" in text and "fields 121 to 130 of 130" in text and "f129 (int): field 129" in text
+    (tmp_path / ".codemap").mkdir()
+    kept, bad = describe_items.apply(tmp_path, idx, g, {"descriptions": [
+        {"id": "def:big.h:big#fields-3", "info": {"fields": [{"name": "f125", "zh-TW": "第 125 個", "en": "the 125th"}]}},
+        {"id": "def:big.h:big#fields-2", "info": {"fields": [{"name": "f1", "zh-TW": "x", "en": "x"}]}}]})
+    assert kept == ["def:big.h:big#fields-3"] and "not one of the fields this item covers" in bad["def:big.h:big#fields-2"][0]

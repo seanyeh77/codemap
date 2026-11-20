@@ -317,7 +317,8 @@ variables also get an AI description in round 2, from their definition and the
 functions that use it; which one shows follows the same order setting as a
 function's. A type's description turns stale when its definition changes, not
 when the functions that use it do. A constant or macro goes to the AI only when
-its author commented it, and every commented field gets a note: the comment is in
+its author commented it, and every commented field gets a note (a long type's
+fields are asked for 60 at a time, as items of their own, def:FILE:NAME#fields-2 and on): the comment is in
 its author's language, which may not be the reader's. The AI explains what the
 comment leaves out; it does not translate the comment, which is shown as written.
 

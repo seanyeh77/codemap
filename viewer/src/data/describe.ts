@@ -147,10 +147,28 @@ export function defDesc(ix: Index, key: string, doc: string | undefined, order: 
   return late
 }
 
+// a long type's fields are written in parts (def:FILE:NAME#fields-2, ...): all of them by field name, per type
+const fieldsOf = new WeakMap<object, Map<string, Map<string, Record<string, string>>>>()
+function typeFields(ix: Index, key: string): Map<string, Record<string, string>> {
+  const all = ix.g.described ?? {}
+  let byType = fieldsOf.get(all)
+  if (!byType) {
+    byType = new Map()
+    for (const [k, d] of Object.entries(all)) {
+      if (!k.startsWith('def:') || d.state === 'wrong' || !d.info?.fields) continue
+      const type = k.replace(/#fields-\d+$/, '')
+      const m = byType.get(type) ?? new Map<string, Record<string, string>>()
+      for (const f of d.info.fields) m.set(f.name, f)
+      byType.set(type, m)
+    }
+    fieldsOf.set(all, byType)
+  }
+  return byType.get(key) ?? new Map()
+}
+
 /** What a field holds, the same way: the AI's (in its type's info) or the comment beside it. */
 export function fieldDesc(ix: Index, key: string, field: string, doc: string | undefined, order: DescOrder): Desc | null {
-  const d = ix.g.described?.[key]
-  const f = d && d.state !== 'wrong' ? d.info?.fields?.find((x) => x.name === field) : undefined
+  const f = typeFields(ix, key).get(field)
   for (const k of ORDERS.find((o) => o.id === order)!.kinds) {
     if (k === 'ai' && f) { const a = aiText({ text: f }); if (a) return { kind: 'ai', ...a } }
     if (k === 'author' && doc) return { kind: 'author', text: doc }
