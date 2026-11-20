@@ -103,11 +103,13 @@ def items(root, idx, g, tests=False):
     for d, cs in calls.items():
         lines = sorted({r for _, r in cs}, key=lambda r: (_at(r)[0], _at(r)[1]))
         out[d] = dict(level=2, title=d[4:], files=sorted({_at(r)[0] for r in lines}), funcs=sorted({s for s, _ in cs}), lines=lines[:6])
-    # the types and file-level variables each file defines (constants and macros are too many and mostly plain)
+    # the types and file-level variables each file defines; constants and macros only where their author wrote a
+    # comment (most are plain, but a comment is in its author's language and the reader's may be another)
     for f, d in sorted((g.get("defs") or {}).items()):
         if test(f):
             continue
-        for x in d.get("types", []) + [v for v in d.get("vars", []) if v.get("scope") != "extern"]:
+        for x in d.get("types", []) + [v for v in d.get("vars", []) if v.get("scope") != "extern"] \
+                + [c for c in d.get("consts", []) if c.get("doc")]:
             key = f"def:{f}:{x['name']}"
             if key in out:
                 continue                                    # a second definition of the name (#ifdef branches)
@@ -332,11 +334,17 @@ def prompt(root, idx, g, level, keys):
                          + "- by:\n" + "".join(f"  - {fn(x)}\n" for x in info["funcs"]))
         elif k == "def":
             x = info["define"]
-            what = x.get("kind") or f'{x.get("scope")} variable'
+            what = {"macro": "macro", "const": "constant", "enum": "enum value"}.get(x.get("kind"), x.get("kind")) or f'{x.get("scope")} variable'
             src = "".join(f"  {r}: {_line(root, *_at(r))}\n" for r in info["lines"])
-            parts.append(head + f"- {what} {x['name']} in {info['files'][0]}" + (f" (type {x['type']})" if x.get("type") else "") + "\n"
+            # every field with its author's comment: a long struct's definition is cut above
+            fields = x.get("fields") or []
+            noted = [fl for fl in fields if fl.get("doc")]
+            flist = "".join(f"  - {fl['name']}" + (f": {fl['doc']}" if fl.get("doc") else "") + "\n" for fl in fields[:120])
+            parts.append(head + f"- {what} {x['name']} in {info['files'][0]}" + (f" (type {x['type']})" if x.get("type") else "")
+                         + (f" = {x['value']}" if x.get("value") else "") + "\n"
                          + (f"- the author wrote: {x['doc']}\n" if x.get("doc") else "")
-                         + f"- its definition:\n{src}"
+                         + f"- its definition{' (the first 40 lines)' if len(info['lines']) >= 40 else ''}:\n{src}"
+                         + (f"- its fields ({len(fields)}, {len(noted)} with the author's comment){', the first 120' if len(fields) > 120 else ''}:\n{flist}" if fields else "")
                          + ("- functions that use it (found by name):\n" + "".join(f"  - {fn(u)}\n" for u in info["funcs"]) if info["funcs"] else ""))
         elif k == "ext":
             lang = nodes[info["funcs"][0]].get("lang", "c") if info["funcs"] else "c"
@@ -381,11 +389,13 @@ HEAD = {
        "whether it blocks or which thread it needs (context); its contract (kind pre, post, error, ownership). Its "
        "evidence is the lines that call it. Leave a part out when you are not sure of it; do not describe a "
        "function you do not know.\n"
-       "For a type or a file-level variable (ids def:...), say what it holds and what it is for in this program, from "
-       "its definition, its author's comment and the functions that use it; for a variable, who writes it and who "
-       "reads it when the functions show that. For a type with fields, add \"info\": {\"fields\": [...]} with a short "
-       "phrase for each field whose meaning, unit or allowed values are not plain from its name and comment (skip "
-       "the plain ones). Its evidence is lines of its definition.\n\n",
+       "For a type, a file-level variable or a commented constant or macro (ids def:...), say what it holds and what "
+       "it is for in this program, from its definition, its author's comment and the functions that use it; for a "
+       "variable, who writes it and who reads it when the functions show that. For a type with fields, add "
+       "\"info\": {\"fields\": [...]} with a short phrase for every field the author commented (the comment in both "
+       "languages, as a reader of either needs it, keeping to what it says) and for each other field whose meaning, "
+       "unit or allowed values are not plain from its name (skip the plain ones). Its evidence is lines of its "
+       "definition.\n\n",
     3: "Describe each component in one or two sentences: what it is responsible for in the program, "
        "from what its files do.\n\n",
     4: "Describe the project as a whole, then give a reading route and a glossary.\n"

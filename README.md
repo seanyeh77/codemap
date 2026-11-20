@@ -316,7 +316,9 @@ docstring), and under each field the comment beside it. The types and file-level
 variables also get an AI description in round 2, from their definition and the
 functions that use it; which one shows follows the same order setting as a
 function's. A type's description turns stale when its definition changes, not
-when the functions that use it do. Constants and macros are not sent to the AI.
+when the functions that use it do. A constant or macro goes to the AI only when
+its author commented it, and every commented field gets a note: a comment is in its
+author's language, and the AI writes each text in both.
 
 A function's description comes with `info`, short facts a reader needs to use or
 change it, each about one line where it can be: what runs it and what that
