@@ -2,7 +2,6 @@ import { Children, isValidElement, useContext, useEffect, useMemo, useRef, useSt
 import type { ReactElement, ReactNode } from 'react'
 import { UI } from '../ui'
 import { DocRefs, OpenFile, langLabel, useCodeRefs, type Peek } from '../components/DocRefs'
-import { revealRange } from '../scroll'
 import { useCallLinks } from '../components/CallLinks'
 import { DescText } from '../components/DescText'
 import { aiItem, descriptions, useDescOrder } from '../data/describe'
@@ -74,21 +73,6 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
     if (moved.current) { moved.current = false; return }
     if (src.data && shown === 'source') view.current?.focusTarget()
   }, [src.data, p.at.f, p.at.l, shown])
-  // a definition pointed at in 定義 or 說明 is shown whole: its lines marked, and scrolled so they are all in view, or
-  // from its first line when it is taller than the code's area. CodeView's peek marks and shows one line only, so
-  // the rest is done here until it takes a range
-  const codeBox = useRef<HTMLElement>(null)
-  useEffect(() => {
-    const pk = p.peek
-    if (!pk || pk.to <= pk.from || !codeBox.current) return
-    const rows = codeBox.current.querySelectorAll('.ui-cv-line')
-    const first = rows[pk.from - 1] as HTMLElement | undefined, last = rows[pk.to - 1] as HTMLElement | undefined
-    if (!first || !last) return
-    const marked = [...rows].slice(pk.from - 1, pk.to)
-    marked.forEach((r) => r.classList.add('cm-peek-range'))
-    revealRange(first, last)
-    return () => marked.forEach((r) => r.classList.remove('cm-peek-range'))
-  }, [p.peek])
   // the line the reader clicks or moves to with the keyboard (selecting text to copy is not a move)
   const follow = (n: number, how: 'click' | 'key') => {
     if (n !== cur) { moved.current = true; setCur(n) }
@@ -116,7 +100,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
           })}
         </ul> : <p className="small muted">{t('此檔案無函式。')}</p>}
       </nav> : <div className="reader-rail-closed"><UI.IconButton icon="list" label={t('打開函式清單')} onClick={toggleRail} /></div>}
-      <section className="reader-code" aria-label={t('程式碼')} ref={codeBox}>
+      <section className="reader-code" aria-label={t('程式碼')}>
         {!p.isLive ? <p className="small muted">{t('快照僅含函式的原始碼，無法顯示整個檔案：於 build 環境執行 codemap serve 查看。')}</p>
           : src.isPending ? <UI.Skeleton width="80%" height={16} />
           : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
@@ -129,7 +113,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
                 // the workbench's bar above already names the file: the language and buttons float over the code
                 {...(p.bare ? { header: 'float' as const } : { fileHref: vscodeURL(p.at.f, cur, p.ix.g.root, p.ix.g.host) ?? undefined })}
                 code={src.data.lines.join('\n')} start={1}
-                target={cur > 1 ? cur : undefined} onLine={follow} peek={p.peek?.from ?? null} maxHeight="100%" sections={fns.map(([, f]) => ({ line: f.line, label: f.name }))} />}
+                target={cur > 1 ? cur : undefined} onLine={follow} peek={p.peek ? (p.peek.to > p.peek.from ? p.peek : p.peek.from) : null} maxHeight="100%" sections={fns.map(([, f]) => ({ line: f.line, label: f.name }))} />}
             {/\.(md|rst)$/.test(p.at.f) ? null : <DocRefs ix={p.ix} lines={src.data.lines} />}</>}
       </section>
     </div>

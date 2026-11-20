@@ -335,5 +335,3 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .defs-field { all: unset; cursor: pointer; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
 .defs-field:hover { text-decoration: underline; }
 .defs .fp-sec > .linklike { align-self: flex-start; }
-/* the lines of a definition pointed at in 定義, until CodeView's peek takes a range: as its one peeked line */
-.ui-cv-line.cm-peek-range { background: var(--surface); box-shadow: inset 3px 0 0 var(--line-strong); }
