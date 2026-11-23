@@ -145,7 +145,7 @@ export function Detail(p: Props) {
           </li>))}
         {!said.some((d) => d.state !== 'wrong') ? <>
           {sig ? <li><pre className="reader-sig mono">{sig}</pre></li> : null}
-          <li className="small muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</li></> : null}
+          <UI.CodeText as="li" className="small muted" text={t('尚無說明：於 repo 執行 `codemap describe` 以產生 AI 說明。')} /></> : null}
       </ul>
       <UI.DetailList items={[
         { label: t('定義'), value: link(f.file, f.line) },
@@ -214,7 +214,7 @@ export function Detail(p: Props) {
       ) : at ? <CodeAt ix={p.ix} at={at} isLive={p.isLive} sourceId={p.sourceId} maxHeight="60vh" focus />
         : src.isPending ? <div><UI.Skeleton width="80%" height={16} /><UI.Skeleton width="60%" height={16} /><UI.Skeleton width="70%" height={16} /></div>
         : src.error ? <UI.Alert tone="danger" title={t('無法讀取原始碼')}>{(src.error as Error).message}</UI.Alert>
-        : !src.data ? <p className="small muted">{t('匯出快照時無法讀取此檔案：於 build 環境重新執行 codemap export。')}</p>
+        : !src.data ? <UI.CodeText as="p" className="small muted" text={t('匯出快照時無法讀取此檔案：於 build 環境重新執行 `codemap export`。')} />
         : <UI.CodeView {...refs} {...srcCalls} ref={code} languageLabel={langLabel(src.data.file)} file={src.data.file} fileHref={vscodeURL(f.file, focus, p.ix.g.root, p.ix.g.host) ?? undefined}
             code={src.data.lines.join('\n')} start={src.data.start} target={mark?.key === selKey ? mark.l : focus} maxHeight="60vh" />}
       {!whole && src.data ? <DocRefs ix={p.ix} lines={src.data.lines} /> : null}

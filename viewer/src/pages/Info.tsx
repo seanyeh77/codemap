@@ -34,7 +34,7 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
     const project = aiItem(ix, 'project', order)
     return <div className="info">
       <InfoTitle kind={t('專案')} name={g.repo} code={false} />
-      {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</p>}
+      {project ? <p><DescText d={project} tag full /></p> : <UI.CodeText as="p" className="muted" text={t('尚無說明：於 repo 執行 `codemap describe` 以產生 AI 說明。')} />}
       <p className="small muted">{t('{v1} 個元件、{v2} 個函式', { v1: g.comps.length, v2: Object.keys(ix.funcs).length })}</p>
     </div>
   }
@@ -71,7 +71,7 @@ function FileInfo(p: { ix: Index; f: string; openFn: (id: string) => void }) {
     {!ai && !doc ? <p className="small muted">{t('無說明註解。')}</p> : null}
     {/* whether the project lets people change it is a fact about the file; what the checks found is in 檢查 */}
     {role ? <p className="small">{role === 'editable' ? t('可修改：專案允許修改此檔案。') : t('請勿修改：專案不希望修改此檔案。')}
-      <span className="fp-src">{byRules ? t('依據：.codemap/rules.json 的 roles') : t('依據：檔案開頭註解的第一個詞')}</span></p> : null}
+      <span className="fp-src"><UI.CodeText text={byRules ? t('依據：`.codemap/rules.json` 的 roles') : t('依據：檔案開頭註解的第一個詞')} /></span></p> : null}
     {fns.length ? <section className="info-notes" aria-label={t('函式')}>
       <h3 className="info-h">{t('函式')}</h3>
       <ul className="info-outline">{fns.map((id) => <li key={id} onPointerEnter={() => peek(p.ix.funcs[id].line, p.ix.funcs[id].end)} onPointerLeave={() => peek(null)}>

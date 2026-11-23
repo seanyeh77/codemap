@@ -283,7 +283,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
     body = <UI.DetailList items={(l.sites ?? []).slice(0, SHOWN).map((s) => ({ label: `${s.f.split('/').pop()}:${s.l}`, value: <span>{t('{v1} 使用 {v2}：', { v1: name(s.s), v2: s.name })}{at(null, s.f, s.l)}</span> }))} />
   } else if (l.kind === 'channel') {
     about = t('{v1} 經由 {v2} 把資料交給 {v3}{v4}', { v1: l.a, v2: l.via ?? '', v3: l.b, v4: l.label ? t('（{v1}）', { v1: l.label }) : '' })
-      + t('。此為 .codemap/rules.json 宣告的資料通道，以下列出兩端使用 {v1} 的位置。', { v1: l.via ?? '' })
+      + t('。此為 `.codemap/rules.json` 宣告的資料通道，以下列出兩端使用 {v1} 的位置。', { v1: l.via ?? '' })
     const uses = usesOf(p.ix, l.via ?? '')
     // who calls a function of the shared component, by component
     // who reaches a function of the shared component, also through its other functions (ibt_attach -> ibt_ring_map -> ibt_ring_open_placed)
@@ -343,7 +343,7 @@ export function EdgeDetail(p: { ix: Index; id: string; isLive: boolean; sourceId
   const total = l.kind === 'interpose' || l.kind === 'runs' || l.kind === 'reads' ? l.sites?.length ?? 0 : l.kind === 'call' ? l.n : 0
   return (
     <UI.Card className="detail" title={`${l.a} → ${l.b}`} actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
-      <p className="small">{about}</p>
+      <UI.CodeText as="p" className="small" text={about} />
       {body}
       {total > SHOWN ? <p className="small muted">{t('另有 {v1} 處未列出。', { v1: total - SHOWN })}</p> : null}
     </UI.Card>
@@ -399,7 +399,7 @@ export function DescCoverage(p: { ix: Index }) {
   const ai = fs.filter((f) => f.ai && f.ai.state !== 'wrong').length
   const none = fs.filter((f) => !f.doc && !(f.ai && f.ai.state !== 'wrong')).length
   return <p className="small muted">{t('{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。', { v1: fs.length, v2: doc, v3: ai })}
-    {none ? ' ' + t('其餘 {v1} 個可執行 codemap describe 由 AI 補上。', { v1: none }) : ''}</p>
+    {none ? <> <UI.CodeText text={t('其餘 {v1} 個可執行 `codemap describe` 由 AI 補上。', { v1: none })} /></> : ''}</p>
 }
 
 function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; onComp: (id: string) => void }) {
@@ -436,7 +436,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
           { label: t('呼叫的檔案'), value: out.length ? <span className="entry-list">{other(out, 'b')}</span> : t('（無）') },
         ]} />
         </Q>
-        <Notes ix={p.ix} f={p.file} why={role ? (byRules ? t('可修改／受保護的依據：.codemap/rules.json 的 roles') : t('可修改／受保護的依據：檔案開頭註解的第一個詞')) : undefined} />
+        <Notes ix={p.ix} f={p.file} why={role ? (byRules ? t('可修改／受保護的依據：`.codemap/rules.json` 的 roles') : t('可修改／受保護的依據：檔案開頭註解的第一個詞')) : undefined} />
         </Parts>
       </UI.Card>
       <div className="tree-panel grow-panel">
@@ -532,7 +532,7 @@ function docsPart(docs: DocSummary[]): PartMd {
 
 /** Where a comment came from, so a reader can check it. */
 function From(p: { doc: Doc }) {
-  return <span className="small muted">{p.doc.own ? t('專案在 .codemap/rules.json 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: p.doc.file, v2: p.doc.line })}</span>
+  return <UI.CodeText as="span" className="small muted" text={p.doc.own ? t('專案在 `.codemap/rules.json` 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: p.doc.file, v2: p.doc.line })} />
 }
 
 /** Nothing selected: what each component is for, how the code is entered and left, and what the
@@ -665,17 +665,17 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   const compAi = (id: string) => ai('comp:' + id)
   parts.push({ id: 'ov-comps', title: t('元件'), summary: sums.comps, open: true, md: [
     g.comps.map((c) => `- **${esc(c.id)}**：` + (compAi(c.id) && (aiFirst(descOrder) || !c.doc) ? compAi(c.id) + (c.doc ? BR : '') : '') + (c.doc
-      ? oneLine(short(c.doc.text)) + BR + (c.doc.own ? t('專案在 .codemap/rules.json 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: c.doc.file, v2: c.doc.line })) + (compAi(c.id) && !aiFirst(descOrder) ? BR + compAi(c.id) : '')
+      ? oneLine(short(c.doc.text)) + BR + (c.doc.own ? t('專案在 `.codemap/rules.json` 寫的說明') : t('取自 {v1}:{v2} 的註解', { v1: c.doc.file, v2: c.doc.line })) + (compAi(c.id) && !aiFirst(descOrder) ? BR + compAi(c.id) : '')
       : compAi(c.id) ? ''
       : c.file_docs?.length ? t('元件無整體說明，以下為各檔案的開頭註解：') + c.file_docs.map((d) => `\n  - ${code(d.file.split('/').pop()!)} ${oneLine(short(firstSentence(d.text), 90))}`).join('')
       : t('無說明註解。'))).join('\n'),
-    testComps.length ? [`### ${t('測試與評分程式（不畫在圖上）')}`, testComps.map(([comp, fs]) => {
+    testComps.length ? [`### ${t('測試與評分程式')}`, note(t('這些元件不畫在架構圖上。')), testComps.map(([comp, fs]) => {
       const files = [...new Set(fs.map((f) => f.file))].sort()
       const entry = fs.filter((f) => f.name === 'main')
       return `- **${esc(comp)}**：${t('{v1} 個檔案、{v2} 個函式', { v1: files.length, v2: fs.length })}` + (entry.length ? t('，入口 ') + entry.map((f) => loc(f.file, f.line)).join(t('、')) : '')
         + files.slice(0, 8).map((f) => `\n  - ${code(f)}${g.files?.[f] ? ' ' + oneLine(short(firstSentence(g.files[f].text), 90)) : ''}`).join('')
     }).join('\n'), g.hidden_tests ? note(t('流程、影響範圍與搜尋預設不含測試程式碼，可在設定頁開啟「包含測試程式碼」。')) : ''].filter(Boolean).join('\n\n') : '',
-    g.comps.some((c) => !c.doc?.own) ? note(t('說明取自主要檔案（main.c、__init__.py 或唯一的檔案）的開頭註解。元件用途可寫在 .codemap/rules.json 的 describe。')) : '',
+    g.comps.some((c) => !c.doc?.own) ? noteMd(t('說明取自主要檔案（`main.c`、`__init__.py` 或唯一的檔案）的開頭註解。元件用途可寫在 `.codemap/rules.json` 的 describe。')) : '',
   ].filter(Boolean).join('\n\n') })
 
   if (g.docs?.length) parts.push(docsPart(g.docs))
@@ -685,7 +685,7 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
   if (terms.length) parts.push({ id: 'ov-terms', title: t('名詞'), summary: t('{v1} 個', { v1: terms.length }), md: [
     mdTable([t('名詞'), t('說明'), t('出現在')], terms.map(([, d]) => [code(d.term ?? '', true), aiMd(aiItem(p.ix, 'term:' + d.term, descOrder), true),
       (d.evidence ?? []).map((r) => { const [f, l] = [r.slice(0, r.lastIndexOf(':')), Number(r.slice(r.lastIndexOf(':') + 1))]; return loc(f, l, true) }).join(t('、'))])),
-    note(t('名詞與說明由 AI 撰寫（codemap describe），出現的位置已核對過。')),
+    noteMd(t('名詞與說明由 AI 撰寫（`codemap describe`），出現的位置已核對過。')),
   ].join('\n\n') })
 
   // 進入與結束: where control comes in from outside the repository, and what runs on its own

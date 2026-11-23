@@ -12,7 +12,7 @@ import { DescText } from '../components/DescText'
 import { conceptEx, conceptText, keywordText } from '../data/glossary'
 import { affected } from './Impact'
 import { worthIn, worthLists } from './Reader'
-import { PeekLine } from '../components/DocRefs'
+import { OpenFile, PeekLine } from '../components/DocRefs'
 
 type Src = 'sure' | 'guess' | 'ai'
 interface Row { key: string; line?: number; lines?: number[]; src: Src; body: ReactNode }
@@ -105,13 +105,13 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     onFocus={() => setBusy(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setBusy(false) }}>
     <InfoTitle kind={t('函式')} name={f.name.split('.').pop()!} where={`${f.file}:${f.line}`} />
     <p className="fp-status small muted" aria-live="polite">{(p.line == null ? t('選取程式碼中的一行，即標示與該行相關的資料。') : n ? t('第 {v1} 行：{v2} 筆相關資料', { v1: p.line, v2: n }) : t('第 {v1} 行：無相關資料', { v1: p.line }))}</p>
-    {d ? <p><DescText d={d} full />{d.kind === 'ai' ? <Src s="ai" /> : null}</p> : <p className="small muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</p>}
+    {d ? <p><DescText d={d} full />{d.kind === 'ai' ? <Src s="ai" /> : null}</p> : <UI.CodeText as="p" className="small muted" text={t('尚無說明：於 repo 執行 `codemap describe` 以產生 AI 說明。')} />}
     {SECTIONS.map((s) => rows[s].length ? <section key={s} className="fp-sec" aria-label={s}>
       <h3 className="info-h">{term(s)}<span className="fp-cnt">{t('{v1} 項', { v1: rows[s].length })}</span></h3>
       <ul className="fp-rows">{rows[s].map((r) => <li key={r.key} className={'fp-it' + (here(r) ? ' is-here' : '') + (r.line ? ' has-line' : '')}
         onPointerEnter={r.line ? () => peek(r.line!) : undefined} onPointerLeave={r.line ? () => peek(null) : undefined}>{r.body}{r.src !== 'sure' && s !== 'Parameters' ? <Src s={r.src} /> : null}</li>)}</ul>
     </section> : null)}
-    {empty && !info ? <p className="small muted">{t('Execution context、參數用途、回傳值與 Contract 由 AI 撰寫：於 repo 執行 codemap describe。')}</p> : null}
+    {empty && !info ? <UI.CodeText as="p" className="small muted" text={t('Execution context、參數用途、回傳值與 Contract 由 AI 撰寫：於 repo 執行 `codemap describe`。')} /> : null}
     <p className="fp-legend small muted">{t('未標註者來自程式碼或語言規則。「推測」僅依寫法推得，「AI 撰寫」由 AI 依程式碼撰寫，兩者皆可能有誤。')}</p>
   </div>
 }
@@ -143,12 +143,12 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
     <h3 className="info-h">{t('{v1} 的檢查', { v1: f.name.split('.').pop()! })}</h3>
     {found.length || f.ai?.state === 'stale' ? <ul className="fp-rows">
       {found.map(([label, l], i) => <li key={'w' + i} className="fp-it"><span className="small muted">{t('自動檢查')}{at(l)}</span><div>{t(label)}</div></li>)}
-      {f.ai?.state === 'stale' ? <li className="fp-it"><span className="small muted">{t('說明')}</span><div>{t('說明撰寫後函式已修改，內容可能過時；執行 codemap describe 以重新撰寫。')}</div></li> : null}
+      {f.ai?.state === 'stale' ? <li className="fp-it"><span className="small muted">{t('說明')}</span><UI.CodeText as="div" text={t('說明撰寫後函式已修改，內容可能過時；執行 `codemap describe` 以重新撰寫。')} /></li> : null}
     </ul> : null}
     {checks.length ? <ul className="fp-rows">{checks.map((c, i) => <li key={i} className="fp-it">
       <span className="small muted">{KIND[c.kind ?? ''] ?? c.kind}{c.line ? <>{' · '}<button type="button" className="linklike" onClick={() => p.open(f.file, c.line!)}>{t('第 {v1} 行', { v1: c.line })}</button></> : null}</span>
       <div>{codeSpans(say(c)).map((x, j) => (typeof x === 'string' ? x : <code key={j} className="desc-code">{x.code}</code>))}<Src s="ai" /></div></li>)}</ul>
-      : found.length || f.ai?.state === 'stale' ? null : <p className="small muted">{f.ai?.info ? t('未發現問題。') : t('尚無 AI 檢查：於 repo 執行 codemap describe。')}</p>}
+      : found.length || f.ai?.state === 'stale' ? null : <UI.CodeText as="p" className="small muted" text={f.ai?.info ? t('未發現問題。') : t('尚無 AI 檢查：於 repo 執行 `codemap describe`。')} />}
     <p className="small"><UI.Term variant="inline" title="Change impact" text={t('修改此函式可能影響的範圍。')}>Change impact</UI.Term>{t('：')}
       {n ? t('修改此函式可能影響 {n} 個函式，最遠 {v1} 層。', { n, v1: far }) : t('repo 內沒有函式呼叫此函式。')}
       {tests ? t('另有 {v1} 個測試函式呼叫此函式。', { v1: tests }) : ''}</p>
@@ -157,10 +157,13 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
 
 /** What 說明 is about: its kind, its name and where it is, so the panel says whose description it shows. */
 export function InfoTitle(p: { kind: string; name: string; where?: string; code?: boolean }) {
+  // where it is (file, or file:line) is a link to that place in the code
+  const open = useContext(OpenFile)
+  const m = p.where?.match(/^(.*?)(?::(\d+))?$/)
   return <header className="info-what">
     <span className="small muted">{p.kind}</span>
     <h2 className={'info-title' + (p.code === false ? '' : ' mono')}>{p.name}</h2>
-    {p.where ? <span className="small muted mono">{p.where}</span> : null}
+    {p.where && m ? <span className="small"><UI.InlineCode look="name" href="#" onClick={(e) => { e.preventDefault(); open(m[1], Number(m[2] ?? 1)) }}>{p.where}</UI.InlineCode></span> : null}
   </header>
 }
 
@@ -183,6 +186,6 @@ export function ScopeChecks(p: { ix: Index; title: string; inside: (fid: string,
     </div>)}
     {stale.length ? <div className="fp-sec"><h4 className="small">{t('說明撰寫後已修改的函式')}<span className="fp-cnt">{t('{v1} 個', { v1: stale.length })}</span></h4>
       <ul className="fp-rows">{stale.slice(0, 20).map((id) => <li key={id} className="fp-it small"><button type="button" className="linklike mono" onClick={() => p.openFn(id)}>{name(id)}</button></li>)}</ul>
-      <p className="small muted">{t('執行 codemap describe 以重新撰寫。')}</p></div> : null}
+      <UI.CodeText as="p" className="small muted" text={t('執行 `codemap describe` 以重新撰寫。')} /></div> : null}
   </section>
 }

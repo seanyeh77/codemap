@@ -210,7 +210,7 @@ function NowReading(p: { ix: Index; id: string; f: string; l: number; onFunc: (i
       {ds.map((d, i) => <p key={i} className="reader-desc"><DescText d={d} tag full /></p>)}
       {/* no description: its signature says what goes in and comes out, in the code's own words */}
       {!ds.length && p.sig ? <pre className="reader-sig mono">{p.sig}</pre> : null}
-      {!ds.length ? <p className="small muted">{t('尚無說明：於 repo 執行 codemap describe 以產生 AI 說明。')}</p> : null}
+      {!ds.length ? <UI.CodeText as="p" className="small muted" text={t('尚無說明：於 repo 執行 `codemap describe` 以產生 AI 說明。')} /> : null}
     </Q>
     <Q title={t('和誰有關')}>
       <UI.DetailList items={[
@@ -245,12 +245,12 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
     <h3 className="info-h">{t('值得注意')}</h3>
     <ul className="level-notes">{items}</ul>
     {found.length ? <a className="link small" href="#check">{t('於檢查查看細節')}</a> : null}
-    {p.why ? <p className="small muted">{p.why}</p> : null}
+    {p.why ? <UI.CodeText as="p" className="small muted" text={p.why} /> : null}
   </section> : null
   return <Q title={t('值得注意')}>
     {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('未發現。')}</p>}
     {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
-    {p.why ? <p className="small muted">{p.why}</p> : null}
+    {p.why ? <UI.CodeText as="p" className="small muted" text={p.why} /> : null}
   </Q>
 }
 

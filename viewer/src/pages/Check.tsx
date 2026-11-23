@@ -48,7 +48,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
     return <UI.Card className="pane"><UI.Alert tone="danger" title={t('無法檢查筆記')}>{(q.error as Error).message}</UI.Alert></UI.Card>
   }
   if (!cur && p.compact) return <section className="chk-sec" data-tour="notes"><h3 className="info-h">{t('筆記')}</h3>
-    <p className="small muted">{p.isLive ? t('無可檢查的筆記：執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記。') : t('無可檢查的筆記：以 codemap export --notes 指定筆記，重新匯出快照。')}</p></section>
+    <UI.CodeText as="p" className="small muted" text={p.isLive ? t('無可檢查的筆記：執行 `codemap arch` 產生 `CODEMAP.md`，或以 `codemap serve --notes` 指定筆記。') : t('無可檢查的筆記：以 `codemap export --notes` 指定筆記，重新匯出快照。')} /></section>
   if (!cur) {
     return (
       <UI.Card className="pane" data-tour="notes">
@@ -145,7 +145,7 @@ export function DescHealth(p: { ix: Index; compact?: boolean }) {
     <UI.Card className="desc-health" title={t('函式說明')}>
       <DescCoverage ix={p.ix} />
       {bad.length ? <>
-        <p className="small">{t('{v1} 個 AI 說明需要重寫（執行 codemap describe 會重寫）：', { v1: bad.length })}</p>
+        <UI.CodeText as="p" className="small" text={t('{v1} 個 AI 說明需要重寫（執行 `codemap describe` 會重寫）：', { v1: bad.length })} />
         <ul className="level-list">{bad.map(([id, f]) => (
           <li key={id}><UI.InlineCode look="name" href={'#' + id} onClick={(e) => { e.preventDefault(); openFile(f.file, f.line) }}>{f.name}</UI.InlineCode>{' '}
             <span className="small muted">{f.ai!.state === 'stale' ? t('程式碼在說明寫好之後改過') : t('提到的位置或名稱與程式碼不符')}</span></li>))}</ul>

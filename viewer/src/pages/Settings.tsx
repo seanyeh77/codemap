@@ -112,7 +112,7 @@ export function Settings(p: Props) {
           </span> })),
           ...(st.syntax ? [{ label: t('其他語言'), value: <span><UI.Term variant="inline" text={t('以 tree-sitter 讀取定義與呼叫，依名稱對應定義，未經編譯器確認。')}>{t('tree-sitter')}</UI.Term>{t('：')}{Object.entries(st.languages ?? {}).filter(([l]) => l !== 'c' && !st.resolution?.[l] && !(l === 'javascript' && st.resolution?.typescript)).map(([l, n]) => t('{v1} {v2} 個檔案', { v1: LANG[l] ?? l, v2: n })).join(t('、'))}{t(' · {v1} 條依名稱對應的呼叫', { v1: st.syntax })}{st.frameworks?.length ? t(' · 框架：{v1}', { v1: st.frameworks.join(t('、')) }) : ''}</span> }] : []),
           isLive ? { label: t('索引建立時間'), value: <span>{when(p.meta!.indexed)}<br />{p.meta!.changed?.length
-            ? <span className="warn-text">{t('之後有 {v1} 個原始檔變更，呼叫關係可能已過時：{v2}。於 build 環境執行 codemap index 後重新載入。', { v1: p.meta!.changed.length, v2: p.meta!.changed.slice(0, 5).join(t('、')) + (p.meta!.changed.length > 5 ? t(' 等') : '') })}</span>
+            ? <UI.CodeText as="span" className="warn-text" text={t('之後有 {v1} 個原始檔變更，呼叫關係可能已過時：{v2}。於 build 環境執行 `codemap index` 後重新載入。', { v1: p.meta!.changed.length, v2: p.meta!.changed.slice(0, 5).join(t('、')) + (p.meta!.changed.length > 5 ? t(' 等') : '') })} />
             : <span className="muted">{t('之後無原始檔變更，頁面與磁碟上的程式碼一致。')}</span>}</span> } : { label: t('匯出時間'), value: when(g.generated) },
         ]} />
         <UI.ActionBar actions={isLive ? [
@@ -132,7 +132,7 @@ export function Settings(p: Props) {
           // the compiler rows belong to C and C++: a repository of Python, Go or TypeScript is read without one
           ...(!st.backends || st.backends.includes('gcc') ? [
             { label: t('編譯資料庫'), value: <UI.InlineCode>compile_commands.json</UI.InlineCode> },
-            { label: t('編譯器'), value: g.config.cc ? <UI.InlineCode>{g.config.cc}</UI.InlineCode> : t('依 compile_commands.json（gcc 或 g++）') },
+            { label: t('編譯器'), value: g.config.cc ? <UI.InlineCode>{g.config.cc}</UI.InlineCode> : <UI.CodeText text={t('依 `compile_commands.json`（gcc 或 g++）')} /> },
           ] : [{ label: t('分析器'), value: t('直接讀取原始碼，不需編譯：{v1}', { v1: st.backends.map((b) => BACKEND[b] ?? LANG[b] ?? b).join(t('、')) }) }]),
           { label: t('範圍'), value: g.config.scope?.length ? <span className="chips">{g.config.scope.map((s) => <UI.InlineCode key={s}>{s}</UI.InlineCode>)}</span> : t('整個 repo') },
           ...(!st.backends || st.backends.includes('gcc') ? [{ label: t('失敗的檔案'), value: t('{v1} 個', { v1: st.failed ?? 0 }) }] : []),
