@@ -751,3 +751,16 @@ def test_describe_splits_a_long_types_fields(tmp_path):
         {"id": "def:big.h:big#fields-3", "info": {"fields": [{"name": "f125", "zh-TW": "第 125 個", "en": "the 125th"}]}},
         {"id": "def:big.h:big#fields-2", "info": {"fields": [{"name": "f1", "zh-TW": "x", "en": "x"}]}}]})
     assert kept == ["def:big.h:big#fields-3"] and "not one of the fields this item covers" in bad["def:big.h:big#fields-2"][0]
+
+
+def test_defs_edge_cases(tmp_path):
+    from codemap import defs
+    (tmp_path / "web" / "lib").mkdir(parents=True)
+    (tmp_path / "web" / "b.ts").write_text("export const Y = 2\n")
+    (tmp_path / "web" / "lib" / "a.ts").write_text("import { Y } from '../b'\nexport const X = Y\n")
+    (tmp_path / "u.h").write_text('#define URL "http://x.org" /* the site */\ntypedef struct { int a; } A, *PA;\n')
+    out = defs.run(tmp_path, {}, ["web/b.ts", "web/lib/a.ts", "u.h"])
+    assert out["web/lib/a.ts"]["imports"][0]["file"] == "web/b.ts"                 # ../ from the file's folder
+    url = out["u.h"]["consts"][0]
+    assert url["value"] == '"http://x.org"' and url["doc"] == "the site"           # // in a string is not a comment
+    assert [(t["name"], t.get("of")) for t in out["u.h"]["types"]] == [("A", "struct"), ("PA", "A *")]

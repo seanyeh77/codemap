@@ -85,7 +85,7 @@ export function App() {
   }
   const picker = useFilePicker(open)
   // a .codemap file the system opened with the installed app
-  useEffect(() => onLaunchFile((f) => { void open(f) }), [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => onLaunchFile((f) => { void open(f) }), [])
 
   if (boot.isPending || (isLive && liveGraph.isPending)) {
     return <div className="boot"><UI.Skeleton width="100%" height={64} /><UI.Skeleton width="60%" height={24} /><UI.Skeleton width="100%" height={320} /></div>
@@ -253,7 +253,7 @@ function Shell(p: ShellProps) {
     addEventListener('popstate', onPop)
     addEventListener('hashchange', onPop)
     return () => { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop) }
-  }, [ix])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ix])
   // an address that asks for a view shows it once, at start
   useEffect(() => { if (init.v) show(init.v) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   // what changed on screen, for screen readers

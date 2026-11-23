@@ -15,7 +15,6 @@ import os
 import re
 import shlex
 import subprocess
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 

@@ -26,11 +26,9 @@ tree-sitter backend writes, so framework adapters read both alike.
 
 import ast
 import builtins
-import re
 from pathlib import Path
 
 from ..scope import is_test as _convention
-from ..source import lines
 
 BUILTINS = set(dir(builtins))
 BUILTIN_TYPES = {"list", "dict", "set", "tuple", "str", "bytes", "frozenset", "bytearray", "open", "int", "float"}

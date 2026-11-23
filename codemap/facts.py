@@ -857,7 +857,6 @@ def plain_writes(root, funcs, files):
     for file in sorted(files):
         if not file.endswith(".c"):
             continue
-        raw = lines(root / file)
         code = [state.STRINGS.sub('""', ln) for ln in code_lines(root / file)]
         for i, name, static in state._file_scope(code):
             if THREAD_LOCAL.search(code[i - 1]) or CONST.search(code[i - 1]) or re.search(r"_Atomic|\bsig_atomic_t\b|\batomic_\w+_t\b", code[i - 1]):

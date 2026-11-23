@@ -58,7 +58,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
 
   const fold = (id: string, of: string, values: boolean, list: ReactNode): Fold => ({
     id, list, open: !!openTypes[id], toggle: () => setOpenTypes((o) => ({ ...o, [id]: !o[id] })),
-    label: (openTypes[id] ? (values ? t('收合 {v1} 的值') : t('收合 {v1} 的欄位')) : (values ? t('展開 {v1} 的值') : t('展開 {v1} 的欄位'))).replace('{v1}', of),
+    label: openTypes[id] ? (values ? t('收合 {v1} 的值', { v1: of }) : t('收合 {v1} 的欄位', { v1: of })) : (values ? t('展開 {v1} 的值', { v1: of }) : t('展開 {v1} 的欄位', { v1: of })),
   })
   const items: Record<Kind, Item[]> = { types: [], vars: [], consts: [], imports: [], exports: [] }
   if (d) {
@@ -69,7 +69,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
         <Fields fields={x.fields} desc={(f) => fieldDesc(p.ix, dkey(x.name), f.name, f.doc, order)} go={(l) => p.file && p.open(p.file, l)} peek={peek} back={() => peek(x.line, x.end)} />) : undefined }))
     items.vars = d.vars.map((x) => ({ desc: defDesc(p.ix, dkey(x.name), x.doc, order), key: 'v' + x.name + x.line, name: x.name, line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(VAR_KIND[x.scope] ?? [x.scope]), detail: x.type ? <span className="defs-type">{x.type}</span> : null }))
-    items.consts = d.consts.map((x) => ({ desc: order === 'facts' || !x.doc ? null : { kind: 'author', text: x.doc }, key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
+    items.consts = d.consts.map((x) => ({ desc: defDesc(p.ix, dkey(x.name), x.doc, order), key: 'c' + x.name + x.line, name: x.name + (x.params ?? ''), line: x.line, end: x.end, at: x.at, users: x.users, users_n: x.users_n,
       kind: kindText(CONST_KIND[x.kind] ?? [x.kind]), detail: x.value ? <span className="defs-type">= {x.value}</span> : null }))
     items.imports = d.imports.map((x) => ({ key: 'i' + x.line + x.text, name: x.text, line: x.line, at: x.at,
       kind: x.local === undefined ? null : kindText(x.local ? ['專案內的檔案', 'include'] : ['系統或程式庫', 'include']),

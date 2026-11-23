@@ -17,7 +17,6 @@ analyzer; `"backends": {"python": false}` in .codemap/rules.json sends it to
 tree-sitter instead.
 """
 
-import sys
 from pathlib import Path
 
 from .. import schema
@@ -64,7 +63,6 @@ def plan(root, config=None):
 
 def build(root, scope=None, jobs=None, cc=None, config=None):
     """The merged index of every backend that has files to read."""
-    from .. import scope as scope_mod
     root = Path(root).resolve()
     parts = []
     from ..term import ui

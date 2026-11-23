@@ -15,8 +15,6 @@ before it is kept, as for functions: evidence must be where the item lives, `nam
 """
 import datetime
 import hashlib
-import json
-import re
 from pathlib import Path
 
 from . import describe
@@ -70,7 +68,6 @@ def items(root, idx, g, tests=False):
             continue
         out["file:" + f] = dict(level=2, title=f, files=[f], funcs=describe.funcs_in(idx, f))
     for p in g.get("cli") or []:
-        common = None
         for c in p["cmds"] or [None]:
             name = f'{p["prog"]} {c["name"]}' if c else p["prog"]
             run = (c or {}).get("run") or [x for x in (p.get("dispatch"), p.get("main")) if x]
@@ -192,7 +189,6 @@ def problems(root, idx, info, key, entry):
         return out
     if k == "ext":
         info_ = entry.get("info") or {}
-        params = {str(p.get("name", "")) for p in info_.get("params") or [] if isinstance(p, dict)}
         for part, its_ in info_.items() if isinstance(info_, dict) else []:
             if part not in EXT_INFO:
                 out.append(f"info: unknown part {part!r} for an outside function (one of {', '.join(EXT_INFO)})")
@@ -380,7 +376,7 @@ def prompt(root, idx, g, level, keys):
             parts.append(head + "- components:\n" + "".join(f"  - {c[5:]}: {_item_text(have, c)}\n" for c in comps)
                          + ("- commands:\n" + "".join(f"  - {c[4:]}: {_item_text(have, c)}\n" for c in cmds) if cmds else "")
                          + "- functions a route may use (entries and what they call):\n" + "".join(f"  - id {x}: {fn(x)}\n" for x in near[:80])
-                         + (f"- the README begins:\n" + "\n".join("  " + ln for ln in _text(root, readme.relative_to(root)).splitlines()[:30]) + "\n" if readme else ""))
+                         + ("- the README begins:\n" + "\n".join("  " + ln for ln in _text(root, readme.relative_to(root)).splitlines()[:30]) + "\n" if readme else ""))
     if not parts:
         return None
     return (HEAD[level] + HEAD_ALL + "\n".join(parts)).replace("{FORM}", FORM[level])

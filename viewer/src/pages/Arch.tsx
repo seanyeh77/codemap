@@ -1082,10 +1082,10 @@ function writesPart(ix: Index, writes: FileWrite[], none: string, holds: (w: Fil
 }
 
 function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; onBack: () => void; onComp: (id: string) => void }) {
-  const docs = p.ix.g.files ?? {}
   const openFile = useContext(OpenFile)
   const order = useDescOrder()
   const items = useMemo(() => {
+    const docs = p.ix.g.files ?? {}
     const files = [...p.ix.byFile()].filter(([, ids]) => p.ix.funcs[ids[0]].comp === p.comp).sort(([a], [b]) => a.localeCompare(b))
     return files.map(([f, ids]) => ({
       id: 'file:' + f, name: f.split('/').pop()!, path: f, icon: 'file-text' as const,
@@ -1098,7 +1098,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
         id, name: p.ix.funcs[id].name, meta: `${p.ix.funcs[id].file.split('/').pop()}:${p.ix.funcs[id].line} · ${p.ix.callerText(id)}`,
       })),
     }))
-  }, [p.ix, p.comp, docs])
+  }, [p.ix, p.comp])
   const comp = p.ix.g.comps.find((c) => c.id === p.comp)
   const uses = useMemo(() => (comp?.shared ? usesOf(p.ix, p.comp) : null), [p.ix, p.comp, comp])
   const tree = (

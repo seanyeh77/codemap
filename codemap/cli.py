@@ -29,7 +29,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import arch, backends, check, describe, describe_items, docs, term, frameworks, layer1, rules, view
+from . import arch, backends, check, describe, describe_items, docs, term, frameworks, rules, view
 
 INDEX = Path(".codemap") / "index.json"
 CALLISH = ("call", "indirect_candidate", "indirect_saved", "fnptr_assign", "constructor", "destructor")
@@ -502,7 +502,7 @@ def cmd_export(a):
                "not as in the commit it names", "warn")
     print()
     print(term.fit(f"open {out} in a browser: no install, no network" if a.html else
-                   f"open it at https://seanyeh77.github.io/codemap/ (pick the file), or with codemap viewer"))
+                   "open it at https://seanyeh77.github.io/codemap/ (pick the file), or with codemap viewer"))
 
 
 def cmd_viewer(a):

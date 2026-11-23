@@ -100,7 +100,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
 
   const peek = useContext(PeekLine)
   useEffect(() => () => peek(null), [])   // eslint-disable-line react-hooks/exhaustive-deps
-  const empty = useMemo(() => SECTIONS.every((s) => !rows[s].length), [rows])   // eslint-disable-line react-hooks/exhaustive-deps
+  const empty = SECTIONS.every((s) => !rows[s].length)
   return <div className="info fp" ref={box} onPointerEnter={() => setBusy(true)} onPointerLeave={() => setBusy(false)}
     onFocus={() => setBusy(true)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setBusy(false) }}>
     <InfoTitle kind={t('函式')} name={f.name.split('.').pop()!} where={`${f.file}:${f.line}`} />

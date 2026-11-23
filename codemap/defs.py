@@ -2,14 +2,16 @@
 macros, and what it imports and exports. Read with tree-sitter, one file at a time.
 
 of(root, file) -> {types, vars, consts, imports, exports}, each a list of items:
-  types:   {name, kind (struct, union, enum, typedef, class, interface, type, record), line, end, of (a typedef's
-           type), fields: [{name, type, line}]}
-  vars:    {name, scope, type, line}
-  consts:  {name, kind (macro, const, enum), line, value, params (a macro's)}
-  imports: {text, line, file (the repository file it names, when found), names (the names it brings in)}
+  types:   {name, kind (struct, union, enum, typedef, class, interface, type, record), typedef (a struct named the
+           same by its typedef), line, end, of (a typedef's type), doc, fields: [{name, type, line, doc}]}
+  vars:    {name, scope (global, static, extern, module, package, field), type, line, end, doc}
+  consts:  {name, kind (macro, const, enum), line, end, value, params (a macro's), doc}
+  imports: {text, line, path and local (C), module and names (the names it brings in)}
   exports: {name, line}
-run(root, funcs) adds to every item the lines of the file that use its name (at) and the functions that use it (users),
-both found by name: a word match in the function bodies of the file, and of the files that include or import it.
+doc is what the author wrote about it (a comment or a docstring). run(root, funcs, readable) adds to every type,
+variable and constant the lines of the file that use its name (at) and the functions that use it (users, users_n
+past USERS_MAX), and to an import the repository file it names (file) and the lines that use what it brings in (at).
+Uses are found by name: a word match in the function bodies of the file and of the files that include or import it.
 """
 
 import re
@@ -116,17 +118,19 @@ def _c(tree, out):
                                       value=_short(txt(n.child_by_field_name("value")), 40)))
         elif t == "type_definition":
             ty = n.child_by_field_name("type")
+            base = txt(ty)                          # what each name is: typedef struct {...} A, *PA makes PA an A *
             for d in n.children_by_field_name("declarator"):
                 name = _tname(d)
                 if not name:
                     continue
                 if ty is not None and ty.type in ("struct_specifier", "union_specifier", "enum_specifier"):
                     _c_spec(ty, out, typedef=name, line=_line(n), end=_end(n))
-                    ty = None if ty.child_by_field_name("body") is not None else ty     # the body once
+                    if ty.child_by_field_name("body") is not None:
+                        ty, base = None, txt(ty.child_by_field_name("name")) or name     # the body once
                     continue
                 rest = txt(d).replace(name, "", 1).strip()
                 out["types"].append(dict(name=name, kind="typedef", line=_line(n), end=_end(n),
-                                         of=_short((txt(n.child_by_field_name("type")) + " " + rest).strip(), 40), fields=[]))
+                                         of=_short((base + " " + rest).strip(), 40), fields=[]))
         elif t in ("struct_specifier", "union_specifier", "enum_specifier", "class_specifier"):
             if t == "class_specifier":
                 out["types"].append(dict(name=txt(n.child_by_field_name("name")), kind="class", line=_line(n), end=_end(n),
@@ -242,7 +246,7 @@ def _go(tree, out):
                 if s.type == "const_spec":
                     v = s.child_by_field_name("value")
                     for c in s.children_by_field_name("name"):
-                        out["consts"].append(dict(name=txt(c), kind="const", line=_line(s), value=_short(txt(v), 40) if v is not None else None))
+                        out["consts"].append(dict(name=txt(c), kind="const", line=_line(s), end=_end(s), value=_short(txt(v), 40) if v is not None else None))
         elif t == "type_declaration":
             for s in n.named_children:
                 if s.type not in ("type_spec", "type_alias"):
@@ -264,7 +268,7 @@ def _go(tree, out):
             for s in _walk(n, 3):
                 if s.type == "var_spec":
                     for c in s.children_by_field_name("name"):
-                        out["vars"].append(dict(name=txt(c), scope="package", type=txt(s.child_by_field_name("type")), line=_line(s)))
+                        out["vars"].append(dict(name=txt(c), scope="package", type=txt(s.child_by_field_name("type")), line=_line(s), end=_end(s)))
     # an exported name in Go starts with a capital letter
     for k in ("types", "consts", "vars"):
         out["exports"] += [dict(name=x["name"], line=x["line"]) for x in out[k] if x["name"][:1].isupper()]
@@ -311,9 +315,9 @@ def _ts_decl(n, out, exported):
                 continue                                    # a function: listed with the functions
             ty = d.child_by_field_name("type")
             if const and CONST_NAME.match(txt(nm)):
-                out["consts"].append(dict(name=txt(nm), kind="const", line=_line(d), value=_short(txt(v), 40) if v is not None else None))
+                out["consts"].append(dict(name=txt(nm), kind="const", line=_line(d), end=_end(d), value=_short(txt(v), 40) if v is not None else None))
             else:
-                out["vars"].append(dict(name=txt(nm), scope="module", type=_short(txt(ty).lstrip(": "), 40) if ty is not None else "", line=_line(d)))
+                out["vars"].append(dict(name=txt(nm), scope="module", type=_short(txt(ty).lstrip(": "), 40) if ty is not None else "", line=_line(d), end=_end(d)))
     elif t in ("function_declaration", "generator_function_declaration") and exported and name is not None:
         out["exports"].append(dict(name=txt(name), line=_line(n)))
 
@@ -364,11 +368,11 @@ def _java(tree, out):
             if "static" in mods and "final" in mods:
                 for d in n.children_by_field_name("declarator"):
                     v = d.child_by_field_name("value")
-                    out["consts"].append(dict(name=txt(d.child_by_field_name("name")), kind="const", line=_line(n),
+                    out["consts"].append(dict(name=txt(d.child_by_field_name("name")), kind="const", line=_line(n), end=_end(n),
                                               value=_short(txt(v), 40) if v is not None else None))
             elif "static" in mods:
                 for d in n.children_by_field_name("declarator"):
-                    out["vars"].append(dict(name=txt(d.child_by_field_name("name")), scope="field", type=txt(n.child_by_field_name("type")), line=_line(n)))
+                    out["vars"].append(dict(name=txt(d.child_by_field_name("name")), scope="field", type=txt(n.child_by_field_name("type")), line=_line(n), end=_end(n)))
 
 
 # ---- what the author wrote about each one ----------------------------------
@@ -444,7 +448,9 @@ def _docs(tree, root, file, lg, out):
     for k in ("types", "vars", "consts"):
         for x in out[k]:
             d = pydoc.get(x["line"]) or _doc_for(x["line"], x.get("end", x["line"]), alone, after)
-            m = re.search(r"/\*|//", x.get("value") or "") if x.get("kind") == "macro" else None
+            # a comment in a macro's text: /* or // outside its string literals ("http://...")
+            bare = re.sub(r'"(?:\\.|[^"\\])*"', lambda q: " " * len(q.group(0)), x.get("value") or "")
+            m = re.search(r"/\*|//", bare) if x.get("kind") == "macro" else None
             if m:
                 # #define X 16 /* ... */: the comment is part of the macro's text
                 d = d or _clean(x["value"][m.start():])
@@ -486,6 +492,7 @@ def of(root, file):
 
 def _resolve(root, file, imp, files):
     """The repository file an include or import names, or None."""
+    import posixpath
     here = Path(file).parent
     if "path" in imp:                                   # C: "ring.h" next to the file, else any file of that name
         if not imp.get("local"):
@@ -497,8 +504,8 @@ def _resolve(root, file, imp, files):
         return next((f for f in sorted(files) if f.endswith(tail) or f == imp["path"]), None)
     mod = imp.get("module") or ""
     if mod.startswith("."):                             # Python relative or ./x in TypeScript
-        if "/" in mod:
-            base = (here / mod).as_posix()
+        if "/" in mod:                                  # ./x, ../x: from the file's folder
+            base = posixpath.normpath((here / mod).as_posix())
             cands = [base + e for e in (".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.js")] + [base]
         else:
             ups = len(mod) - len(mod.lstrip("."))
@@ -508,7 +515,7 @@ def _resolve(root, file, imp, files):
             rest = mod.lstrip(".").replace(".", "/")
             b = (base / rest).as_posix() if rest else base.as_posix()
             cands = [b + ".py", b + "/__init__.py"]
-        return next((c.lstrip("./") if c.startswith("./") else c for c in cands if (c[2:] if c.startswith("./") else c) in files), None)
+        return next((c for c in cands if c in files), None)
     rel = mod.replace(".", "/")
     return next((f for f in sorted(files) if f == rel + ".py" or f.endswith("/" + rel + ".py") or f == rel + "/__init__.py"), None)
 

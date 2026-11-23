@@ -309,8 +309,8 @@ def diagram(index, config, path):
     chan_x = {ab: PAD + inner + PAD + LANE * i + LANE / 2 for i, ab in enumerate(long_edges)}
     for ab in order:
         a, b = ab
-        ax, ay, aw = boxes[a]
-        bx, by, bw = boxes[b]
+        _, ay, _ = boxes[a]
+        _, by, _ = boxes[b]
         x1, x2 = port(a, ab, outs), port(b, ab, ins)
         y_out = lane_y[("out", ab)]
         if ab not in long_edges:

@@ -253,9 +253,7 @@ def _read_locals(body, lg):
                 out.add(txt(c))
         elif n.type in ("var_spec",) and n.child_by_field_name("name") is not None:
             out.add(txt(n.child_by_field_name("name")))
-        elif lg == "python" and n.type == "assignment" and n.child_by_field_name("left") is not None and n.child_by_field_name("left").type == "identifier":
-            out.add(txt(n.child_by_field_name("left")))
-        elif lg == "python" and n.type == "for_statement" and n.child_by_field_name("left") is not None:
+        elif lg == "python" and n.type == "assignment" and n.child_by_field_name("left") is not None and n.child_by_field_name("left").type == "identifier" or lg == "python" and n.type == "for_statement" and n.child_by_field_name("left") is not None:
             out.add(txt(n.child_by_field_name("left")))
         stack.extend(n.children)
     return out
@@ -533,7 +531,7 @@ def _members(fn, body, lg, sig, mine):
     found = {}
 
     def note(name, node):
-        kind, through, extra = _use(node, lg)
+        kind, _, extra = _use(node, lg)
         ln = node.start_point[0] + 1
         s = found.setdefault(name, {"name": name, "scope": "member", "reads": [], "writes": [], "atomic": False})
         if kind in ("write", "readwrite", "bind"):
