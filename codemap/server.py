@@ -145,7 +145,7 @@ def serve(root, host="127.0.0.1", port=7300, notes=None):
     except OSError:
         free = next((p for p in range(port + 1, port + 50) if _free(host, p)), None)
         raise SystemExit(f"codemap: port {port} is in use (another codemap serve?)"
-                         + (f"; try codemap serve --port {free}" if free else ""))
+                         + (f"; try codemap serve --port {free}" if free else "")) from None
     app = create_app(root, notes, hosts)
     shown = socket.gethostname() if wildcard else bracketed
     print(f"codemap: the map of {Path(root).resolve().name} is at http://{shown}:{port}/")
