@@ -7,7 +7,7 @@ import { aiItem, descriptions, useDescOrder } from '../data/describe'
 import { DescText } from '../components/DescText'
 import { PeekLine } from '../components/DocRefs'
 import { FnPanel, InfoTitle } from './FnPanel'
-import { TRACED } from './Arch'
+import { DescTodo, TRACED } from './Arch'
 
 /** What is open in the workbench: the project, a component, or a place in a file. */
 export type At = { kind: 'proj' } | { kind: 'comp'; id: string } | { kind: 'file'; f: string; l: number } | { kind: 'settings' }
@@ -24,7 +24,7 @@ export function fnAt(ix: Index, f: string, l: number): string | null {
 
 /** The side bar's 說明: what the open thing is and what is worth a note about it, two tabs. Who it calls and who calls
  *  it are the panel's (呼叫流程, 影響範圍), so they are not repeated here. */
-export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: string) => void
+export function Info(p: { ix: Index; at: At; fn: string | null; isLive: boolean; openFn: (id: string) => void
   /** the line the reader picked in the code; null until they pick one */
   line?: number | null }) {
   const { ix, at } = p
@@ -34,8 +34,10 @@ export function Info(p: { ix: Index; at: At; fn: string | null; openFn: (id: str
     const project = aiItem(ix, 'project', order)
     return <div className="info">
       <InfoTitle kind={t('專案')} name={g.repo} code={false} />
-      {project ? <p><DescText d={project} tag full /></p> : <UI.CodeText as="p" className="muted" text={t('尚無說明：於 repo 執行 `codemap describe` 以產生 AI 說明。')} />}
+      {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('尚無說明。')}</p>}
       <p className="small muted">{t('{v1} 個元件、{v2} 個函式', { v1: g.comps.length, v2: Object.keys(ix.funcs).length })}</p>
+      {/* an older graph has no todo: the one line it always had */}
+      {g.todo ? <DescTodo ix={ix} isLive={p.isLive} /> : project ? null : <UI.CodeText as="p" className="small muted" text={t('於 repo 執行 `codemap describe` 以產生 AI 說明。')} />}
     </div>
   }
   if (at.kind === 'comp') {

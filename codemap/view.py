@@ -366,6 +366,8 @@ def build(root, index, config=None):
     from . import describe_items
     if describe.path(root).exists():
         out["described"] = describe_items.described(root, index, out)
+    # what is left for codemap describe to write, and its last round's prompts that wait for an answer or --apply
+    out["todo"] = describe_items.todo(root, index, out)
     return out
 
 

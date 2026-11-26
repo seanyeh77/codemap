@@ -130,20 +130,20 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
 
 /** The map's descriptions: how many functions say what they do, and which AI descriptions the code has moved away from
  *  (stale) or that name places or names the code does not have (wrong). Here because it is about the map, not the code. */
-export function DescHealth(p: { ix: Index; compact?: boolean }) {
+export function DescHealth(p: { ix: Index; isLive: boolean; compact?: boolean }) {
   const openFile = useContext(OpenFile)
   const fs = Object.entries(p.ix.funcs).filter(([, f]) => f.kind !== 'module' && f.scope !== 'test')
   const bad = fs.filter(([, f]) => f.ai && (f.ai.state === 'stale' || f.ai.state === 'wrong'))
   if (!fs.length) return null
-  if (p.compact) return <section className="chk-sec"><h3 className="info-h">{t('函式說明')}</h3>
-    <DescCoverage ix={p.ix} />
+  if (p.compact) return <section className="chk-sec"><h3 className="info-h">{t('AI 說明')}</h3>
+    <DescCoverage ix={p.ix} isLive={p.isLive} />
     {bad.length ? <ul className="level-list">{bad.map(([id, f]) => (
       <li key={id}><UI.InlineCode look="name" href={'#' + id} onClick={(e) => { e.preventDefault(); openFile(f.file, f.line) }}>{f.name}</UI.InlineCode>{' '}
         <span className="small muted">{f.ai!.state === 'stale' ? t('程式碼在說明寫好之後改過') : t('提到的位置或名稱與程式碼不符')}</span></li>))}</ul> : null}
   </section>
   return (
     <UI.Card className="desc-health" title={t('函式說明')}>
-      <DescCoverage ix={p.ix} />
+      <DescCoverage ix={p.ix} isLive={p.isLive} />
       {bad.length ? <>
         <UI.CodeText as="p" className="small" text={t('{v1} 個 AI 說明需要重寫（執行 `codemap describe` 會重寫）：', { v1: bad.length })} />
         <ul className="level-list">{bad.map(([id, f]) => (

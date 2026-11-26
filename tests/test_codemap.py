@@ -711,7 +711,6 @@ def test_defs_read_the_authors_comments(tmp_path):
 
 
 def test_describe_writes_types_and_variables(tmp_path):
-    import json
     from codemap import describe_items
     (tmp_path / "a.c").write_text("typedef struct { int head, tail; } ring_t;\nstatic ring_t r;\n"
                                   "void put(void) {\n    r.head++;\n}\n")
@@ -733,6 +732,30 @@ def test_describe_writes_types_and_variables(tmp_path):
     assert out["def:a.c:ring_t"]["state"] == "ok" and out["def:a.c:ring_t"]["info"]["fields"][0]["name"] == "head"
     (tmp_path / "a.c").write_text("typedef struct { int head, tail, size; } ring_t;\nstatic ring_t r;\nvoid put(void) {\n    r.head++;\n}\n")
     assert describe_items.described(tmp_path, idx, g)["def:a.c:ring_t"]["state"] == "stale"     # its definition changed
+
+
+def test_todo_counts_what_is_left_and_the_prompts_that_wait(tmp_path):
+    from codemap import defs, describe_items
+    (tmp_path / "a.c").write_text("typedef struct { int head, tail; } ring_t;\nstatic ring_t r;\n"
+                                  "void put(void) {\n    r.head++;\n}\n")
+    idx = {"nodes": {"a.c:put": dict(name="put", file="a.c", line=3, end=5, kind="function", lang="c", defined=True)}, "edges": []}
+    g = {"defs": defs.run(tmp_path, {"a.c:put": dict(file="a.c", line=3, end=5, name="put", kind="function")}, ["a.c"])}
+    (tmp_path / ".codemap" / "prompts").mkdir(parents=True)
+    todo = describe_items.todo(tmp_path, idx, g)
+    assert todo["count"] == {"func": 1, "file": 1, "def": 2, "project": 1} and todo["defs"] == {"a.c": ["r", "ring_t"]}
+    assert "prompts" not in todo
+    prompts = tmp_path / ".codemap" / "prompts"
+    (prompts / "prompt-01.md").write_text("### id: def:a.c:r\n### id: def:a.c:ring_t\n")
+    (prompts / "prompt-02.md").write_text("### id: def:a.c:gone\n")           # nothing in it is left to write
+    (prompts / "prompt-03.md").write_text("### id: a.c:put\n")
+    (prompts / "answer-03.json").write_text("{}")
+    assert describe_items.todo(tmp_path, idx, g)["prompts"] == {"waiting": 1, "unapplied": 1}
+    describe_items.apply(tmp_path, idx, g, {"descriptions": [
+        {"id": "def:a.c:ring_t", "zh-TW": "環狀緩衝區", "en": "A ring buffer.", "evidence": ["a.c:1"]},
+        {"id": "def:a.c:r", "zh-TW": "唯一的緩衝區", "en": "The one buffer.", "evidence": ["a.c:2"]}]})
+    g["described"] = describe_items.described(tmp_path, idx, g)
+    todo = describe_items.todo(tmp_path, idx, g)
+    assert "def" not in todo["count"] and todo["defs"] == {} and todo["prompts"] == {"waiting": 0, "unapplied": 1}
 
 
 def test_describe_splits_a_long_types_fields(tmp_path):

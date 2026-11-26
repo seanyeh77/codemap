@@ -429,7 +429,7 @@ function Shell(p: ShellProps) {
   const views: (UI.WorkbenchView & { id: ViewId })[] = [
     { id: 'info', title: t('說明'), render: () => <div className="view">{edge
       ? <EdgeDetail ix={ix} id={edge} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} onBack={() => setEdge('')} />
-      : <Info ix={ix} at={at} fn={fn} openFn={openFn} line={picked && at.kind === 'file' ? at.l : null} />}</div> },
+      : <Info ix={ix} at={at} fn={fn} isLive={isLive} openFn={openFn} line={picked && at.kind === 'file' ? at.l : null} />}</div> },
     { id: 'defs', title: t('定義'), render: () => <div className="view">
       <Defs ix={ix} file={at.kind === 'file' ? at.f : null} line={picked && at.kind === 'file' ? at.l : null} open={openFile} openFn={openFn} /></div> },
     flowView('down', 'callee'),
@@ -445,7 +445,7 @@ function Shell(p: ShellProps) {
         : at.kind === 'file' ? <ScopeChecks ix={ix} title={t('{v1} 的檢查', { v1: at.f.split('/').pop()! })} inside={(_, f) => f === at.f} open={openFile} openFn={openFn} />
         : at.kind === 'comp' ? <ScopeChecks ix={ix} title={t('{v1} 的檢查', { v1: at.id })} inside={(id) => ix.funcs[id]?.comp === at.id} open={openFile} openFn={openFn} /> : null}
       <Check compact ix={ix} isLive={isLive} sourceId={p.sourceId} open={(id, e) => (e ? openFile(e.f, e.l) : openFn(id))} />
-      <DescHealth compact ix={ix} />
+      <DescHealth compact ix={ix} isLive={isLive} />
       {at.kind === 'proj' || at.kind === 'settings' ? <section className="chk-sec chk-worth"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="bare" only={['ov-worth']} compact /></section> : null}
       </div>
     </div> },

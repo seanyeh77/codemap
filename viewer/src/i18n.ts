@@ -10,7 +10,7 @@ export type Lang = 'zh-TW' | 'en'
 let current: Lang = 'zh-TW'
 
 /** English nouns after the number 1 go singular: the dictionary is written for many. */
-const ONE = /\b1 (more )?(functions|callers|callees|calls|files|places|components|times|products|levels|lines|variables|headers|source files|references|source files|translation units|commands|call sites|documents|components|products|places|program entries|background tasks|external entries|network namespaces)\b/g
+const ONE = /\b1 (more )?(functions|callers|callees|calls|files|places|components|times|products|levels|lines|variables|headers|source files|references|source files|translation units|commands|call sites|documents|components|products|places|program entries|background tasks|external entries|network namespaces|definitions|option values|environment variables|data files|outside functions|items)\b/g
 const single = (w: string) => (w === 'places' ? 'place' : w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.replace(/s$/, ''))
 
 /** The text in the current language; {name} placeholders take vars. */

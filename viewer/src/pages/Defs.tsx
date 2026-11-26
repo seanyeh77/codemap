@@ -93,6 +93,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
 
   if (!p.file) return <div className="info fp"><p className="small muted">{t('開啟檔案後，此處列出檔案中的型別、變數、常數與巨集，以及引入與匯出。')}</p></div>
   const fname = p.file.split('/').pop()!
+  const todo = p.ix.g.todo?.defs[p.file]?.length ?? 0     // the file's definitions codemap describe would still write
   if (!d || !total) return <div className="info fp">
     <InfoTitle kind={t('檔案')} name={fname} where={p.file} />
     <p className="small muted">{p.ix.g.defs ? t('此檔案沒有函式以外的定義，也沒有引入其他檔案。') : t('此快照未包含定義：以新版 codemap 重新匯出即可顯示。')}</p>
@@ -104,6 +105,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
     <InfoTitle kind={t('檔案')} name={fname} where={p.file} />
     <p className="fp-status small muted" aria-live="polite">{p.line == null ? t('選取程式碼中的一行，即標示該行定義或用到的項目。')
       : n ? t('第 {v1} 行：{v2} 項相關', { v1: p.line, v2: n }) : t('第 {v1} 行：無相關項目', { v1: p.line })}</p>
+    {todo ? <UI.CodeText as="p" className="small muted" text={t('{v1} 項定義沒有最新的 AI 說明，於 repo 執行 `codemap describe` 補上。', { v1: todo })} /> : null}
     {total > FILTER_FROM ? <UI.SearchField className="defs-filter" label={t('篩選定義')} value={q} onChange={setQ} /> : null}
     {SECTIONS.map(({ k, title }) => {
       const xs = items[k].filter(match)

@@ -10,7 +10,7 @@ import { DescText } from '../components/DescText'
 import { SRC_LABEL, aiFirst, aiItem, usesAi, codeSpans, oneLine as descLine, plain as plainText, stepText, useDescOrder, type Desc } from '../data/describe'
 import type { CliCommand } from '../data/types'
 import { FEW_CHOICES, argText, commonRuns, usage } from '../data/cli'
-import { written, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
+import { written, type TodoKind, type BuildInfo, type Doc, type DocSummary, type Edge, type FileWrite, type Graph, type Link, type Sel } from '../data/types'
 import { CodeAt, LineLink } from './CodeAt'
 
 /** One line per link: a pair of components can have calls and an environment variable at once. */
@@ -392,14 +392,41 @@ function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
 
 /** A file's box: what it is for, whether people may change it, which files it calls and is called by, and its functions. */
 /** How many functions say what they do (an author's comment, an AI's description), and how to have the rest said. */
-export function DescCoverage(p: { ix: Index }) {
+// what codemap describe still has to write, kind by kind, in the order its rounds write them
+const TODO_KINDS: [TodoKind, string][] = [['func', '函式 {v1}'], ['file', '檔案 {v1}'], ['def', '定義 {v1}'], ['cmd', '指令 {v1}'],
+  ['value', '選項值 {v1}'], ['env', '環境變數 {v1}'], ['data', '資料檔 {v1}'], ['ext', '外部函式 {v1}'], ['comp', '元件 {v1}'], ['project', '專案說明']]
+const PROMPTS = '.codemap/prompts'
+
+export function DescCoverage(p: { ix: Index; isLive: boolean }) {
   const fs = Object.values(p.ix.funcs).filter((f) => f.kind !== 'module' && !f.comp.endsWith('(tests)'))
   if (!fs.length) return null
   const doc = fs.filter((f) => f.doc).length
   const ai = fs.filter((f) => f.ai && f.ai.state !== 'wrong').length
   const none = fs.filter((f) => !f.doc && !(f.ai && f.ai.state !== 'wrong')).length
-  return <p className="small muted">{t('{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。', { v1: fs.length, v2: doc, v3: ai })}
-    {none ? <> <UI.CodeText text={t('其餘 {v1} 個可執行 `codemap describe` 由 AI 補上。', { v1: none })} /></> : ''}</p>
+  return <>
+    <p className="small muted">{t('{v1} 個函式中，{v2} 個有註解、{v3} 個有 AI 說明。', { v1: fs.length, v2: doc, v3: ai })}
+      {/* an older graph has no todo: only the functions can be counted */}
+      {!p.ix.g.todo && none ? <> <UI.CodeText text={t('其餘 {v1} 個可執行 `codemap describe` 由 AI 補上。', { v1: none })} /></> : ''}</p>
+    <DescTodo ix={p.ix} isLive={p.isLive} />
+  </>
+}
+
+/** What codemap describe still has to write, kind by kind; with the live map, the last round's prompts that wait for
+ *  an AI's answer or for --apply (a snapshot's reader has no repository to run it in). */
+export function DescTodo(p: { ix: Index; isLive: boolean }) {
+  const todo = p.ix.g.todo
+  if (!todo) return null
+  const left = TODO_KINDS.filter(([k]) => todo.count[k])
+  const total = left.reduce((n, [k]) => n + (todo.count[k] ?? 0), 0)
+  const prompts = p.isLive ? todo.prompts : undefined
+  return <>
+    {total ? <UI.CodeText as="p" className="small muted" text={t('尚有 {v1} 項需要 AI 撰寫或重寫：{v2}。於 repo 執行 `codemap describe` 補上。',
+      { v1: total, v2: left.map(([k, name]) => t(name, { v1: todo.count[k] ?? 0 })).join(t('、')) })} /> : null}
+    {prompts?.waiting ? <UI.CodeText as="p" className="small muted" text={t('上一輪有 {v1} 份 prompt 尚未取得 AI 回答：將 `{v2}` 中的 `prompt-NN.md` 交給 AI，回答存成同一資料夾的 `answer-NN.json`。',
+      { v1: prompts.waiting, v2: PROMPTS })} /> : null}
+    {prompts?.unapplied ? <UI.CodeText as="p" className="small muted" text={t('{v1} 份 AI 回答尚未套用，或套用時有項目未被接受：於 repo 執行 `codemap describe --apply {v2}/answer-*.json`。',
+      { v1: prompts.unapplied, v2: PROMPTS })} /> : null}
+  </>
 }
 
 function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; onComp: (id: string) => void }) {
@@ -899,7 +926,7 @@ export function Overview(p: { ix: Index; isLive: boolean; sourceId: string; onCo
       <UI.Card className="detail fit overview" title={t('概觀')}
         actions={<><UI.SectionGroupToggle /><UI.IconButton icon={copied ? 'check' : 'copy'} label={copied ? t('已複製') : t('複製成 Markdown')} onClick={() => { void copy() }} /></>}>
         <p className="small muted">{t('選取方塊查看函式，選取線查看依據。')}</p>
-        <DescCoverage ix={p.ix} />
+        <DescCoverage ix={p.ix} isLive={p.isLive} />
         <div data-tour="arch"><RepoKey.Provider value={g.repo}><MdLinksCtx.Provider value={links}>
           {shownParts.map((x) => <Part key={x.id} {...x} />)}
         </MdLinksCtx.Provider></RepoKey.Provider></div>

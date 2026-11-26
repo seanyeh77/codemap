@@ -15,6 +15,7 @@ before it is kept, as for functions: evidence must be where the item lives, `nam
 """
 import datetime
 import hashlib
+import re
 from pathlib import Path
 
 from . import describe
@@ -506,6 +507,43 @@ def described(root, idx, g):
         if kind(key) == "term":
             out[key]["term"] = e.get("term")
             out[key]["evidence"] = e.get("evidence", [])
+    return out
+
+
+def todo(root, idx, g):
+    """For the viewer: what `codemap describe` would still write, and the prompts of its last round that wait.
+    count: {kind: n} of the items missing, stale or wrong (a type split into parts counts once), "func" for round 1;
+    defs: {file: [names]} of the definitions among them; prompts: how many prompt files in .codemap/prompts still
+    hold such an item, split into those without an answer file (waiting) and those with one (unapplied: not applied
+    yet, or applied with items not kept)."""
+    funcs = set(describe.pending(root, idx, describe.project_files(idx), only_missing=True))
+    have = describe.load_all(root)["items"]
+    kept = g.get("described") or {}
+    its = all_items(root, idx, g)
+    due = {k for k, v in its.items() if kind(k) != "term"
+           and (k not in have or (kept.get(k) or {}).get("state", state(root, idx, v, k, have[k])) != "ok")}
+    if any((kept.get(k) or {}).get("state") not in (None, "ok") for k in have if kind(k) == "term"):
+        due.add("project")                              # a stale term asks for the project's round again
+    count, defs = {}, {}
+    if funcs:
+        count["func"] = len(funcs)
+    for k in sorted({"project" if kind(x) == "route" else x.split("#", 1)[0] for x in due}):   # the route comes with the project
+        count[kind(k)] = count.get(kind(k), 0) + 1
+        if kind(k) == "def":
+            f, name = k[4:].rsplit(":", 1)
+            defs.setdefault(f, []).append(name)
+    waiting = unapplied = 0
+    folder = Path(root) / ".codemap" / "prompts"
+    for pr in sorted(folder.glob("prompt-*.md")) if folder.is_dir() else []:
+        ids = set(re.findall(r"^### id: (.+?)\s*$", pr.read_text(encoding="utf-8", errors="replace"), re.M))
+        if ids & (funcs | due):
+            if (folder / pr.name.replace("prompt-", "answer-").replace(".md", ".json")).exists():
+                unapplied += 1
+            else:
+                waiting += 1
+    out = dict(count=count, defs=defs)
+    if waiting or unapplied:
+        out["prompts"] = dict(waiting=waiting, unapplied=unapplied)
     return out
 
 

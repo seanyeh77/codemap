@@ -211,6 +211,8 @@ export interface Stats {
   limits?: Record<string, { messages: number; placeholders: string[]; incomplete: number }>
 }
 
+export type TodoKind = 'func' | 'file' | 'def' | 'cmd' | 'value' | 'env' | 'data' | 'ext' | 'comp' | 'project'
+
 export interface Graph {
   format: 'codemap-snapshot'
   version: number
@@ -252,6 +254,10 @@ export interface Graph {
   /** AI descriptions beyond functions, by key: file:PATH, comp:ID, cmd:PROG CMD, value:PROG CMD ARG=V, env:NAME,
    *  data:NAME, project, route (with its steps), term:WORD (with the word and where it appears). Older graphs lack it. */
   described?: Record<string, Described>
+  /** What codemap describe would still write: how many of each kind (func for the functions) are missing, stale or
+   *  wrong, the definitions among them by file, and the last round's prompts that wait for an answer (waiting) or
+   *  for --apply (unapplied). Older graphs lack it. */
+  todo?: { count: Partial<Record<TodoKind, number>>; defs: Record<string, string[]>; prompts?: { waiting: number; unapplied: number } }
   /** argparse programs: how to start each, its commands (python3 harness/lab3.py status --json) and the
    *  functions each command runs. Older graphs lack it. */
   cli?: CliProgram[]
