@@ -1,19 +1,6 @@
-import { useRef } from 'react'
 import { UI } from '../ui'
 import { t } from '../i18n'
 import { install, useInstall } from '../pwa'
-
-/** A hidden file input that the 「開啟快照」 buttons open. */
-export function useFilePicker(onFile: (f: File) => void) {
-  const ref = useRef<HTMLInputElement>(null)
-  return {
-    open: () => ref.current?.click(),
-    // FileUpload is a drop area; it has no way yet to open the file chooser from a button or a menu item
-    // eslint-disable-next-line ui/no-native-controls
-    input: <input ref={ref} type="file" accept=".codemap,application/gzip,application/json" hidden
-      onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />,
-  }
-}
 
 /** Install codemap as an app (the GitHub Pages build only): the browser's prompt, or how to do it in Safari. */
 export function InstallApp() {

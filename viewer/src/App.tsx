@@ -25,7 +25,7 @@ import { EditorButton } from './pages/CodeAt'
 import { Relations } from './pages/Relations'
 import { Explorer, flagged } from './pages/Explorer'
 import { TermsCtx, termDefs, termsOf } from './components/Terms'
-import { OpenSnapshot, useFilePicker } from './pages/OpenSnapshot'
+import { OpenSnapshot } from './pages/OpenSnapshot'
 import { onLaunchFile } from './pwa'
 
 type View = 'overview' | 'arch' | 'flow' | 'impact' | 'check' | 'settings'
@@ -83,7 +83,8 @@ export function App() {
       setOpenError(String((e as Error).message || e))
     }
   }
-  const picker = useFilePicker(open)
+  // 「開啟快照」 in settings opens the browser's file picker (picker.open is called straight from the click)
+  const picker = UI.useFilePicker({ accept: '.codemap,application/gzip,application/json', onPick: (fs) => { if (fs[0]) void open(fs[0]) } })
   // a .codemap file the system opened with the installed app
   useEffect(() => onLaunchFile((f) => { void open(f) }), [])
 
@@ -101,7 +102,6 @@ export function App() {
         sources={[...(meta ? [{ id: 'live', label: meta.repo, detail: t('{v1} 即時', { v1: meta.host }) }] : []),
           ...all.map((s) => ({ id: s.id, label: s.graph.repo, detail: t('快照 ') + (s.graph.commit ?? s.name ?? t('此頁面')) }))]}
         sourceId={sourceId!} setSource={setCurrent} snapName={snap?.name ?? null} openSnapshot={picker.open} openError={openError} />
-      {picker.input}
     </>
   )
 }
@@ -194,9 +194,6 @@ function Shell(p: ShellProps) {
     setPin(null)
     setAt(a)
   }
-  // Workbench reports its layout after every render as a new object; keeping the old one while nothing in it
-  // changed stops App from rendering again for it (with a new views array, it would report again: a loop)
-  const keepLayout = useCallback((l: UI.WorkbenchLayout) => setLayout((o) => (o && JSON.stringify(o) === JSON.stringify(l) ? o : l)), [])
   /** Shows a view wherever the reader has put it, opening its area. */
   const show = (v: ViewId) => wb.current?.show(v)
   // a click in the code turns its area to the view about what was clicked: 說明 inside a function, 定義 on a line that
@@ -497,7 +494,7 @@ function Shell(p: ShellProps) {
 
   return (
     <OpenFile.Provider value={openFile}><PeekLine.Provider value={setPeekLine}><OpenFunc.Provider value={openFn}><OpenCall.Provider value={(id) => (fn && ix.funcs[id] && id !== fn ? fromPanel(id, placeOf(id)) : openFn(id))}><TermsCtx.Provider value={termsCtx}>
-    <UI.Workbench ref={wb} storageKey="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={keepLayout}
+    <UI.Workbench ref={wb} storageKey="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
       crumbs={crumbs}
       mainBar={isFile ? <>{isMd ? <UI.SegmentedControl label={t('顯示方式')} iconOnly value={mdShown}
