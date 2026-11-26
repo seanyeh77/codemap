@@ -95,8 +95,8 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
             // a method under its class in this file: the class once, its methods indented by their own name
             const dot = f.name.lastIndexOf('.')
             const under = dot > 0 && names.has(f.name.slice(0, dot))
-            return <li key={id}><button type="button" className={'reader-toc-item mono' + (under ? ' is-member' : '') + (id === inFn ? ' is-on' : '')}
-              aria-current={id === inFn ? 'location' : undefined} title={f.name} onClick={() => open(p.at.f, f.line)}>{under ? f.name.slice(dot + 1) : f.name}</button></li>
+            return <li key={id}><UI.InlineCode look="name" className={'reader-toc-item' + (under ? ' is-member' : '') + (id === inFn ? ' is-on' : '')}
+              onClick={() => open(p.at.f, f.line)}>{under ? f.name.slice(dot + 1) : f.name}</UI.InlineCode></li>
           })}
         </ul> : <p className="small muted">{t('此檔案無函式。')}</p>}
       </nav> : <div className="reader-rail-closed"><UI.IconButton icon="list" label={t('打開函式清單')} onClick={toggleRail} /></div>}
@@ -105,7 +105,7 @@ export function FileReader(p: { ix: Index; at: { f: string; l: number }; isLive:
           : src.isPending ? <UI.Skeleton width="80%" height={16} />
           : src.error || !src.data ? <UI.Alert tone="danger" title={t('無法讀取檔案')}>{src.error ? (src.error as Error).message : t('此檔案不在索引中。')}</UI.Alert>
           : <>{md && !p.mdMode ? <UI.SegmentedControl label={t('顯示方式')} value={shown} onChange={setMode}
-            items={[{ id: 'preview', label: t('預覽'), icon: 'eye' }, { id: 'source', label: t('原始碼'), icon: 'file-code' }]} /> : null}
+            options={[{ value: 'preview', label: t('預覽'), icon: 'eye' }, { value: 'source', label: t('原始碼'), icon: 'file-code' }]} /> : null}
             {shown === 'preview' ? <div className="md-preview"><UI.Markdown {...refs} linkHref={(h) => (local(h) ? '#' + local(h) : h)}
               onLink={(h) => { const f = local(h); if (f) open(f, 1); else window.open(h, '_blank', 'noopener') }}>{src.data.lines.join('\n')}</UI.Markdown></div>
               : <UI.CodeView {...refs} {...calls} ref={view}
@@ -244,12 +244,12 @@ export function Notes(p: { ix: Index; f: string; id?: string; why?: string; extr
   if (p.flat) return items.length ? <section className="info-notes" aria-label={t('值得注意')}>
     <h3 className="info-h">{t('值得注意')}</h3>
     <ul className="level-notes">{items}</ul>
-    {found.length ? <a className="link small" href="#check">{t('於檢查查看細節')}</a> : null}
+    {found.length ? <UI.Link className="link small" href="#check">{t('於檢查查看細節')}</UI.Link> : null}
     {p.why ? <UI.CodeText as="p" className="small muted" text={p.why} /> : null}
   </section> : null
   return <Q title={t('值得注意')}>
     {items.length ? <ul className="level-notes">{items}</ul> : <p className="small muted">{t('未發現。')}</p>}
-    {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
+    {found.length ? <UI.Link className="link small" href="#check">{t('到檢查筆記看細節')}</UI.Link> : null}
     {p.why ? <UI.CodeText as="p" className="small muted" text={p.why} /> : null}
   </Q>
 }

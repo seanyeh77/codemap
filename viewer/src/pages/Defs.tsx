@@ -118,10 +118,11 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
           // the whole block opens and closes its fields, except on what does something of its own, or after selecting text
           onClick={x.fold ? (e) => { if (!(e.target as HTMLElement).closest('a, button, input') && !String(window.getSelection() ?? '')) x.fold!.toggle() } : undefined}>
           <div className="defs-head">
-            {k === 'types' ? (x.fold ? <button type="button" className="defs-arrow" aria-expanded={x.fold.open} aria-controls={x.fold.id}
-              aria-label={x.fold.label} onClick={x.fold.toggle}><UI.Icon name="caret-right" /></button> : <span className="defs-arrow" aria-hidden="true" />) : null}
-            <button type="button" className="defs-name" onClick={() => p.open(p.file!, x.line)}>{x.name}</button>
-            <span className="small muted">{x.kind ? <>{x.kind}{t(' · ')}</> : null}{t('第 {v1} 行', { v1: x.line })}</span>
+            {k === 'types' ? (x.fold ? <UI.IconButton variant="quiet" className="defs-arrow" icon="caret-right" label={x.fold.label} tooltip={false}
+              aria-expanded={x.fold.open} aria-controls={x.fold.id} onClick={x.fold.toggle} /> : <span className="defs-arrow" aria-hidden="true" />) : null}
+            {/* the name is the item's title; its line, a place, is the link to it */}
+            <span className="defs-name">{x.name}</span>
+            <span className="small muted">{x.kind ? <>{x.kind}{t(' · ')}</> : null}<UI.InlineCode look="location" onClick={() => p.open(p.file!, x.line)}>{t('第 {v1} 行', { v1: x.line })}</UI.InlineCode></span>
           </div>
           <div className="defs-rest">
           {x.desc ? <div className="defs-desc"><DescText d={x.desc} tag /></div> : null}
@@ -132,7 +133,7 @@ export function Defs(p: { ix: Index; file: string | null; line: number | null; o
           {x.fold?.open ? <div id={x.fold.id}>{x.fold.list}</div> : null}
           </div>
         </li>)}</ul>
-        {long ? <button type="button" className="linklike small" onClick={() => setAll({ ...all, [k]: true })}>{t('顯示其餘 {v1} 項', { v1: xs.length - shown.length })}</button> : null}
+        {long ? <UI.Button variant="quiet" onClick={() => setAll({ ...all, [k]: true })}>{t('顯示其餘 {v1} 項', { v1: xs.length - shown.length })}</UI.Button> : null}
       </section>
     })}
     {q && !SECTIONS.some(({ k }) => items[k].some(match)) ? <p className="small muted">{t('沒有名稱包含「{v1}」的定義。', { v1: q })}</p> : null}
@@ -150,7 +151,7 @@ function Fields(p: { fields: { name: string; type: string; line: number; doc?: s
     const d = p.desc(f)
     return <li key={f.name + f.line} onPointerEnter={(e) => { e.stopPropagation(); p.peek(f.line) }} onPointerLeave={p.back}>
       <span className="defs-field-row">
-        <button type="button" className="defs-field mono" onClick={() => p.go(f.line)}>{f.name}</button>
+        <UI.InlineCode look="location" className="defs-field" onClick={() => p.go(f.line)}>{f.name}</UI.InlineCode>
         {f.type ? <span className="defs-type small">{f.type}</span> : null}
       </span>
       {d ? <span className="defs-field-desc small"><DescText d={d} tag /></span> : null}</li>

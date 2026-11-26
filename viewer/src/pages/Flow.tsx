@@ -175,7 +175,7 @@ export function Flow(p: FlowProps) {
             <>
               <div><b>{p.ix.nameOf(cur.fid, cur.edge)}</b>{(p.dir === 'down' ? t(' 呼叫的函式共 {v1} 個（下一層）。先寫下預測，再揭曉。', { v1: cur.names.length }) : t(' 的 caller 共 {v1} 個（上一層）。先寫下預測，再揭曉。', { v1: cur.names.length }))}</div>
               <UI.TextField label={t('預測')} hint={t('函式名稱，以空白分隔')} value={guesses[selKey] ?? ''}
-                onChange={(e) => setGuesses({ ...guesses, [selKey]: e.target.value })}
+                onChange={(v) => setGuesses({ ...guesses, [selKey]: v })}
                 onKeyDown={(e) => { if (e.key === 'Enter') reveal() }} />
               <UI.ActionBar actions={[{ label: t('揭曉'), primary: true, onClick: reveal }]} />
             </>
@@ -191,12 +191,14 @@ export function Flow(p: FlowProps) {
       {items.length ? <div id="flow-tree">
         <UI.TreeList key={`${p.predict}${p.showExt}${openKeys.length}`} kind="plain" label={t('呼叫流程')}
           items={items} defaultOpen={[...openKeys, ...tree.stageIds]} loadChildren={(n) => (p.predict && !revealed[n.id] ? [] : tree.children(n.id))}
-          selectedId={selKey} onSelect={(n) => { const c = tree.index[n.id]; if (c) p.onSel(c.fid, c.edge, n.id) }} />
+          value={selKey} onChange={(id) => { const c = tree.index[id]; if (c) p.onSel(c.fid, c.edge, id) }} />
       </div> : null}
       {p.dir === 'down' && !items.length ? <p className="small">{t('此函式未呼叫 repo 內的函式。')}</p> : null}
-      {extNames.length ? <p className="small muted">{p.showExt
-        ? <button type="button" className="linklike" onClick={() => p.setShowExt(false)}>{t('隱藏 {n} 個 repo 外的函式', { n: extNames.length })}</button>
-        : <>{t('另有 {n} 個 repo 外的函式，例如 {v1}。', { n: extNames.length, v1: extNames.slice(0, 3).join(t('、')) })}<button type="button" className="linklike" onClick={() => p.setShowExt(true)}>{t('顯示')}</button></>}</p> : null}
+      {/* a button stands after the sentence, not inside it */}
+      {extNames.length ? <div className="act-after">{p.showExt
+        ? <UI.Button variant="quiet" onClick={() => p.setShowExt(false)}>{t('隱藏 {n} 個 repo 外的函式', { n: extNames.length })}</UI.Button>
+        : <><p className="small muted">{t('另有 {n} 個 repo 外的函式，例如 {v1}。', { n: extNames.length, v1: extNames.slice(0, 3).join(t('、')) })}</p>
+          <UI.Button variant="quiet" onClick={() => p.setShowExt(true)}>{t('顯示 {n} 個 repo 外的函式', { n: extNames.length })}</UI.Button></>}</div> : null}
       {p.dir === 'up' && !tree.index.root?.kids.length ? (
         <p className="small">{p.ix.funcs[p.start]?.api
           ? t('找不到 caller：此為外部進入點，呼叫者是呼叫 {v1} 同名函式的程式，不在 repo 內。', { v1: p.ix.funcs[p.start].api })

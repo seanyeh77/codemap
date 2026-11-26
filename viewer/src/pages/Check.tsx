@@ -54,8 +54,8 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       <UI.Card className="pane" data-tour="notes">
         <UI.EmptyState title={t('無可檢查的筆記')}
           description={t('檢查 Markdown 中的 file:line 引用與呼叫關係。')}
-          steps={p.isLive ? [t('執行 codemap arch 產生 CODEMAP.md，或以 codemap serve --notes 指定筆記'), t('重新整理此頁')]
-            : [t('以 codemap export --notes 指定筆記，重新匯出快照')]} />
+          steps={p.isLive ? [t('執行 `codemap arch` 產生 `CODEMAP.md`，或以 `codemap serve --notes` 指定筆記'), t('重新整理此頁')]
+            : [t('以 `codemap export --notes` 指定筆記，重新匯出快照')]} />
       </UI.Card>
     )
   }
@@ -74,8 +74,8 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
     <div className="chk-head"><h3 className="info-h">{t('筆記')} <UI.InlineCode>{cur.file}</UI.InlineCode></h3><span className="grow" />
       {p.isLive ? <UI.IconButton variant="quiet" icon="arrows-clockwise" label={q.isFetching ? t('檢查中') : t('重新檢查')} disabled={q.isFetching}
         onClick={() => { asked.current = true; q.refetch() }} /> : null}</div>
-    <p className="small muted">{p.isLive && q.dataUpdatedAt ? t('{v1} 檢查', { v1: dateTime(new Date(q.dataUpdatedAt)) }) + t('・') : t('匯出時的結果・')}
-      <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟全文')}</button></p>
+    <div className="act-after"><p className="small muted">{p.isLive && q.dataUpdatedAt ? t('{v1} 檢查', { v1: dateTime(new Date(q.dataUpdatedAt)) }) : t('匯出時的結果')}</p>
+      <UI.Button variant="quiet" onClick={() => openFile(cur.file, 1)}>{t('開啟全文')}</UI.Button></div>
   </> : null
   return (
     <div className={p.compact ? 'chk-sec' : 'pane'}>
@@ -85,9 +85,9 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
         actions={p.isLive ? <UI.Button variant="primary" loading={q.isFetching} onClick={() => { asked.current = true; q.refetch() }}>{q.isFetching ? t('檢查中') : t('重新檢查')}</UI.Button> : undefined}>
         {/* one line of where things stand; what each result means is behind 「結果的意思」 */}
         <p className="small muted">{p.isLive && q.dataUpdatedAt ? t('檢查時間：{v1}。', { v1: dateTime(new Date(q.dataUpdatedAt)) }) + ' ' : ''}
-          {t('共 {v1} 項：{v2} 項錯誤、{v3} 項待確認。', { v1: rows.length, v2: issues.filter((r) => r.status === 'fail').length, v3: issues.filter((r) => r.status === 'review').length })}{' '}
-          <button type="button" className="linklike" aria-expanded={explain} onClick={() => setExplain(!explain)}>{t('結果的意思')}</button>{' · '}
-          <button type="button" className="linklike" onClick={() => openFile(cur.file, 1)}>{t('開啟 {v1} 全文', { v1: cur.file })}</button></p>
+          {t('共 {v1} 項：{v2} 項錯誤、{v3} 項待確認。', { v1: rows.length, v2: issues.filter((r) => r.status === 'fail').length, v3: issues.filter((r) => r.status === 'review').length })}</p>
+        <div className="act-after"><UI.Button variant="quiet" aria-expanded={explain} onClick={() => setExplain(!explain)}>{t('結果的意思')}</UI.Button>
+          <UI.Button variant="quiet" onClick={() => openFile(cur.file, 1)}>{t('開啟 {v1} 全文', { v1: cur.file })}</UI.Button></div>
         {explain ? <div className="check-explain">
         <p className="small muted">{t('共 {v1} 項：{v2} 個 file:line 引用、{v3} 個呼叫。', { v1: rows.length, v2: cur.refs, v3: cur.claims })}</p>
         {p.isLive && q.dataUpdatedAt ? <p className="small muted">{t('檢查時間：{v1}，{v2} 項錯誤、{v3} 項待確認。', { v1: dateTime(new Date(q.dataUpdatedAt)), v2: rows.filter((r) => r.status === 'fail').length, v3: rows.filter((r) => r.status === 'review').length })
@@ -103,7 +103,7 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       {shown.length ? <UI.DataTable resetKey={`${p.sourceId}:${cur.file}`} label={t('檢查結果')} urlSync={false} search={false} columnMenu={false}
         summary={{ key: 'result', items: ['fail', 'review', 'calls', 'syntax', 'names', 'exists', 'done'].filter((v) => shown.some((r) => r.result === v)).map((v) => ({ value: v, label: t(LABEL[v]) })), unit: countUnit('項', 'item', 'items') }}
         columns={[
-          { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <button type="button" className="linklike code-link" aria-label={t('在檔案中開啟 {v1}', { v1: r.at })} onClick={() => openFile(r.at.slice(0, r.at.lastIndexOf(':')), r.line)}><UI.InlineCode>{r.at}</UI.InlineCode></button> },
+          { key: 'at', label: t('位置'), width: 180, grow: 0.5, mobile: 'title', sortValue: (r: CheckItem) => r.line, render: (r: CheckItem) => <UI.InlineCode look="location" onClick={() => openFile(r.at.slice(0, r.at.lastIndexOf(':')), r.line)}>{r.at}</UI.InlineCode> },
           { key: 'text', label: t('筆記內容'), width: 260, grow: 2, long: true, searchText: (r: CheckItem) => r.text, render: (r: CheckItem) => code(r.text) },
           { key: 'result', label: t('結果'), width: 120, grow: 0.5, mobile: 'status', render: (r: CheckItem) => <UI.Badge status={r.status}>{t(LABEL[result(r)])}</UI.Badge> },
           { key: 'why', label: t('說明'), width: 280, grow: 3, long: true, searchText: (r: CheckItem) => whyText(r), render: (r: CheckItem) => code(whyText(r)) },
@@ -112,8 +112,8 @@ export function Check(p: { ix: Index; isLive: boolean; sourceId: string; open: (
       {/* only what needs a look is listed; the rest is one line, and all of it a click away */}
       {issues.length < rows.length ? <p className="check-rest small">
         <span className="check-ok-dot" aria-hidden="true" />
-        {issues.length ? t('其餘 {v1} 項沒問題。', { v1: rows.length - issues.length }) : t('{v1} 項都沒問題。', { v1: rows.length })}{' '}
-        <button type="button" className="linklike" aria-expanded={all} onClick={() => setAll(!all)}>{all ? t('只列有問題的') : t('顯示全部')}</button></p> : null}
+        {issues.length ? t('其餘 {v1} 項沒問題。', { v1: rows.length - issues.length }) : t('{v1} 項都沒問題。', { v1: rows.length })}
+        <UI.Button variant="quiet" aria-expanded={all} onClick={() => setAll(!all)}>{all ? t('只列有問題的') : t('顯示全部')}</UI.Button></p> : null}
       {fixes.length ? (
         <UI.Card className="fixes" title={((a, b) => a && b ? t('修正建議（{v1} 個：{v2} 項{v4}、{v3} 項待確認）', { v1: fixes.length, v2: a, v3: b, v4: countUnit('錯誤', 'error', 'errors')(a) }) : t('修正建議（{v1} 個）', { v1: fixes.length }))(
           fixes.filter((r) => r.status === 'fail').length, fixes.filter((r) => r.status === 'review').length)}>

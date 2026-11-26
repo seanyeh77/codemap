@@ -8,6 +8,8 @@ export function useFilePicker(onFile: (f: File) => void) {
   const ref = useRef<HTMLInputElement>(null)
   return {
     open: () => ref.current?.click(),
+    // FileUpload is a drop area; it has no way yet to open the file chooser from a button or a menu item
+    // eslint-disable-next-line ui/no-native-controls
     input: <input ref={ref} type="file" accept=".codemap,application/gzip,application/json" hidden
       onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />,
   }
@@ -30,7 +32,7 @@ export function OpenSnapshot(p: { onOpen: (f: File) => void; error: string | nul
     <div className="open-wrap">
       <UI.Card className="open-card">
         <UI.EmptyState title={t('開啟 codemap 快照')}
-          steps={[t('在 build 環境執行 codemap export'), t('下載產生的 .codemap 檔'), t('在下方選擇檔案')]} />
+          steps={[t('在 build 環境執行 `codemap export`'), t('下載產生的 `.codemap` 檔'), t('在下方選擇檔案')]} />
         <UI.FileUpload label={t('快照檔')} accept=".codemap" limitText={t('.codemap 檔')}
           onAdd={(fs) => fs[0] && p.onOpen(fs[0])} />
         {p.error ? <UI.Alert tone="danger" title={t('無法開啟此檔案')}>{p.error}</UI.Alert> : null}

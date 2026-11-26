@@ -130,11 +130,11 @@ export function Detail(p: Props) {
     </>}>
       {/* the panel is read first after a search; from here the tree is many Tab stops away */}
       {/* not for a start with nothing under it: the tree is that one row, and the jump showed nothing */}
-      {p.view === 'flow' && !(here && !p.ix.callees(p.sel.id, true).length && !p.ix.callers(p.sel.id).length) ? <p className="small"><button type="button" className="linklike" onClick={() => {
+      {p.view === 'flow' && !(here && !p.ix.callees(p.sel.id, true).length && !p.ix.callers(p.sel.id).length) ? <p className="small"><UI.Button variant="quiet" onClick={() => {
         const el = document.querySelector<HTMLElement>('#flow-tree [role=treeitem][aria-selected=true], #flow-tree [role=treeitem]')
         el?.scrollIntoView({ block: 'nearest' })
         el?.focus({ focusVisible: true } as FocusOptions)
-      }}>{t('跳到呼叫流程樹')}</button></p> : null}
+      }}>{t('跳到呼叫流程樹')}</UI.Button></p> : null}
       {/* what it does: every kind there is, in the reader's order, each marked with where it comes from */}
       {/* only what its author or an AI wrote; who calls it and what it calls are the rows below, by name. With
           neither, its signature says what goes in and comes out, in the code's own words */}
@@ -189,7 +189,7 @@ export function Detail(p: Props) {
               {extNames.length > 10 ? <span className="entry-row muted">{t('另有 {v1} 個', { v1: extNames.length - 10 })}</span> : null}</span> : null}</span> },
         ...(fromEntry && fromEntry.length > 1 && !(chain && chain[0].id === fromEntry[0].id) ? [{ label: t('從進入點至此'), value: <span className="entry-list">
           <span className="entry-row muted">{t('{v1}：repo 內無呼叫者的進入點。以下為從該處至此的最短呼叫鏈。', { v1: p.ix.funcs[fromEntry[0].id].name })}</span>
-          <span className="entry-row"><button type="button" className="linklike" onClick={() => p.goChain(fromEntry.map((c) => c.id))}>{t('在流程樹展開這條呼叫鏈')}</button></span>
+          <span className="entry-row"><UI.Button variant="quiet" onClick={() => p.goChain(fromEntry.map((c) => c.id))}>{t('在流程樹展開這條呼叫鏈')}</UI.Button></span>
           {fromEntry.map((c, i) => (
           <span key={i} className="entry-row">{i ? '→ ' : ''}<FnLink id={c.id} go={p.goFlow}>{p.ix.funcs[c.id]?.name ?? c.id}</FnLink>{c.e ? <>{' '}{link(c.e.f, c.e.l)}{c.e.k === 'ref' ? <span className="muted">{t('（當作值傳出）')}</span> : null}</> : null}</span>))}</span> }] : []),
         // how the flow's start reaches this function: one chain of calls, each with its line

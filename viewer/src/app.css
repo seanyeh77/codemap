@@ -144,10 +144,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .reader-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
 .reader-label { margin: 0; font-size: 13px; color: var(--ink-muted); }
 .reader-toc ul { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: 2px; }
-.reader-toc-item { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 4px var(--space-2); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-.reader-toc-item:hover { background: var(--surface-sub); }
-.reader-toc-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.reader-toc-item.is-on { background: var(--accent-soft); color: var(--accent-text); }
+.reader-toc-item { display: block; padding: 4px var(--space-2); border-radius: var(--radius-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-toc-item.is-on { background: var(--accent-soft); }
 .reader-toc-item.is-member { padding-left: var(--space-5); }
 .reader-code { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--space-3); overflow: hidden; }
 .reader-code > .ui-cv { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -219,10 +217,8 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 .reader-stage.is-bare { display: flex; }          /* no function list beside it: the code takes the whole stage */
 .reader-stage.is-bare > .reader-code { flex: 1; }
 .ui-wb-brand .brand-mark { flex-basis: 20px; width: 20px; height: 20px; border-radius: 5px; }
-.ex-foot { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 6px var(--space-2); border-radius: var(--radius-sm); font-size: 14px; color: var(--ink-muted); }
-.ex-foot:hover { background: var(--surface-sub); color: var(--ink); }
+.ex-foot { width: 100%; justify-content: flex-start; }
 .ex-foot.is-on { background: var(--accent-soft); color: var(--accent-text); }
-.ex-foot:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); }
 .ex, .ex-tree { height: 100%; min-height: 0; }
 /* views in the side bar and the panel: their cards sit flat in the region, which scrolls */
 .view { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
@@ -324,20 +320,17 @@ a.link { color: var(--accent-text); text-decoration: underline; }
 /* the 定義 view: like the parameters in 說明, the name is the strongest text, its type and value gray; only links
    to elsewhere (the functions that use it) are in the accent color */
 .defs-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
-.defs-name { all: unset; cursor: pointer; font-family: var(--font-mono); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
-.defs-name:hover { text-decoration: underline; }
-.defs-name:focus-visible, .defs-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 2px; }
+.defs-name { font-family: var(--font-mono); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .defs-type { font-family: var(--font-mono); color: var(--ink-muted); overflow-wrap: anywhere; }
 .defs-filter { margin-top: var(--space-3); }
-.defs-field-list { list-style: none; margin: var(--space-1) 0 0 7px; padding: 0 0 0 var(--space-3); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.defs-field-list { list-style: none; margin: var(--space-1) 0 0 0; padding: 0 0 0 var(--space-3); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
 /* types: a tree arrow left of the name, as in the explorer; the whole block opens and closes the fields */
 .defs-tree .defs-head { flex-wrap: nowrap; gap: 4px var(--space-2); }
 .defs-tree .defs-head > .small { min-width: 0; }
-.defs-tree .defs-rest { padding-left: 20px; }
-.defs-arrow { all: unset; flex: none; width: 16px; height: 20px; display: inline-flex; align-items: center; justify-content: center; align-self: center; color: var(--ink-muted); }
-button.defs-arrow { cursor: pointer; }
-button.defs-arrow:hover { color: var(--ink); }
-button.defs-arrow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 2px; }
+.defs-tree .defs-rest { padding-left: 40px; }
+/* the arrow is an IconButton; a type without fields keeps the same room so the names line up */
+span.defs-arrow { flex: none; width: 32px; }
+.defs-arrow { flex: none; align-self: center; }
 .defs-arrow svg { width: 12px; height: 12px; transition: transform 150ms; }
 .defs-arrow[aria-expanded="true"] svg { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .defs-arrow svg { transition: none; } }
@@ -346,6 +339,9 @@ button.defs-arrow:focus-visible { outline: 2px solid var(--focus-ring); outline-
 .defs-field-row { display: flex; gap: var(--space-2); align-items: baseline; }
 .defs-field-desc { color: var(--ink); padding-bottom: 2px; }
 .defs-desc { font-size: 14px; line-height: 22px; }
-.defs-field { all: unset; cursor: pointer; font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
-.defs-field:hover { text-decoration: underline; }
 .defs .fp-sec > .linklike { align-self: flex-start; }
+
+/* a quiet button that follows a sentence: on its own line under it, its text lined up with the sentence's */
+.act-after { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); }
+.act-after > p { flex-basis: 100%; margin: 0; }
+.act-after > .ui-btn:first-of-type, .act-after > p + .ui-btn { margin-left: calc(-1 * var(--space-3)); }

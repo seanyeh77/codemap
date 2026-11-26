@@ -138,7 +138,7 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
   const tests = p.ix.g.hidden_callers?.[p.id] ?? 0
   const KIND: Record<string, string> = { trap: t('語言陷阱'), desc: t('說明與程式碼不一致') }
   const found = worthIn(p.ix.g, p.id)
-  const at = (l?: number) => (l ? <>{' · '}<button type="button" className="linklike" onClick={() => p.open(f.file, l)}>{t('第 {v1} 行', { v1: l })}</button></> : null)
+  const at = (l?: number) => (l ? <>{' · '}<UI.InlineCode look="location" onClick={() => p.open(f.file, l)}>{t('第 {v1} 行', { v1: l })}</UI.InlineCode></> : null)
   return <section className="chk-sec">
     <h3 className="info-h">{t('{v1} 的檢查', { v1: f.name.split('.').pop()! })}</h3>
     {found.length || f.ai?.state === 'stale' ? <ul className="fp-rows">
@@ -146,7 +146,7 @@ export function FnChecks(p: { ix: Index; id: string; open: (f: string, l: number
       {f.ai?.state === 'stale' ? <li className="fp-it"><span className="small muted">{t('說明')}</span><UI.CodeText as="div" text={t('說明撰寫後函式已修改，內容可能過時；執行 `codemap describe` 以重新撰寫。')} /></li> : null}
     </ul> : null}
     {checks.length ? <ul className="fp-rows">{checks.map((c, i) => <li key={i} className="fp-it">
-      <span className="small muted">{KIND[c.kind ?? ''] ?? c.kind}{c.line ? <>{' · '}<button type="button" className="linklike" onClick={() => p.open(f.file, c.line!)}>{t('第 {v1} 行', { v1: c.line })}</button></> : null}</span>
+      <span className="small muted">{KIND[c.kind ?? ''] ?? c.kind}{c.line ? <>{' · '}<UI.InlineCode look="location" onClick={() => p.open(f.file, c.line!)}>{t('第 {v1} 行', { v1: c.line })}</UI.InlineCode></> : null}</span>
       <div>{codeSpans(say(c)).map((x, j) => (typeof x === 'string' ? x : <code key={j} className="desc-code">{x.code}</code>))}<Src s="ai" /></div></li>)}</ul>
       : found.length || f.ai?.state === 'stale' ? null : <UI.CodeText as="p" className="small muted" text={f.ai?.info ? t('未發現問題。') : t('尚無 AI 檢查：於 repo 執行 `codemap describe`。')} />}
     <p className="small"><UI.Term variant="inline" title="Change impact" text={t('修改此函式可能影響的範圍。')}>Change impact</UI.Term>{t('：')}
@@ -180,12 +180,12 @@ export function ScopeChecks(p: { ix: Index; title: string; inside: (fid: string,
     {groups.map(([label, xs]) => <div key={label} className="fp-sec">
       <h4 className="small">{t(label)}<span className="fp-cnt">{t('{v1} 處', { v1: xs.length })}</span></h4>
       <ul className="fp-rows">{xs.slice(0, 20).map((x, i) => <li key={i} className="fp-it small">
-        <button type="button" className="linklike mono" onClick={() => p.openFn(x.fid)}>{name(x.fid)}</button>
-        {(x as { l?: number }).l ? <>{' · '}<button type="button" className="linklike muted" onClick={() => p.open(x.f, (x as { l?: number }).l!)}>{`${x.f}:${(x as { l?: number }).l}`}</button></> : null}
+        <UI.InlineCode look="name" onClick={() => p.openFn(x.fid)}>{name(x.fid)}</UI.InlineCode>
+        {(x as { l?: number }).l ? <>{' · '}<UI.InlineCode look="location" onClick={() => p.open(x.f, (x as { l?: number }).l!)}>{`${x.f}:${(x as { l?: number }).l}`}</UI.InlineCode></> : null}
       </li>)}{xs.length > 20 ? <li className="small muted">{t('另有 {v1} 處', { v1: xs.length - 20 })}</li> : null}</ul>
     </div>)}
     {stale.length ? <div className="fp-sec"><h4 className="small">{t('說明撰寫後已修改的函式')}<span className="fp-cnt">{t('{v1} 個', { v1: stale.length })}</span></h4>
-      <ul className="fp-rows">{stale.slice(0, 20).map((id) => <li key={id} className="fp-it small"><button type="button" className="linklike mono" onClick={() => p.openFn(id)}>{name(id)}</button></li>)}</ul>
+      <ul className="fp-rows">{stale.slice(0, 20).map((id) => <li key={id} className="fp-it small"><UI.InlineCode look="name" onClick={() => p.openFn(id)}>{name(id)}</UI.InlineCode></li>)}</ul>
       <UI.CodeText as="p" className="small muted" text={t('執行 `codemap describe` 以重新撰寫。')} /></div> : null}
   </section>
 }

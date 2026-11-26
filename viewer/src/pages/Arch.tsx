@@ -169,7 +169,7 @@ function LaunchDetail(p: { ix: Index; id: string; onPick: (id: string, at: Sel['
       <p>{x.preload ? t('{v1} 以 {calls} 啟動被追蹤的程式，並設定 LD_PRELOAD 載入 repo 中的程式庫。此為推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })
         : t('{v1} 以 {calls} 啟動另一個程式，可能即為被追蹤的程式。此為推測的關係。', { v1: x.comp, calls: [...x.calls].sort().join(', ') })}</p>
       <UI.DetailList items={[
-        ...x.sites.map((e) => ({ label: `${e.f.split('/').pop()}:${e.l}`, value: <span><button type="button" className="linklike" onClick={() => p.onPick(e.s, { f: e.f, l: e.l })}>{p.ix.funcs[e.s].name}</button>{t(' 呼叫 {v1}', { v1: p.ix.bareName(e.d, e) })}</span> })),
+        ...x.sites.map((e) => ({ label: `${e.f.split('/').pop()}:${e.l}`, value: <span><UI.InlineCode look="name" onClick={() => p.onPick(e.s, { f: e.f, l: e.l })}>{p.ix.funcs[e.s].name}</UI.InlineCode>{t(' 呼叫 {v1}', { v1: p.ix.bareName(e.d, e) })}</span> })),
         ...sets.map((r) => ({ label: r.split('/').pop()!, value: t('設定 LD_PRELOAD') })),
       ]} />
     </UI.Card>
@@ -178,7 +178,7 @@ function LaunchDetail(p: { ix: Index; id: string; onPick: (id: string, at: Sel['
 
 function EntryDetail(p: { ix: Index; id: string; onPick: (id: string) => void; onBack: () => void }) {
   const groups = entryGroups(p.ix).filter((x) => p.id === TRACED || x.id === p.id)
-  const fn = (id: string) => <button type="button" className="linklike" onClick={() => p.onPick(id)}>{p.ix.funcs[id].name}</button>
+  const fn = (id: string) => <UI.InlineCode look="name" onClick={() => p.onPick(id)}>{p.ix.funcs[id].name}</UI.InlineCode>
   return (
     <UI.Card className="detail" title={p.id === TRACED ? t('被追蹤的程式（repo 外）') : t('被追蹤的程式 → {v1}', { v1: groups[0]?.comp ?? '' })}
       actions={<UI.Button icon="arrow-left" onClick={p.onBack}>{t('回到概觀')}</UI.Button>}>
@@ -371,19 +371,19 @@ function ProjectDetail(p: { ix: Index; onComp: (id: string) => void }) {
       <Parts>
       <Q title={t('說明')}>
         {project ? <p><DescText d={project} tag full /></p> : <p className="muted">{t('{v1} 個元件、{v2} 個函式。', { v1: g.comps.length, v2: Object.keys(p.ix.funcs).length })}</p>}
-        <a className="link small" href="#overview">{t('總覽：閱讀起點、名詞、對外介面')}</a>
+        <UI.Link className="link small" href="#overview">{t('總覽：閱讀起點、名詞、對外介面')}</UI.Link>
       </Q>
       <Q title={t('和誰有關')}>
         <ul className="level-list">{g.comps.map((c) => {
           const d = aiItem(p.ix, 'comp:' + c.id, order)
-          return <li key={c.id}><button type="button" className="linklike" onClick={() => p.onComp(c.id)}>{c.id}</button>
+          return <li key={c.id}><UI.InlineCode look="name" onClick={() => p.onComp(c.id)}>{c.id}</UI.InlineCode>
             {d ? <span className="small muted"> {plainText(d.text).split(/(?<=[。.])\s*/)[0]}</span> : c.doc ? <span className="small muted"> {firstSentence(c.doc.text)}</span> : null}</li>
         })}</ul>
         <p className="small muted">{t('選取元件或圖上的方塊，即進入下一層。')}</p>
       </Q>
       <Q title={t('值得注意')}>
         {found.length ? <ul className="level-notes">{found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul> : <p className="small muted">{t('未發現。')}</p>}
-        {found.length ? <a className="link small" href="#check">{t('到檢查筆記看細節')}</a> : null}
+        {found.length ? <UI.Link className="link small" href="#check">{t('到檢查筆記看細節')}</UI.Link> : null}
       </Q>
       </Parts>
     </UI.Card>
@@ -411,7 +411,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
   const byRules = Object.keys(p.ix.g.roles ?? {}).some((x) => p.file === x || p.file.startsWith(x.replace(/\/$/, '') + '/'))
   const base = (f: string) => f.split('/').pop()!
   const other = (xs: { a: string; b: string; es: unknown[] }[], end: 'a' | 'b') => xs.sort((x, y) => y.es.length - x.es.length).map((l) => (
-    <span key={l[end]} className="entry-row"><button type="button" className="linklike" onClick={() => p.onComp('file:' + l[end])}>{base(l[end])}</button>{' '}{t('{n} 次', { n: l.es.length })}</span>))
+    <span key={l[end]} className="entry-row"><UI.InlineCode look="location" onClick={() => p.onComp('file:' + l[end])}>{base(l[end])}</UI.InlineCode>{' '}{t('{n} 次', { n: l.es.length })}</span>))
   const inn = fg.links.filter((l) => l.b === p.file), out = fg.links.filter((l) => l.a === p.file)
   const openFile = useContext(OpenFile)
   return (
@@ -448,7 +448,7 @@ function FileDetail(p: { ix: Index; file: string; onPick: (id: string) => void; 
             // the description first: a long one is cut at the end of the line, where the place is the least loss
             return { id, name: p.ix.funcs[id].name, meta: d && d.kind !== 'facts' ? `${plainText(d.text)} · ${t(SRC_LABEL[d.kind])} · ${at}` : `${at} · ${p.ix.callerText(id)}` }
           })}
-          onSelect={(n) => { if (p.ix.funcs[n.id]) openFile(p.file, p.ix.funcs[n.id].line) }} />
+          onChange={(id) => { if (p.ix.funcs[id]) openFile(p.file, p.ix.funcs[id].line) }} />
       </div>
     </div>
   )
@@ -1104,7 +1104,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
   const tree = (
     <UI.TreeList key={p.comp} kind="plain" title={t('檔案與函式')} subtitle={((h) => (h ? t('{v1} 個原始檔、{v2} 個標頭檔', { v1: items.length - h, v2: h }) : t('{v1} 個檔案', { v1: items.length })) + t('；選取檔案即進入下一層，選取函式即開啟其程式碼'))(items.filter((i) => i.name.endsWith('.h')).length)} height="100%"
       label={p.comp + t(' 的函式')} items={items} defaultOpen={[]}
-      onSelect={(n) => { const f = p.ix.funcs[n.id]; if (f) openFile(f.file, f.line); else if (n.id.startsWith('file:')) p.onComp(n.id) }} />
+      onChange={(id) => { const f = p.ix.funcs[id]; if (f) openFile(f.file, f.line); else if (id.startsWith('file:')) p.onComp(id) }} />
   )
   // Python tools that parse its headers: counted among its users on the diagram, so listed here too
   const readers = p.ix.g.links.filter((l) => l.kind === 'reads' && l.b === p.comp)
@@ -1123,7 +1123,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
         </Q>
         <Q title={t('和誰有關')}>
         {others.length ? <ul className="level-list">{[...new Set(others.map((l) => (l.a === p.comp ? l.b : l.a)))].map((c) => (
-          <li key={c}><button type="button" className="linklike" onClick={() => p.onComp(c)}>{c}</button>
+          <li key={c}><UI.InlineCode look="name" onClick={() => p.onComp(c)}>{c}</UI.InlineCode>
             <span className="small muted"> {others.some((l) => l.a === p.comp && l.b === c) ? t('呼叫') : ''}{others.some((l) => l.a === p.comp && l.b === c) && others.some((l) => l.b === p.comp && l.a === c) ? t('、') : ''}{others.some((l) => l.b === p.comp && l.a === c) ? t('被呼叫') : ''}</span></li>))}</ul>
           : <p className="small muted">{t('與其他元件無呼叫關係。')}</p>}
         {uses?.size ? (
@@ -1139,7 +1139,7 @@ function CompTree(p: { ix: Index; comp: string; onPick: (id: string) => void; on
         </Q>
         <Q title={t('值得注意')}>
           {found.length ? <><ul className="level-notes">{found.map(([label, n]) => <li key={label}>{t('{v1}：{v2} 處', { v1: t(label), v2: n })}</li>)}</ul>
-            <a className="link small" href="#check">{t('到檢查筆記看細節')}</a></> : <p className="small muted">{t('未發現。')}</p>}
+            <UI.Link className="link small" href="#check">{t('到檢查筆記看細節')}</UI.Link></> : <p className="small muted">{t('未發現。')}</p>}
         </Q>
         </Parts>
       </UI.Card>

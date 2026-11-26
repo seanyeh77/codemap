@@ -1,5 +1,4 @@
 import { ORDERS, setDescOrder, useDescOrder, type DescOrder } from '../data/describe'
-import { useRef, useState } from 'react'
 import { UI } from '../ui'
 import { dateTime, noun, setLang, t } from '../i18n'
 import { usePrefs } from '../data/hooks'
@@ -58,17 +57,13 @@ const ORDER_LABEL: Record<DescOrder, [string, string]> = {
 
 export function Settings(p: Props) {
   const pr = usePrefs()
-  const [toast, setToast] = useState('')
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const g = p.graph, st = g.stats, isLive = !!p.meta
   function save<K extends keyof Prefs>(k: K, v: Prefs[K]) {
     prefs.set(k, v)
     if (k === 'theme') UI.setTheme(v as Prefs['theme'])
     if (k === 'lang') setLang(v as Prefs['lang'])
     if (k === 'showExtDefault') p.onShowExtDefault(v as boolean)
-    setToast(t('已儲存'))
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => setToast(''), 3000)
+    UI.toast(t('已儲存'), { id: 'saved' })     // one toast however many changes are saved in a row
   }
   const descOrder = useDescOrder()
   const radios = <K extends keyof Prefs>(label: string, k: K, opts: [Prefs[K] & string, string][]) => (
@@ -82,11 +77,11 @@ export function Settings(p: Props) {
     <>
       <UI.SettingsSection title={t('目前的資料來源')}>
         <UI.DetailList items={[
-          { label: t('模式'), value: isLive ? <span><UI.Term variant="inline" text={t('由 codemap serve 提供，讀取目前磁碟上的程式碼，可重新檢查筆記。')}>{t('即時')}</UI.Term>{t('（codemap serve）')}</span> : <span><UI.Term variant="inline" text={t('匯出當時的索引與原始碼，只能瀏覽。')}>{t('快照')}</UI.Term>{t('（.codemap 檔）')}</span> },
+          { label: t('模式'), value: isLive ? <span><UI.Term variant="inline" text={t('由 `codemap serve` 提供，讀取目前磁碟上的程式碼，可重新檢查筆記。')}>{t('即時')}</UI.Term>{t('（codemap serve）')}</span> : <span><UI.Term variant="inline" text={t('匯出當時的索引與原始碼，只能瀏覽。')}>{t('快照')}</UI.Term>{t('（.codemap 檔）')}</span> },
           isLive ? { label: t('主機'), value: <UI.InlineCode>{p.meta!.host}</UI.InlineCode> } : { label: t('檔案'), value: <UI.InlineCode>{p.snapName ?? t('此頁面')}</UI.InlineCode> },
           { label: t('路徑'), value: <UI.InlineCode>{isLive ? p.meta!.root : g.root}</UI.InlineCode> },
           { label: 'commit', value: <span>{commit ? <UI.InlineCode>{commit}</UI.InlineCode> : t('無')}{dirty.length ? t('（另有 {v1} 個檔案未 commit）', { v1: dirty.length }) : ''}</span> },
-          { label: t('索引'), value: <span><UI.Term variant="inline" text={t('codemap index 從原始碼整理出的函式與呼叫關係，各頁面皆依此顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term variant="inline" text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
+          { label: t('索引'), value: <span><UI.Term variant="inline" text={t('`codemap index` 從原始碼整理出的函式與呼叫關係，各頁面皆依此顯示。')}>{t('索引')}</UI.Term>{t('：')}{!st.units ? t('{v1} 個函式、方法、類別與模組', { v1: st.funcs }) : <>{t('{v1} 個 ', { v1: st.units ?? 0 })}<UI.Term variant="inline" text={t('一個 `.c` 檔及其 include 的標頭檔，為編譯器一次處理的單位。')}>{noun(st.units ?? 0, 'translation unit')}</UI.Term>{t(' · {v1} 個函式 · {v2} 條編譯器確認的呼叫', { v1: st.funcs, v2: st.edges ?? 0 })}</>}</span> },
           // one row per language analyzer: how many calls each resolved, and how
           ...Object.entries(st.resolution ?? {}).map(([b, r]) => ({ label: BACKEND[b] ?? LANG[b] ?? b, value: <span><UI.Term variant="inline" text={b === 'go'
             ? t('以 Go 的 go/types 解析套件、方法、interface 與函式值，interface 僅連到確實實作的型別。找不到目標的呼叫不畫線。')
@@ -99,7 +94,7 @@ export function Settings(p: Props) {
               <span className="entry-list">{st.unresolved[b].map(([call, n, at]) => <span key={call} className="entry-row"><UI.InlineCode>{call}</UI.InlineCode>{t(' × {v1}', { v1: n })}
                 {/* where: a count is a reason to doubt, the places say which flows it may have cut */}
                 {at?.length ? <span className="muted">{t('：')}{at.map(([f, l], i) => <span key={f + l}>{i ? t('、') : ''}{p.openAt
-                  ? <button type="button" className="linklike" onClick={() => p.openAt!(f, l)}>{`${f.split('/').pop()}:${l}`}</button> : `${f}:${l}`}</span>)}{n > at.length ? t('…') : ''}</span> : null}</span>)}</span>
+                  ? <UI.InlineCode look="location" onClick={() => p.openAt!(f, l)}>{`${f.split('/').pop()}:${l}`}</UI.InlineCode> : `${f}:${l}`}</span>)}{n > at.length ? t('…') : ''}</span> : null}</span>)}</span>
               <span className="muted">{t('多為型別未知的物件或參數上的方法。選取位置即開啟該行。')}</span></details> : null}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
           ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>
@@ -127,7 +122,7 @@ export function Settings(p: Props) {
         {isLive ? <p className="small muted">{t('重建索引：在 build 環境執行')} <UI.InlineCode>codemap index</UI.InlineCode> {t('後重新載入。')}</p> : null}
         {p.openError ? <UI.Alert tone="danger" title={t('無法開啟此檔案')}>{p.openError}</UI.Alert> : null}
       </UI.SettingsSection>
-      <UI.SettingsSection title={t('建立索引')} description={t('設定檔：.codemap/rules.json')}>
+      <UI.SettingsSection title={t('建立索引')} description={t('設定檔：`.codemap/rules.json`')}>
         <UI.DetailList items={[
           // the compiler rows belong to C and C++: a repository of Python, Go or TypeScript is read without one
           ...(!st.backends || st.backends.includes('gcc') ? [
@@ -143,8 +138,8 @@ export function Settings(p: Props) {
   const open = (
     <UI.SettingsSection title={t('在 VS Code 開啟')}>
       {radios(t('開啟方式'), 'editor', [['ssh', t('Remote-SSH（build 環境的檔案）')], ['local', t('本機 clone')], ['none', t('不使用 VS Code')]])}
-      {pr.editor === 'ssh' ? <UI.TextField label={t('Remote-SSH 主機名稱')} value={pr.sshHost} placeholder={g.host} hint={t('與 ~/.ssh/config 的 Host 相同。留空時使用伺服器主機名稱。')} onChange={(e) => save('sshHost', e.target.value)} /> : null}
-      {pr.editor === 'local' ? <UI.TextField label={t('本機 clone 路徑')} value={pr.clone} placeholder={'/Users/you/src/' + g.repo} hint={t('commit 須與索引相同，行號才會一致。')} onChange={(e) => save('clone', e.target.value)} /> : null}
+      {pr.editor === 'ssh' ? <UI.TextField label={t('Remote-SSH 主機名稱')} value={pr.sshHost} placeholder={g.host} hint={t('與 ~/.ssh/config 的 Host 相同。留空時使用伺服器主機名稱。')} onChange={(v) => save('sshHost', v)} /> : null}
+      {pr.editor === 'local' ? <UI.TextField label={t('本機 clone 路徑')} value={pr.clone} placeholder={'/Users/you/src/' + g.repo} hint={t('commit 須與索引相同，行號才會一致。')} onChange={(v) => save('clone', v)} /> : null}
     </UI.SettingsSection>
   )
   const display = (
@@ -184,7 +179,7 @@ export function Settings(p: Props) {
   )
   return (
     <div className="settings-wrap">
-      <UI.SettingsLayout value={p.cat} onChange={p.setCat} toast={toast} categories={[
+      <UI.SettingsLayout value={p.cat} onChange={p.setCat} categories={[
         { id: 'source', label: t('資料來源'), content: source },
         { id: 'open', label: t('開啟原始碼'), content: open },
         { id: 'display', label: t('顯示'), content: display },

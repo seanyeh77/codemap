@@ -194,6 +194,9 @@ function Shell(p: ShellProps) {
     setPin(null)
     setAt(a)
   }
+  // Workbench reports its layout after every render as a new object; keeping the old one while nothing in it
+  // changed stops App from rendering again for it (with a new views array, it would report again: a loop)
+  const keepLayout = useCallback((l: UI.WorkbenchLayout) => setLayout((o) => (o && JSON.stringify(o) === JSON.stringify(l) ? o : l)), [])
   /** Shows a view wherever the reader has put it, opening its area. */
   const show = (v: ViewId) => wb.current?.show(v)
   // a click in the code turns its area to the view about what was clicked: 說明 inside a function, 定義 on a line that
@@ -407,13 +410,13 @@ function Shell(p: ShellProps) {
         <span className="muted">{t('瀏覽路徑：')}</span>
         {trail.map((id, i) => <span key={id}>{i ? <span className="info-sep" aria-hidden="true">›</span> : null}
           {i === trail.length - 1 ? <span className="mono trail-here" aria-current="true">{ix.funcs[id]?.name.split('.').pop() ?? id}</span>
-            : <button type="button" className="linklike mono" onClick={() => { const a = placeOf(id); if (a) { setTrail((tr) => tr.slice(0, i + 1)); setPin(null); setAt(a) } }}>{ix.funcs[id]?.name.split('.').pop() ?? id}</button>}</span>)}
+            : <UI.InlineCode look="name" onClick={() => { const a = placeOf(id); if (a) { setTrail((tr) => tr.slice(0, i + 1)); setPin(null); setAt(a) } }}>{ix.funcs[id]?.name.split('.').pop() ?? id}</UI.InlineCode>}</span>)}
       </nav> : null}
       {!flowStart ? <Relations ix={ix} at={at} mode={d} openFile={(f) => openFile(f, 1)} openComp={openComp} />
         : d === 'down' ? (ix.funcs[flowStart] ? tree(flowStart) : <p className="small muted">{t('repo 外的函式：僅能顯示其呼叫者。')}</p>)
         : <>
           {/* how far a change reaches is said once, in 檢查; here only the two ways to list it */}
-          <p className="small impact-sum"><button type="button" className="linklike" onClick={() => setUpTable(!upTable)}>{upTable ? t('改為呼叫樹') : t('列成表')}</button></p>
+          <p className="small impact-sum"><UI.Button variant="quiet" onClick={() => setUpTable(!upTable)}>{upTable ? t('改為呼叫樹') : t('列成表')}</UI.Button></p>
           {upTable ? <Impact ix={ix} start={flowStart} sourceId={p.sourceId} openSearch={() => setPalette(true)}
               onSel={(id, e) => fromPanel(id, placeOf(id) ?? (e ? { kind: 'file', f: e.f, l: e.l } : null))} />
             : ix.funcs[flowStart] ? tree(flowStart) : null}
@@ -457,7 +460,7 @@ function Shell(p: ShellProps) {
         backLive={() => p.setSource('live')} openSnapshot={p.openSnapshot} openError={p.openError}
         onShowExtDefault={setShowExt} refresh={() => qc.invalidateQueries()} resetLayout={() => wb.current?.resetLayout()}
         openAt={(f, l) => openFile(f, l)} /></div>
-    : empty ? <UI.EmptyState title={t('索引中無函式')} description={t('請確認 compile_commands.json 包含目標檔案，再執行 codemap index。')} />
+    : empty ? <UI.EmptyState title={t('索引中無函式')} description={t('請確認 `compile_commands.json` 包含目標檔案，再執行 `codemap index`。')} />
     : at.kind === 'proj' ? <div className="stage-scroll"><Overview ix={ix} isLive={isLive} sourceId={p.sourceId} onComp={openComp} onPick={openFn} mode="page" only={['ov-project', 'ov-comps']} /></div>
     : at.kind === 'comp' ? (comp?.lang
       ? <div className="stage-scroll"><CompDetail ix={ix} comp={at.id} isLive={isLive} sourceId={p.sourceId} onPick={openFn} onComp={openComp} /></div>
@@ -494,16 +497,16 @@ function Shell(p: ShellProps) {
 
   return (
     <OpenFile.Provider value={openFile}><PeekLine.Provider value={setPeekLine}><OpenFunc.Provider value={openFn}><OpenCall.Provider value={(id) => (fn && ix.funcs[id] && id !== fn ? fromPanel(id, placeOf(id)) : openFn(id))}><TermsCtx.Provider value={termsCtx}>
-    <UI.Workbench ref={wb} id="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={setLayout}
+    <UI.Workbench ref={wb} storageKey="codemap" className="wb" views={views} defaultLayout={LAYOUT} onLayoutChange={keepLayout}
       brand={{ mark: <span className="brand-mark" />, name: 'codemap', href: '#overview' }}
       crumbs={crumbs}
       mainBar={isFile ? <>{isMd ? <UI.SegmentedControl label={t('顯示方式')} iconOnly value={mdShown}
         onChange={(m) => setMdMode({ f: at.f, m })}
-        items={[{ id: 'preview', label: t('預覽'), icon: 'eye' }, { id: 'source', label: t('原始碼'), icon: 'file-code' }]} /> : null}
+        options={[{ value: 'preview', label: t('預覽'), icon: 'eye' }, { value: 'source', label: t('原始碼'), icon: 'file-code' }]} /> : null}
         <EditorButton ix={ix} file={at.f} line={at.l} /></> : undefined}
       explorerFilter={{ value: q, onChange: setQ, label: t('篩選檔案與函式') }}
       explorer={<Explorer ix={ix} at={at} fn={fn} q={q} open={explorerOpen} />}
-      explorerFoot={<button type="button" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} onClick={() => setAt({ kind: 'settings' })}><UI.Icon name="gear" />{t('設定')}</button>}
+      explorerFoot={<UI.Button variant="quiet" icon="gear" className={'ex-foot' + (at.kind === 'settings' ? ' is-on' : '')} aria-current={at.kind === 'settings' ? 'page' : undefined} onClick={() => setAt({ kind: 'settings' })}>{t('設定')}</UI.Button>}
       actions={<>
         <UI.IconButton variant="quiet" icon="magnifying-glass" label={t('搜尋（Ctrl K）')} onClick={() => setPalette(true)} data-tour="search" />
         {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
@@ -511,7 +514,7 @@ function Shell(p: ShellProps) {
           hint={welcome ? { text: t('導覽：六個步驟介紹這個版面。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
         <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
           value={p.sourceId} onChange={p.setSource} options={p.sources}
-          footer={<a className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</a>} />
+          footer={<UI.Link className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</UI.Link>} />
       </>}>
       {snapAlert || testAlert ? <div className="wb-notice">{snapAlert}{testAlert}</div> : null}
       <div className="stage" data-tour="stage">{stage}</div>
@@ -520,7 +523,8 @@ function Shell(p: ShellProps) {
       noResultsText={(q) => noResults(q)}
       placeholder={t('搜尋名稱，或程式碼與文件中的文字')} label={t('搜尋名稱與程式碼、文件內文')} onSelect={select}
       kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
-    <UI.Tour open={tourOpen} onClose={tourClose} step={tourStep} onStepChange={setTourStep} steps={[
+    <UI.Toaster />
+    <UI.Tour open={tourOpen} onOpenChange={(o) => { if (!o) tourClose() }} step={tourStep} onStepChange={setTourStep} steps={[
       { target: TOUR_TARGETS[0], title: t('檔案總管'), text: t('專案、元件、檔案與函式。選取項目即於中間開啟；圓點：有值得注意之處。上方可篩選名稱。') },
       { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
       { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案：總覽；元件：架構圖；檔案與函式：程式碼。程式碼中的藍色名稱為連結。') },
