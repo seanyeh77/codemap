@@ -37,7 +37,7 @@ const PAGES: Record<View, { title: string; icon: UI.IconName; detail: string }> 
   check: { title: '檢查筆記', icon: 'check-circle', detail: '核對筆記與程式碼' },
   settings: { title: '設定', icon: 'gear', detail: '資料來源、開啟方式、主題' },
 }
-// phones have no Ctrl K: the tour points at the search button instead
+// phones have no Ctrl K: the tour names the search button instead
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 
 interface Snap { id: string; name: string | null; graph: Graph }   // name null: embedded in this page
@@ -127,8 +127,8 @@ const WORLD = ['ov-entry', 'ov-cmds', 'ov-env', 'ov-build', 'ov-writes', 'ov-rea
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
 // the layout a first visit gets: 說明 on the right; 呼叫流程, 影響範圍 and 檢查 in the panel below
 const LAYOUT = { side: ['info', 'defs'], panel: ['down', 'up', 'world', 'check'] }
-// the tour points at the explorer, the search, the stage and three of the views, wherever the reader moved them
-const TOUR_TARGETS = ['tree', 'search', 'stage', ...['info', 'down', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
+// the tour points at the explorer, the stage and three of the views, wherever the reader moved them
+const TOUR_TARGETS = ['tree', 'stage', ...['info', 'down', 'check'].map((v) => `.ui-wb-tab[data-id="${v}"]`)]
 
 function Shell(p: ShellProps) {
   const pr = usePrefs()
@@ -508,7 +508,7 @@ function Shell(p: ShellProps) {
         <UI.IconButton variant="quiet" icon="magnifying-glass" label={t('搜尋（Ctrl K）')} onClick={() => setPalette(true)} data-tour="search" />
         {/* a first visit: a dot on the help button and a bubble under it, until it is started or closed */}
         <UI.IconButton variant="quiet" icon="question" label={t('重看導覽')} onClick={tourStart}
-          hint={welcome ? { text: t('導覽：六個步驟介紹這個版面。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
+          hint={welcome ? { text: t('導覽：五個步驟介紹這個版面。'), onAction: tourStart, onDismiss: () => { setWelcome(false); seenTour.close() } } : undefined} />
         <UI.ProjectSwitcher project={p.graph.repo} status={isLive ? 'live' : 'stale'} statusLabel={isLive ? undefined : t('快照')}
           value={p.sourceId} onChange={p.setSource} options={p.sources}
           footer={<UI.Link className="link" href="#settings" onClick={(e) => { e.preventDefault(); setCat('source'); setAt({ kind: 'settings' }) }}>{t('所有資料來源設定')}</UI.Link>} />
@@ -522,12 +522,11 @@ function Shell(p: ShellProps) {
       kinds={Object.fromEntries(Object.entries(KIND_ICONS).map(([k, v]) => [t(k), v]))} />
     <UI.Toaster />
     <UI.Tour open={tourOpen} onOpenChange={(o) => { if (!o) tourClose() }} step={tourStep} onStepChange={setTourStep} steps={[
-      { target: TOUR_TARGETS[0], title: t('檔案總管'), text: t('專案、元件、檔案與函式。選取項目即於中間開啟；圓點：有值得注意之處。上方可篩選名稱。') },
-      { target: TOUR_TARGETS[1], title: t('搜尋'), text: COARSE ? t('搜尋函式、檔案、元件與環境變數。') : t('Ctrl K 或 Ctrl P：搜尋函式、檔案、元件與環境變數。') },
-      { target: TOUR_TARGETS[2], title: t('主畫面'), text: t('專案：總覽；元件：架構圖；檔案與函式：程式碼。程式碼中的藍色名稱為連結。') },
-      { target: TOUR_TARGETS[3], title: t('說明'), text: t('開啟項目的說明；函式另列 Parameters、Contract 等資料。選取程式碼中的一行，即標示與該行相關的資料。') },
-      { target: TOUR_TARGETS[4], title: t('callee 與 caller'), text: t('callee：目前函式呼叫的函式。caller：呼叫目前函式的函式。選取名稱即開啟該函式，上方列出瀏覽路徑；分頁可拖曳至右側欄或下方面板。') },
-      { target: TOUR_TARGETS[5], title: t('檢查'), text: t('自動檢查的結果、說明與程式碼不一致之處，以及修改的影響範圍。檔案總管中有圓點的項目會開啟此分頁。') },
+      { target: TOUR_TARGETS[0], title: t('檔案總管與搜尋'), text: COARSE ? t('專案、元件、檔案與函式，選取項目即於中間開啟；圓點表示有值得注意之處。上方可篩選名稱；點選畫面上方的放大鏡可搜尋函式、檔案、元件與環境變數。') : t('專案、元件、檔案與函式，選取項目即於中間開啟；圓點表示有值得注意之處。上方可篩選名稱；Ctrl K 或 Ctrl P 可搜尋函式、檔案、元件與環境變數。') },
+      { target: TOUR_TARGETS[1], title: t('主畫面'), text: t('專案：總覽；元件：架構圖；檔案與函式：程式碼。程式碼中的藍色名稱為連結。') },
+      { target: TOUR_TARGETS[2], title: t('說明與定義'), text: t('說明：開啟項目的作用，函式另列 Parameters、Contract 等資料。定義：檔案中的型別、變數、常數與巨集。選取程式碼中的一行，兩個分頁皆標示與該行相關的項目。') },
+      { target: TOUR_TARGETS[3], title: t('callee 與 caller'), text: t('callee：目前函式呼叫的函式。caller：呼叫目前函式的函式。選取名稱即開啟該函式，上方列出瀏覽路徑；分頁可拖曳至右側欄或下方面板。') },
+      { target: TOUR_TARGETS[4], title: t('檢查'), text: t('自動檢查的結果、說明與程式碼不一致之處，以及修改的影響範圍。檔案總管中有圓點的項目會開啟此分頁。') },
     ]} />
     </TermsCtx.Provider></OpenCall.Provider></OpenFunc.Provider></PeekLine.Provider></OpenFile.Provider>
   )
