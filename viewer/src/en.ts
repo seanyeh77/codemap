@@ -991,8 +991,6 @@ export const EN: Record<string, string> = {
   "呼叫流程與影響範圍": "Call flow and impact",
   "目前函式的呼叫樹與修改它會影響誰；點名稱，上面的程式碼就跳過去。分頁可以拖到右側欄或下方面板，邊界可以拖曳改大小。": "The current function's call tree and what a change to it affects; click a name and the code above goes there. Drag a tab to the side bar or the panel, and drag the borders to resize.",
   "比對筆記裡的引用與目前的程式碼，以及值得檢查的地方。": "The notes' references checked against the code, and places worth checking.",
-  "右側欄": "the side bar",
-  "下方面板": "the panel",
   "拖曳到{v1}可移過去": "Drag to {v1} to move it there",
   "把「{v1}」移到{v2}": "Move {v1} to {v2}",
   "關閉右側欄": "Close the side bar",
