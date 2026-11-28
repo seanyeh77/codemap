@@ -3,7 +3,7 @@
 ## Tests
 
 ```sh
-uv run --all-extras --with pytest --with httpx2 pytest   # needs gcc; Go and TypeScript tests skip without Go or Node
+uv run --all-extras pytest   # needs gcc; Go and TypeScript tests skip without Go or Node
 uv run python tests/regress_ibtrace.py PATH_TO_IBTRACE   # after `codemap index` there
 ```
 

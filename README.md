@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://github.com/seanyeh77/codemap/actions/workflows/pages.yml"><img alt="Viewer build" src="https://github.com/seanyeh77/codemap/actions/workflows/pages.yml/badge.svg"></a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2457d6"></a>
   <a href="https://seanyeh77.github.io/codemap/"><img alt="Hosted viewer" src="https://img.shields.io/badge/viewer-open%20online-2457d6"></a>
 </p>
 
@@ -303,7 +304,7 @@ Every run also writes `.codemap/index.log`, and the TypeScript cache appends one
 ```sh
 git clone https://github.com/seanyeh77/codemap && cd codemap
 # the tests need gcc; the Go and TypeScript tests skip without Go or Node
-uv run --all-extras --with pytest --with httpx2 pytest
+uv run --all-extras pytest
 ```
 
 The viewer is a React app in `viewer/`, built into `codemap/viewer_dist/index.html`:
@@ -341,4 +342,5 @@ Run the tests before sending a change; a change to the viewer also needs `npm te
 
 ## License
 
-The repository does not include a license file yet.
+codemap is free and open source under the [MIT License](LICENSE): use, copy, modify and distribute it, including
+in commercial work, as long as the copyright notice and the license text stay with it.

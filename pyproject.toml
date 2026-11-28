@@ -7,6 +7,7 @@ name = "codemap"
 version = "0.3.0"
 description = "Static code maps for people and AI: call graphs for C/C++ (compiler), Python, Go and TypeScript/JavaScript (their own analyzers), Java and HTML/CSS (tree-sitter), framework adapters, validated tours"
 requires-python = ">=3.10"
+license = {text = "MIT"}
 # tree-sitter grammars come as wheels with the parser inside: nothing is downloaded at run time
 dependencies = [
     "tree-sitter>=0.23",
@@ -27,6 +28,10 @@ viewer = ["fastapi>=0.162", "uvicorn>=0.54"]
 
 [project.scripts]
 codemap = "codemap.cli:main"
+
+[dependency-groups]
+# uv run pytest installs these with the project; starlette's test client needs httpx2
+dev = ["pytest", "httpx2"]
 
 [tool.setuptools]
 packages = ["codemap", "codemap.backends", "codemap.frameworks"]
