@@ -257,6 +257,10 @@ def diagram(index, config, path):
     font = _measure()
     lay = layout(index, config)
     names, shared, layer, links, started, callers = (lay[k] for k in ("names", "shared", "layer", "links", "started", "callers"))
+    # a cycle stops the longest path at the iteration limit, which can leave layers with no component:
+    # number the layers that have one 0, 1, 2 ... so every gap a line turns in is drawn
+    rank = {v: i for i, v in enumerate(sorted({layer[n] for n in names}))}
+    layer = {n: rank[layer[n]] for n in names}
     rows = defaultdict(list)
     for n in sorted(names):
         rows[layer[n]].append(n)

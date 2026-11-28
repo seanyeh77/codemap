@@ -787,3 +787,15 @@ def test_defs_edge_cases(tmp_path):
     url = out["u.h"]["consts"][0]
     assert url["value"] == '"http://x.org"' and url["doc"] == "the site"           # // in a string is not a comment
     assert [(t["name"], t.get("of")) for t in out["u.h"]["types"]] == [("A", "struct"), ("PA", "A *")]
+
+
+def test_arch_diagram_with_layers_left_empty_by_a_cycle(tmp_path, monkeypatch):
+    # a cycle stops the longest path at its limit: layers 1 to 3 have no component, yet a line turns below them
+    from collections import Counter, defaultdict
+    from codemap import arch
+    lay = dict(comps={}, names=["a", "b", "c"], shared=[], layer={"a": 0, "b": 4, "c": 5},
+               links=Counter({("a", "b"): 1, ("b", "c"): 1, ("a", "c"): 2}), calls_n=Counter(),
+               started=defaultdict(set), callers=defaultdict(set), interposed=[])
+    monkeypatch.setattr(arch, "layout", lambda index, config=None: lay)
+    arch.diagram({"nodes": {}, "edges": []}, {}, tmp_path / "a.svg")
+    assert (tmp_path / "a.svg").read_text().count("<rect") >= 3
