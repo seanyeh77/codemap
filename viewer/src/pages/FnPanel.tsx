@@ -79,7 +79,7 @@ export function FnPanel(p: { ix: Index; id: string; line: number | null }) {
     return { key: 'p' + x.name, line: x.line, lines: [x.line, ...(used?.writes ?? [])], src: 'sure', body: <>
       <div className="fp-prm-h"><span className="fp-prm-n">{x.name}</span>{x.type ? <span className="fp-prm-t">{x.type}</span> : null}{x.recv ? <span className="small muted">{t('receiver')}</span> : null}</div>
       <dl className="fp-prm-d">
-        <dt>{t('用途')}</dt><dd>{role ? <>{term(role)}{used?.writes.length ? <span className="small muted">{t('（寫入：第 {v1} 行）', { v1: used.writes.slice(0, 4).join(t('、')) })}</span> : null}<Src s={roleSrc} /></> : <span className="muted">{t('未知')}</span>}</dd>
+        <dt>{t('角色')}</dt><dd>{role ? <>{term(role)}{used?.writes.length ? <span className="small muted">{t('（寫入：第 {v1} 行）', { v1: used.writes.slice(0, 4).join(t('、')) })}</span> : null}<Src s={roleSrc} /></> : <span className="muted">{t('未知')}</span>}</dd>
         <dt>{t('傳遞方式')}</dt><dd>{term(mech)}{note}{x.ro ? t('，唯讀') : ''}</dd>
         {a && say(a) ? <><dt>{t('說明')}</dt><dd>{text(say(a))}<Src s="ai" /></dd></> : null}
       </dl></> }

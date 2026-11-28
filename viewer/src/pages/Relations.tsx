@@ -35,11 +35,11 @@ export function Relations(p: { ix: Index; at: At; mode: 'down' | 'up'; openFile:
     if (p.mode === 'down') return ix.g.links.filter((l) => l.a !== l.b && l.kind === 'call').map((l) => ({ id: 'comp:' + l.a, name: `${l.a} → ${l.b}`, rel: t('呼叫'), text: t('{n} 次', { n: l.n }) }))
     return []
   }, [ix, at, fg, p.mode])
-  const what = at.kind === 'file' ? t('檔案') : at.kind === 'comp' ? t('元件') : ''
   const lead = at.kind === 'proj' || at.kind === 'settings'
     ? (p.mode === 'down' ? t('元件之間的呼叫。選取元件、檔案或函式，即改列其呼叫關係。') : t('選取元件、檔案或函式，即列出修改後受影響的範圍。'))
-    : p.mode === 'down' ? t('此{v1}呼叫的其他{v1}。選取函式即改列其呼叫的函式。', { v1: what })
-    : t('修改此{v1}可能影響的{v1}（向上追溯呼叫者）。選取函式即顯示函式層級的影響範圍。', { v1: what })
+    // one sentence per kind: English names a file or a component in lower case inside a sentence
+    : at.kind === 'file' ? (p.mode === 'down' ? t('此檔案呼叫的其他檔案。選取函式即改列其呼叫的函式。') : t('修改此檔案可能影響的檔案（向上追溯呼叫者）。選取函式即顯示函式層級的影響範圍。'))
+    : p.mode === 'down' ? t('此元件呼叫的其他元件。選取函式即改列其呼叫的函式。') : t('修改此元件可能影響的元件（向上追溯呼叫者）。選取函式即顯示函式層級的影響範圍。')
   return <div className="rel">
     <p className="small muted">{lead}</p>
     {rows.length ? <ul className="rel-list">
@@ -48,7 +48,7 @@ export function Relations(p: { ix: Index; at: At; mode: 'down' | 'up'; openFile:
         <UI.InlineCode look="name" href={'#'} onClick={(e) => { e.preventDefault(); if (r.id.startsWith('file:')) p.openFile(r.id.slice(5)); else p.openComp(r.id.slice(5)) }}>{r.name}</UI.InlineCode>
         {r.text ? <span className="small muted rel-text">{r.text}</span> : null}
       </li>)}
-    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，無可列出的呼叫。') : p.mode === 'down' ? t('未呼叫其他{v1}。', { v1: what }) : t('無其他{v1}呼叫。', { v1: what })}</p> : null}
+    </ul> : at.kind !== 'proj' && at.kind !== 'settings' ? <p className="small">{at.kind === 'comp' && at.id === TRACED ? t('repo 外的程式，無可列出的呼叫。') : at.kind === 'file' ? (p.mode === 'down' ? t('未呼叫其他檔案。') : t('無其他檔案呼叫。')) : p.mode === 'down' ? t('未呼叫其他元件。') : t('無其他元件呼叫。')}</p> : null}
   </div>
 }
 

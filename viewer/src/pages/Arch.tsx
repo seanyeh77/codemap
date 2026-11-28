@@ -943,7 +943,7 @@ const READING = ['ov-project', 'ov-comps', 'ov-terms', 'ov-docs', 'ov-entry', 'o
 /** What a variable does, from the code (or the project's own words in .codemap/rules.json), as Markdown lines. */
 function meaning(m: NonNullable<Graph['env_info']>[string]): string[] {
   const kind = m.kind === 'flag' ? t('開關，0 為關閉、其他數字為開啟') : m.kind === 'number' ? t('數字') : m.kind === 'presence' ? t('只看是否已設定') : m.kind === 'text' ? t('文字') : ''
-  const unset = !m.default ? '' : m.default === 'on' ? t('開啟') : m.default === 'off' ? t('關閉') : m.default === 'early-return' ? t('提早返回，不執行後續動作') : m.default
+  const unset = !m.default ? '' : m.default === 'on' ? t('開啟（功能）') : m.default === 'off' ? t('關閉（功能）') : m.default === 'early-return' ? t('提早返回，不執行後續動作') : m.default
   // the project's own words: rules.json first, else the comment that names the variable (trace.h: IBTRACE_X=1: ...)
   const said = m.comments?.find((c) => c.defines)
   const near = !said && !(m.own && m.purpose) ? m.comments?.[0] : undefined
