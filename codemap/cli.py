@@ -251,7 +251,12 @@ def cmd_edges(a, direction):
     key, other = ("dst", "src") if direction == "callers" else ("src", "dst")
     es = [e for e in idx["edges"] if e[key] in targets and (a.all or e["kind"] in CALLISH)]
     if not es:
-        print(f"no {direction} found (an empty result can also mean the file is outside compile_commands.json)")
+        # why the list may be short: for C and C++, a caller in a file the compile database leaves out (tests often
+        # are); in every language, a call nothing decides, which is left out instead of guessed
+        c_like = any(idx["nodes"].get(t, {}).get("lang") in ("c", "cpp") for t in targets)
+        why = ("the caller may be in a file outside compile_commands.json, such as a test"
+               if direction == "callers" and c_like else "calls codemap could not resolve are left out; codemap index -v counts them")
+        print(f"no {direction} found ({why})")
     ai = describe.load(root) if a.describe else None
     for e in sorted(es, key=lambda e: (e["file"], e["line"])):
         print(f'{e["file"]}:{e["line"]}  {fmt_node(idx, e[other])}  {edge_tag(e)}')
