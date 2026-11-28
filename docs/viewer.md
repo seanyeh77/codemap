@@ -38,7 +38,7 @@ desktop).
 | Area | What it holds |
 |---|---|
 | Explorer, on the left | The project, its components, their files and each file's functions, then its documents (README and the like). A filter on top; a dot marks something worth a note. |
-| The middle | What is open: the project as its overview, a component as its architecture diagram, a file or a function as its code. Blue names in the code are links. |
+| The middle | What is open: the project as its overview, a component as its architecture diagram, a file or a function as its code. Hovering a blue name in the code shows what it is; Ctrl- or ⌘-click opens it (a tap on a touch screen). |
 | Side bar, on the right | Explanation (說明) and Definition (定義), described below. |
 | Panel, below | callee, caller, How it meets the world (對外介面) and Checks (檢查). |
 
