@@ -1,593 +1,132 @@
 # codemap
 
-A static map of a codebase for people and AI agents: C and C++ through the
-compiler; Python, Go and TypeScript/JavaScript through their own analyzers;
-Java and HTML/CSS (and the others, when their analyzer cannot run) through
-tree-sitter. It never runs the program, so it works on code that takes too long
-to run, and on code that is half rewritten.
+A static map of a codebase, for people and AI agents who need to read code they did not write.
 
-## Quick start
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/viewer-dark.webp">
+  <img alt="The codemap viewer: the explorer on the left, a Python function's code in the middle, its explanation on the right and the functions it calls below" src="docs/viewer-light.webp">
+</picture>
+
+## About
+
+Opening an unfamiliar repository usually means guessing where to start and grepping for who calls what.
+codemap reads the code once and builds a map of it: the components and their files, every function, who
+calls whom, what the program reads and writes, and what each file defines besides its functions. You read
+the map in a browser laid out like a code editor, and an AI agent reads the same map from the
+repository.
+
+codemap never runs the program. That makes it useful for code that takes too long to run, needs hardware
+you do not have, or is half rewritten. Calls come from each language's own compiler or type checker where
+one is available, so they are exact; when codemap is not sure, the map says so instead of guessing.
+
+## Features
+
+- **Call graphs per language.** C and C++ through GCC (macros expanded, only the `#ifdef` branches really
+  built); Python, Go and TypeScript/JavaScript through their own analyzers; Java, HTML/CSS and the rest
+  through tree-sitter. Each call is marked exact, inferred or ambiguous.
+- **Framework adapters** for what a framework calls by itself: Flask, FastAPI, pytest, Go `net/http`,
+  Ryu/os-ken, Mininet and ONOS.
+- **A viewer** with an explorer, the code with clickable calls, call trees in both directions, how far a
+  change reaches, the program's entry points, commands, environment variables and files, and an
+  architecture diagram of the components.
+- **Definitions beside the code:** types and their fields, file-level variables, constants and macros,
+  imports and exports, each with the lines and functions that use it.
+- **Optional AI descriptions.** `codemap describe` writes prompts; any AI answers them; codemap checks
+  every answer against the code (cited lines, names, parameters) before keeping it, and marks it stale
+  when the code changes. codemap itself never calls an AI.
+- **Checked notes.** `codemap check` verifies every `file:line` and `` `caller -> callee` `` claim in
+  your Markdown notes against the current code.
+- **Shareable.** `codemap export --html` writes one HTML file with the whole map inside, to open anywhere
+  without codemap installed.
+
+## Installation
 
 ```sh
 uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
-cd your-repository
-codemap                       # says where the project stands and asks what to do next (arrow keys, Enter)
-codemap index                 # 1. read the code; run again after it changes
-codemap describe              # 2. optional: prompts for an AI to say what each function does (below)
-codemap serve                 # 3. open http://127.0.0.1:7300/ (from a laptop: ssh -L 7300:localhost:7300 HOST)
-codemap export --html         #    or one HTML file with the map, to open anywhere
 ```
 
-Descriptions come before serve and export: the map shows the ones there are, and
-a snapshot keeps only what exists when it is written. Kept while serve runs, they
-appear after 重新載入索引.
+Run the same command with `--force` to update.
 
-On a terminal `codemap index` shows one line per step (each language, the rules,
-the index written) with a spinner, its seconds and what it is reading, then a
-summary; every number and message goes to `.codemap/index.log` (`-v` prints them
-too). Piped, in CI or with `CODEMAP_PLAIN=1` it prints plain `==> step` lines;
-`NO_COLOR` turns colours off.
+### Requirements
 
-The map is laid out like a code editor. On the left, the explorer: the project,
-its components, their files and each file's functions, then its documents
-(README and the like), with a filter on top and a dot wherever something is
-worth a note. In the middle, what is open: the project opens as its overview
-(what it does, where to start reading, its components), a component as the
-architecture diagram, a file or a function as its code. On the right, 說明: what
-the open thing is; for a file, also its functions in line order with what each
-does. Beside it, 定義: what the open file defines besides its functions, read with
-tree-sitter for C, C++, Python, Go, TypeScript, JavaScript and Java. Types (struct,
-union, enum, typedef, class, interface; their fields on request), file-level
-variables, constants and macros (with their values), includes and imports (a
-project file opens on click), and exports. Each item gives its line and the
-functions that use it, found by name in the file and in the files that include or
-import it, so marked as inferred. It follows the code as 說明 does: the items a line
-defines or uses are marked, and pointing at one marks its lines, scrolled so the whole
-definition is in view (from its first line when it is taller than the code's area);
-so does pointing at a function in 說明's list of a file's functions
-(CodeView's peek with a range). A click in the code
-turns the side bar to the view about it: 說明 inside a function, 定義 on a line
-that defines a type, variable, constant or import (where that area is open beside
-the code), and 定義 brings the item the line defines into view. Files with more
-than 30 items get a filter. With the code inside a function, 說明 is that function
-for reading it: Execution context, Shared state, Parameters (each one's role, in,
-out or in-out, and how the language passes it), Return value, Side effects,
-Declaration (static, async, virtual ...) and Contract. Clicking a line in the code
-marks what is about that line and brings it into view, except while the pointer
-is in 說明; pointing at an item in 說明 marks its line in the code. Only facts are
-there; what may be wrong is in 檢查. The declaration and how each parameter is
-passed are read from the code with tree-sitter, so they are certain. What the body
-does is read from it too, and marked as inferred: which parameters it writes
-through (following calls into the repository's functions, and into outside ones
-an AI described), and which globals, statics, module or package variables it
-reads or writes, on which lines, atomically or not. The rest is written by
-`codemap describe` and marked as the AI's, and
-the words it uses (Pass by Sharing, precondition) are explained where they first
-appear. The project's own words (its terms)
-are explained where they appear, and the search finds them. Below, four tabs
-follow what is open: callee (what the function calls, level by level; a name
-clicked there or in caller opens that function everywhere, code, 說明 and both
-trees, and the way there stays above the trees, each step a way back), caller
-(what calls it, with how far a change reaches, as a tree or a table), 對外介面
-(the entry points, commands, environment variables, build products and files
-read and written, of the whole project or only of the open component, file or
-function) and 檢查 (for an open function, the language pitfalls and mismatches
-with its comment the AI found in it and how far a change reaches; whether the
-notes still match the code, and what the checks found worth checking). With a file or a component open, callee and caller list
-the files or components instead. The self-test (guess each level before it
-opens) is in 設定. Every border can be dragged, every tab can be dragged between
-the side bar and the panel, and Ctrl B, Ctrl J and Ctrl Alt B fold the explorer,
-the panel and the side bar; the layout is kept in the browser (設定 › 版面 puts it
-back). Narrower screens draw the side bar and then the explorer over the code,
-and phones pull the panel up from below. Ctrl K or Ctrl P searches. The **?** in
-the top bar walks through the layout; `codemap -h` lists every command.
+- Python 3.10 or newer. The tree-sitter grammars come as wheels, so nothing is downloaded at run time.
+- For C and C++: GCC (on macOS, where `gcc` is clang, run codemap in Linux or a container) and a
+  `compile_commands.json`. Without one, C and C++ are read by tree-sitter, by name only.
+- For Go: the Go toolchain, used to build a small helper once. Without it, tree-sitter reads Go.
+- For TypeScript and JavaScript: Node.js. Without it, tree-sitter reads them.
+- The extras: `viewer` (FastAPI, uvicorn) for `codemap serve`, `diagram` (Pillow) for the architecture
+  diagram.
 
-## How it works
+## Usage
 
-The map has four layers:
-
-1. **Calls.** Each language is read by a backend, and every backend writes the
-   same graph (`codemap/schema.py`); the rest of codemap reads only that graph.
-   - `gcc`: every translation unit in `compile_commands.json` is recompiled
-     with `-O0 -fcallgraph-info` (no linking). Macros are expanded, only the
-     `#ifdef` branches that are really built appear, and calls through
-     function pointers are kept as `__indirect_call`. Edges: `compiler`.
-   - `python`: Python's own `ast` resolves names and simple types. Imports
-     (aliases, relative, cycles), module functions, classes, `self`/`cls`,
-     the MRO and `super()` decide a target exactly; constructors,
-     annotations (`X | Y`, `Optional`, `Union`), return values, assignments
-     and instance attributes (`self.client = Client()`) infer one, and so do
-     containers: `list[User]`, `dict[str, User]`, literals, comprehensions,
-     `append`/`add`/`extend`/`d[k] = v`, then `for`, `enumerate`, `.items()`,
-     `[i]`, `.pop()`, `.get()`, `list()`/`sorted()`; the edge records where
-     the element type came from (`element:annotation`, `element:append`, ...).
-     An object made by a constructor is exactly its class; `self`, `cls`, an
-     annotation or a parameter only bound it, so a method a subclass
-     overrides makes the call `ambiguous`. Each edge says `resolution`:
-     `exact`, `inferred`, or `ambiguous` (a union, an override, a dispatch
-     table: every target gets an edge; a container that also holds values
-     of unknown type marks its targets `partial`). A call nothing
-     decides gets no edge and is counted as unresolved; it is never matched
-     on its name across the repository. A function handed on as a value
-     (`hub.spawn(self._monitor_loop)`, `Thread(target=run)`, `{"x": handler}`,
-     `self.cb = f`) is an edge of kind `ref` from where it is handed on. An
-     annotation of `Any` or `object` names no type, so calls on it stay
-     unresolved. Edges: `static`.
-   - `go`: Go's own `go/types`, through a small helper (standard library
-     only) that codemap builds with the local Go toolchain into
-     `~/.cache/codemap` the first time. Packages come from `go.mod` files
-     and directories, not `go list`, so nothing is downloaded: a module that
-     is not in the module cache, or a newer Go than the local one, only
-     leaves the calls into it named by import path. Package functions,
-     methods of concrete types, promoted methods (`embedding`), method values
-     and method expressions are `exact`. A call through an interface goes to
-     the repository's types that implement it, checked with
-     `types.Implements` and never by method name; values a variable or field
-     was given (`&Server{}`, a constructor's return) narrow it first. A call
-     through an interface from outside the repository (`err.Error()`) goes to
-     the interface method itself, and so does a call through a repository
-     interface that nothing in the repository implements. Calls
-     through function values, struct fields and closures follow what was
-     stored in them. `go` and `defer` calls carry `mode`; a function handed on
-     as a value (`m.HandleFunc("GET /x", s.page)`) is an edge of kind `ref`,
-     and the `net/http` adapter turns those into routes. Without a Go
-     toolchain the Go files go to tree-sitter. Edges: `static`.
-   - `typescript`: the TypeScript compiler API (TypeScript 5 or 6), through a
-     small Node helper, reads TypeScript and JavaScript. Each `tsconfig.json`
-     or `jsconfig.json` is one program (files no config lists get default
-     options with `allowJs`), so the compiler resolves imports, exports,
-     aliases, re-exports, namespaces, classes, constructors, inheritance and
-     `super`. A call decided by a name or by the receiver's static type (an
-     annotation, a return type, an assignment, generics, `this`) is `exact`
-     when no subclass overrides the method; unions, overrides and several
-     implementations of an interface are `ambiguous`; values decide calls
-     through variables, fields, props and callbacks (`let cb = save`,
-     `new Button(save)`, `<Editor onSave={save}/>`, `useCallback(fn)`, a
-     function that returns a closure) and are `inferred`, or `ambiguous` when
-     a parameter may be given anything else. JSX elements are calls to their
-     components; a function passed as a value is a `ref`. A function with no
-     name of its own is a node named after the nearest named one
-     (`Page.fn1`); the methods of an object literal keep their names
-     (`tipFor.show`), and so does a function React wraps
-     (`const Card = forwardRef(...)`, `memo`, `useCallback`: `Card`). A
-     decorator is a call from its class (`infer.how: "decorator"`): it runs
-     when the class is defined, not when the method it marks is called.
-     Configs that differ only in what they emit (`outDir`, `rootDir`,
-     `declaration`, `composite`, ...) share one program, so a monorepo's
-     packages are checked once and values flow between them; an import of
-     one of the repository's own packages (`@scope/core`, found by the
-     `package.json` files) goes to its source even when `node_modules` does
-     not link it or its `exports` name a build that does not exist. `.d.ts` files and `node_modules` are read for types
-     only: what they declare is an `ext:` node, named by its import
-     (`react.useState`) or its type (`Array.map`). Without `node_modules`, a
-     package's names are known by their imports only (placeholders, listed on
-     the settings page) and the calls on its values stay unresolved; nothing
-     is guessed in their place. TypeScript comes from the repository's
-     `node_modules`, or from codemap's cache (`~/.cache/codemap/typescript`,
-     installed there once with npm); without Node or TypeScript the files go
-     to tree-sitter. `"backends": {"typescript": false}` in
-     `.codemap/rules.json` sends them there too. Edges: `static`.
-   - `syntax`: for the other languages, tree-sitter reads definitions, calls and imports, and joins a
-     call to a definition when the name decides it (the same file, an import,
-     `self`/`this`, the package in Go, a name defined once). Edges: `syntax`;
-     a call on an object of unknown type joined by a method name defined once
-     carries `by: "name"`. C/C++ is read this way only when there is no
-     `compile_commands.json`.
-   - **Framework adapters** add what a framework calls by itself (source
-     `framework`): entry points (routes, tests, event handlers), injection
-     (pytest fixtures, FastAPI `Depends`), and callbacks (Ryu/os-ken
-     `set_ev_cls`, ONOS `addProcessor`). Adapters exist for Flask, FastAPI,
-     pytest, Ryu/os-ken, Mininet, ONOS and Go net/http.
-2. **Rule scan.** Text rules add what the compiler cannot see: functions stored
-   in pointers, indirect calls through those pointers, constructors,
-   `setenv`/`getenv` pairs, `exec`, `-D` flags in Makefiles, and C names that
-   Python files mention. Every rule edge is tagged with its rule and should be
-   read as a candidate.
-3. **Guides.** `codemap arch` writes a generated Architecture section into
-   `CODEMAP.md` and a diagram. Text written around the markers is kept.
-4. **Shared use.** `CODEMAP.md` and `.codemap/index.json` live in the repo, so
-   a person and an agent start from the same map. `codemap check` validates
-   every `file:line` reference and every `` `caller -> callee` `` claim in a
-   Markdown file against the source and the index.
-
-## Install
-
-```bash
-uv tool install 'codemap[diagram,viewer] @ git+https://github.com/seanyeh77/codemap'
-```
-
-Python 3.10+. The tree-sitter grammars are wheels with the parser inside, so
-nothing is downloaded when codemap runs. The `diagram` extra adds
-Pillow for measuring text in the architecture diagram, and the `viewer` extra
-adds FastAPI and uvicorn for `codemap serve`. The viewer itself ships prebuilt
-inside the package. Node.js is needed only to read TypeScript and JavaScript
-with the TypeScript compiler (tree-sitter reads them otherwise).
-
-GCC must be installed: `-fcallgraph-info` is a GCC option, so units are
-compiled with `gcc` (or `g++`) even when `compile_commands.json` says `cc` or
-`clang`; use `--cc` to name another GCC. On macOS, where `gcc` is clang, run
-codemap in Linux or a container. `rsvg-convert` is used to also write a PNG.
-
-## Use
-
-For C/C++, produce `compile_commands.json` first, without a full build if
-possible: CMake configure with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, or
-`compiledb -n make`, or `bear -- make`. Other languages need nothing: `codemap
-index` reads every file git lists (or the tree, outside git) with a known
-extension. `.pyi` stubs are not read; they describe outside libraries.
-
-Languages and adapters can be turned off in `.codemap/rules.json`:
-`{"languages": {"disable": ["css"]}, "frameworks": {"disable": ["onos"]}}`.
-
-```bash
-codemap index                        # .codemap/index.json, cached per unit
-codemap index --scope src/libibtrace src/ibmon
-codemap callers ibt_span_begin       # also finds calls hidden in macros
-codemap callees emit
-codemap where take                   # the definition the default build uses
-codemap relations IBTRACE_SHM        # rule edges about a name or symbol
-codemap arch                         # CODEMAP.md Architecture section + diagram
-codemap check CODEMAP.md docs/tour.md
-```
-
-### Viewer
-
-```bash
-codemap serve                        # http://127.0.0.1:7300/, live view of the working tree
-codemap serve --notes notes.md CODEMAP.md
-codemap export                       # ibtrace-5977772.codemap, a snapshot to open elsewhere
-codemap export --html                # one HTML file with the viewer and the snapshot inside
-codemap viewer -o site/              # static viewer for a web server; open a .codemap file in it
-```
-
-The static viewer is also on GitHub Pages: https://seanyeh77.github.io/codemap/. Open a
-`.codemap` file there, or add `?snapshot=<URL>` for one on the web (the server must allow
-cross-origin requests; GitHub's raw files do). The snapshot stays in the browser. The page
-can be installed as an app from the browser (the install button on the page, or the browser's
-own menu; in Safari, Share, then Add to Home Screen): it then opens from the desktop or home
-screen, works offline, and opens `.codemap` files directly where the system supports it
-(Chrome and Edge on a desktop).
-
-`--notes` takes any Markdown file, so design documents can be checked the same way:
-`codemap serve --notes notes.md docs/*.md` lists every file:line in them that no
-longer matches the code.
-
-A matching line says what it rests on: 「呼叫已確認」 (the compiler saw the call)
-or 「名稱出現」 (the cited line holds the note's names; the rest of the sentence,
-such as who sets or reads a value, is not checked).
-
-The overview lists the project's documents (the README, `docs/*.md` and any
-document the code names), each with its first heading and sentence. Under
-「值得檢查的地方」 it also lists what outlives the process: shared memory,
-named semaphores and FIFOs made with `O_CREAT`, who removes them, and the calls
-that end the program in the components that make them.
-
-Every function carries what is known about what it does, in up to three kinds:
-the author's line (its docstring, or the comment right above the definition, cut
-to the first sentence), a summary of facts codemap knows (the command that runs
-it, the commands it runs, the files it reads and writes, who calls it), and an
-AI's description once that exists. The panel lists every kind with where it
-comes from; a file's list of functions and a link's card show one line, the
-first kind there is in the order chosen in Settings.
-
-codemap never calls an AI itself. `codemap describe` writes prompts for what is not
-described yet, in four rounds, each resting on the one below it:
-
-1. functions: what each does
-2. files, the commands of an argparse program and the allowed values of their
-   arguments, environment variables, the files the code reads and writes,
-   the functions outside the repository it calls, and the types and file-level
-   variables each file defines (with a note on the fields that need one)
-3. components, from what their files do
-4. the project (two or three sentences), a reading route (the functions to read
-   first, in order) and a glossary of the project's own words
+In the repository you want to read:
 
 ```sh
-codemap describe                       # prompts for the lowest round not done, in .codemap/prompts/
-# give each prompt-NN.md to an AI, save its JSON answer as answer-NN.json beside it, then
-codemap describe --apply .codemap/prompts/answer-*.json --by claude-opus-5-5
-codemap describe                       # the next round, until it says everything is described
-codemap describe --status              # each round: up to date, stale, wrong, missing
+codemap index          # read the code into .codemap/index.json; run it again after the code changes
+codemap serve          # open the map at http://127.0.0.1:7300/
 ```
 
-To have an AI agent (Claude Code, in this repository) do every round by itself,
-give it the instruction `codemap describe` prints after the prompts: run describe,
-answer each prompt, apply, fix what was not kept, and go on until everything is
-described.
+On a remote machine, forward the port from your laptop with `ssh -L 7300:localhost:7300 HOST` (VS Code
+Remote-SSH does this by itself). The **?** in the viewer's top bar walks through the layout in five
+steps.
 
-What it says on screen is in English, like every command. The instruction for an
-AI agent is in English, or in Chinese with `--lang zh-TW`; the choice is kept in
-`~/.config/codemap/settings.json` for next time.
+Not sure what to do next? Run `codemap` alone: it says where the project stands and offers the next step.
 
-With no file named it takes the whole project (not its tests: `--tests`), only
-what has no up-to-date description (all of it: `--rewrite`), 12 functions (each
-with its parameters and contract) or 30 items to a prompt (`--batch N`). `--level N` writes round N even if one below
-is not done. Name files to take only their functions: `codemap describe
-src/client.c -o prompt.md`. After the code changes, the same `codemap describe`
-asks again for just what changed.
+For C and C++, write `compile_commands.json` at the repository's top first, ideally without a full
+build:
 
-Hovering a call to a function outside the repository (`accept`, `memcpy`) shows
-what it does and each parameter's role, from round 2, where the AI describes the
-outside functions the project calls from what it knows of them.
-
-The 定義 view shows, under each type, variable and constant, what its author
-wrote about it (the comment above it, or after it on its line; a Python
-docstring), and under each field the comment beside it. The types and file-level
-variables also get an AI description in round 2, from their definition and the
-functions that use it; which one shows follows the same order setting as a
-function's. A type's description turns stale when its definition changes, not
-when the functions that use it do. A constant or macro goes to the AI only when
-its author commented it, and every commented field gets a note (a long type's
-fields are asked for 60 at a time, as items of their own, def:FILE:NAME#fields-2 and on): the comment is in
-its author's language, which may not be the reader's. The AI explains what the
-comment leaves out; it does not translate the comment, which is shown as written.
-
-A function's description comes with `info`, short facts a reader needs to use or
-change it, each about one line where it can be: what runs it and what that
-forbids, the data outside it it reads or writes, each parameter's role (in, out,
-in-out) and meaning, what each return value means, its side effects, its
-contract (pre, post, error, ownership), and, apart, the pitfalls and mismatches
-it falls into, which the viewer shows under 檢查. An `info` item is not kept
-where its line is outside the function, it names a parameter the function does
-not have, or a part or kind is not one of these. A description written before
-`info` was asked for is asked for again by the next `codemap describe`.
-
-Each description is in Traditional Chinese and English, cites the lines it rests
-on, and is kept in `.codemap/descriptions.json` with a hash of what it describes
-(the function's source, the file, the functions a command runs, the lines a
-variable is read on). An answer is not kept where it cites a line outside what
-it describes (a function and its neighbours; a file; a command's functions; the
-project may cite any file, its README too), a name in `code` font the code does
-not have, a term on a line without that word, or a route step that neither
-calls the next nor is a place the program starts (nothing in the repository
-calls it). The viewer shows them in the overview (這個專案, 閱讀路線, 名詞, the
-components, and the commands, values, variables and data files in their
-tables), in a file's panel and for each function. A function changed since
-is shown as stale (after the facts, faded); `codemap check` lists the stale and
-the wrong ones. `codemap where NAME` prints every kind of description, and
-`codemap callers NAME -d` / `callees NAME -d` print them for each function listed.
-
-For a Python program that reads its command line with `argparse`, 「進入與結束」
-lists its commands as a person types them (`python3 harness/lab3.py status
-[--json]`, or the `[project.scripts]` name from `pyproject.toml`) and the
-function each runs: the one named in `set_defaults(func=...)`, or the calls in
-the branch that tests the subparsers' `dest` (`if args.command == "status":`,
-`match args.command:`). When all but one command have a branch, the code after
-the last branch runs the remaining one. For an argument with a fixed set of
-values (`choices=SCENARIOS`) it shows where the list is written and, for each
-value, the first place that names it in the command's functions and three levels
-of their calls (`if name == "link-down":`). The panel of such a function shows the
-command that runs it. Commands made in a loop (`add_parser(name)` with a
-variable) have no name codemap can read and are left out.
-
-`codemap serve` listens on localhost. From a laptop, forward the port
-(`ssh -L 7300:localhost:7300 HOST`); VS Code Remote-SSH does this by itself.
-The viewer shows the architecture, call trees (with a predict-then-reveal
-mode), who is affected by a change, the check results of the notes, and the
-source of every function. A snapshot has the same pages, without the live
-source. Rebuilding the index and expanding macros from the viewer are not
-wired up yet; run `codemap index` and press 「重新載入索引」.
-
-An empty `callers` result can also mean that the caller lives in a file that is
-not in `compile_commands.json` (tests often are not); the command says so.
-
-Commit `CODEMAP.md`, `.codemap/index.json` and the diagram; add `.codemap/cache/`
-to `.gitignore`.
-
-## Configuration
-
-Optional `.codemap/rules.json`:
-
-```json
-{
-  "scope": ["src/libibtrace", "src/ibmon"],
-  "source_scope": {"production": ["tests/tools"], "test": ["examples/"]},
-  "disable": ["exec"],
-  "components": {"src/libibtrace/hooks": "hooks"},
-  "describe": {"src/libibtrace": "Preloaded into the traced program; records each verbs, UCP and UCT call into the ring."},
-  "roles": {"harness/controller.py": "editable", "harness/checks.py": "protected"},
-  "phases": {"main": [{"name": "start-up", "from": "ibmon_parse_args"}, {"name": "collect", "from": "ibmon_sched_start"},
-                      {"name": "wind-up", "from": "ibmon_stats_print"}]},
-  "channels": [
-    {"from": "src/libibtrace", "to": "src/ibmon", "via": "src/common", "label": "ring"}
-  ],
-  "custom": [
-    {"name": "real_symbol", "pattern": "IBT_REAL\\(", "files": ["src/**/*.c"], "kind": "dlsym"}
-  ]
-}
+```sh
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && ln -s build/compile_commands.json .   # CMake
+compiledb -n make                                                                       # Make, without building
+bear -- make                                                                            # Make, with a build
 ```
 
-Custom rules are where project-specific patterns go once someone has agreed
-they are worth tracking.
+### Add AI descriptions (optional)
 
-`source_scope` overrides which files are test code (see Limits) for some paths:
-a file or directory listed under `production` or `test` gets that scope whatever
-its name, and the longest listed path wins. Test files are still indexed; only
-the production graph and the type inference of production code leave them out.
-(`scope`, above, is different: it limits what is indexed at all.)
+Without descriptions the map still shows every call, plus the authors' own comments. To have an AI
+say what each function, file, type and component does:
 
-`describe` says what a component is for, in the project's own words. Without
-it the overview shows the top comment of the component's main file and says
-which file it came from.
-
-`roles` marks which files people are meant to change (`editable`) and which
-they must leave alone (`protected`), for a path or a whole folder; the longest
-listed path wins. The file diagram shows the mark on each box. Without it the
-viewer reads the first sentence of a file's top comment: one that starts by
-calling the file editable, or protected, read-only, generated or not to be
-edited, gets that mark.
-
-`phases` splits the calls of a long function into stages in the flow tree. A
-stage's `name` is one string, or one per language for readers in another one:
-`{"zh-TW": "啟動", "en": "start-up"}` (the viewer's language, else English). Each
-stage starts at the first call of the function named in `from` and runs until
-the next stage; calls before the first stage stay at the top. The split is the
-project's reading of its code, so codemap never guesses it.
-
-`env` adds what the code cannot say about an environment variable:
-`{"IBTRACE_RECORD": {"purpose": "0 measures the wrappers' cost without recording", "default": "1"}}`.
-Without it the overview still shows what the C code reads it as (a flag, a number,
-text, or only whether it is set), its value when unset, and where it is stored.
-
-Without `purpose`, the overview shows the sentence of a comment that names the
-variable (`IBTRACE_ALL_POLLS=1: record the empty calls one by one`), from the C
-files and the headers next to them.
-
-`channels` declares data that one component hands to another through a shared
-one (a shared-memory ring, a queue) without any call between them. The
-architecture diagram draws each as a dashed line labelled 「經由 `src/common`
-傳資料」, and clicking it lists where each side uses the shared component.
-
-## Tests
-
-```bash
-python3 -m unittest discover -s tests               # small fixture, needs cc; API tests need the viewer extra
-python3 tests/regress_ibtrace.py PATH_TO_IBTRACE    # after `codemap index` there
+```sh
+codemap describe                                       # prompts in .codemap/prompts/prompt-NN.md
+# give each prompt to an AI and save its JSON answer as answer-NN.json beside it
+codemap describe --apply .codemap/prompts/answer-*.json
+codemap describe                                       # the next round, until all four are done
 ```
 
-The ibtrace regression replays twelve questions that were used to design the
-rules, so it guards against breaking them; it is not evidence that the map
-helps a reader.
+The rounds go functions, then files, types and variables, then components, then the project. An AI
+agent such as Claude Code can do every round by itself from the instruction `codemap describe` prints.
+While `codemap serve` runs, press 重新載入索引 (Reload index) to see new descriptions; the viewer
+also lists what is still missing and any prompt that waits for an answer or for `--apply`.
 
-## Developing the viewer
+### From the terminal
 
-The viewer lives in `viewer/`: React 19.3, Vite 8 (Rolldown), TypeScript 7
-(the native compiler), TanStack Query 5, the React Compiler 1.0 through Babel,
-and Vitest 5. It uses SeanYeh's design system, the npm package `@seanyeh77/ui` at a pinned version
-(`npm i @seanyeh77/ui@<version>` updates it). `npx @seanyeh77/ui-cli check <URL>` checks a page
-at 390 px and 1280 px in light and dark; it needs Chromium (`npx playwright install chromium`).
-The build puts the code, styles and Latin fonts inside `codemap/viewer_dist/index.html`; the
-Chinese font stays in `codemap/viewer_dist/assets/`, which `codemap serve` serves and
-`codemap viewer` copies.
-
-```bash
-cd viewer
-npm install
-npm run dev          # with `codemap serve` running on port 7300
-npm test
-npm run build        # writes codemap/viewer_dist/index.html; commit it
-npm run build:pages  # the GitHub Pages app in viewer/dist-pages (CI publishes it from main)
+```sh
+codemap where NAME          # the definition of NAME, and what it does
+codemap callers NAME        # who calls it (-d adds what each one does)
+codemap callees NAME        # what it calls
+codemap check NOTES.md      # verify the file:line references and call claims in your notes
+codemap export --html       # one HTML file with the map, to open anywhere
+codemap -h                  # every command
 ```
 
-`build:pages` adds what makes the page an installable app: `viewer/pwa/` holds the manifest,
-the service worker (network first, so a new build is used at once; the kept copy answers
-offline) and the icons. The page `codemap serve` returns has none of them.
+Commit `.codemap/index.json` and `.codemap/descriptions.json` to share the map with your team or your
+agent, and add `.codemap/cache/` to `.gitignore`.
 
-The build is one self-contained `index.html`, so it can be served by
-`codemap serve`, embedded by `codemap export --html`, and opened from disk.
+## Documentation
 
-## Limits
+- [The viewer](docs/viewer.md): the layout, every view, snapshots and the hosted viewer
+- [AI descriptions](docs/describe.md): the four rounds, what an answer must satisfy, how it goes stale
+- [How it works](docs/how-it-works.md): each language's backend, the rule scan, the guides
+- [Configuration](docs/configuration.md): `.codemap/rules.json`
+- [Limits](docs/limits.md): what codemap cannot see, and the cost of reading TypeScript
 
-- Python types are followed through constructors, annotations, returns,
-  assignments, attributes and containers, not through arguments without
-  annotations, `**kwargs`, `getattr`, or rows read from files (`for row in
-  csv.DictReader(...)`); those calls stay unresolved.
-- Go: a call through an interface from outside the repository (`error`,
-  `io.Writer`) goes to the interface method itself (`error.Error`), unless
-  the values the receiver holds name its type; the repository's methods that
-  implement such an interface are linked to it by `implements` relations,
-  which are not calls. Build tags are judged by file name only, vendor
-  directories get no special handling, packages that cannot be read are
-  placeholders known by name, and a file that does not type-check fully is
-  marked; the settings page lists all of this. Values read through channels,
-  maps and slices are not followed.
-- TypeScript/JavaScript: values are followed through variables, fields,
-  parameters, props, `bind`, `useCallback` and functions that return
-  functions, not through arrays, maps or promises (calls on `any` stay
-  unresolved too); React state setters are the library's functions (below). A call through a parameter is `ambiguous` with `partial`: the
-  repository's call sites are known, other callers are not. An interface of a
-  library is dispatched only when a class of the repository says it
-  implements it; otherwise its methods are named by their type
-  (`Array.map`, `Document.getElementById`). TypeScript is structurally typed,
-  so a class can fit a library's interface without saying so: such implicit
-  implementations are not found (looking for them would make every class with
-  a `length` or a `get` a candidate). Interfaces of the repository are matched
-  by `implements` and by shape. A file that does not type-check fully (often:
-  no `node_modules`) is marked like a Go file.
-- TypeScript cost: the compiler type-checks every file, so indexing takes
-  about twice as long as `tsc --noEmit`. Each program that differs in its
-  options (an example app with its own tsconfig) is checked on its own,
-  with the packages and library types it imports. `benchmarks/typescript.md`
-  has the baseline: excalidraw (710 files) 56 s and 1.4 GB with its
-  dependencies installed, TanStack Query (2,153 files, 54 programs) 209 s
-  and 1.9 to 4.8 GB. `CODEMAP_TS_PROFILE=1 CODEMAP_TS_DEBUG=1` reports, per
-  program, what it loaded and where the time went.
-- TypeScript program cache: each program's nodes, edges and counts are kept
-  in `.codemap/cache/typescript/` (ignored by git) with every question the
-  program asked while it was built and analyzed: the files it read and their
-  content, the files and directories module resolution looked for, and which
-  files are the repository's and which are tests. The next index replays a
-  program whose answers are all unchanged and builds the others, so the
-  graph is the same as without the cache. On TanStack Query a run with
-  nothing changed takes 1.7 s instead of 213 s, and an edit in one example
-  app 9.8 s; an edit in a package most programs import rebuilds those
-  programs. `CODEMAP_TS_CACHE=0` turns it off. `benchmarks/typescript.md`
-  has the scenarios. Maintenance:
-  - `codemap index` and the settings page report how many programs were
-    replayed and rebuilt, why (no entry, a file's content, a module lookup,
-    the repository's or tests' files, a damaged entry, another format), how
-    many entries are kept, their size and how many were removed.
-  - An entry is written to a temporary file and renamed into place, so a
-    stopped run or two runs at once never leave half an entry; temporary
-    files older than an hour are removed.
-  - An entry that cannot be read, does not have the expected shape, or
-    whose checksum does not match is removed and its program analyzed in
-    full: no part of it is replayed. The checksum covers the whole entry:
-    the questions and answers that decide whether it is used, and the
-    results it would replay.
-  - The key includes the helper's code, codemap's version, TypeScript and
-    Node, and each entry records its format: entries of another version are
-    never used, and are replaced.
-  - A program's new entry replaces its old one; an entry no run has used
-    for 14 days is removed, and beyond 2 GB
-    (`CODEMAP_TS_CACHE_MB`) the least recently used go; an entry the
-    current run used is never removed.
-  - Each run adds one line to `.codemap/cache/typescript/log.jsonl` (the
-    last 1,000 runs): programs replayed and rebuilt, why, entries, size and
-    time, to see the hit rate and the invalidation reasons in real use.
-  - `benchmarks/ts_cache_regression.py` replays a repository's last commits
-    with and without the cache and compares the graphs at every commit.
-- A function a library hands back (`const [x, setX] = useState()`, a
-  solid-js setter) is a call to that library, `inferred`, named by its
-  declared type (`react.Dispatch`) or by the function that returned it
-  (`@testing-library/react.render()`). This needs the library's types;
-  without `node_modules` those calls stay unresolved. `new C()` of a class
-  whose constructor comes from a library (`extends LitElement`) goes to `C`.
-- TypeScript version: a repository on TypeScript 5 or 6 is read by its own
-  compiler (TypeScript 6 is never downgraded). Otherwise codemap uses one
-  exact version (5.9.3, `codemap/backends/ts.py`) installed once into its
-  cache, not whatever `typescript@5` means on the day of the install. The
-  index and the settings page record the version and where it came from.
-- `exact` means the edge's target is certain from the types and overrides
-  codemap can see in what it analyzed, not that one piece of code runs.
-  `obj.run()` with `obj: Base` is `exact` to `Base.run` when no class in the
-  repository overrides `run`; code outside the repository (a library user,
-  a plugin) may still subclass `Base`, and a runtime trick (`as any`,
-  monkey-patching, reflection) can call something else. If a subclass in the
-  repository does override it, the call is `ambiguous` to both. When the
-  target is an interface or abstract method (`error.Error`,
-  `Handler.Handle` in a repository with no implementation of `Handler`, a
-  TypeScript interface member), the call certainly goes through that method,
-  but which implementation runs is decided at run time. codemap shows the
-  known implementations as `implements` relations, and when it can see them
-  (the repository's implementations, or the values the receiver holds) it
-  writes `ambiguous` edges to each of them instead.
-- Test code (`_test.go`, `test_*.py`, `tests/`, `*.test.ts`, Java
-  `src/test/`, or as `source_scope` says) has `scope: "test"`. The architecture diagram and the type
-  inference of production code leave it out: a closure a test stores in a
-  field, a fake that implements an interface, or a subclass a test defines
-  never becomes a target of a production call. The viewer shows test code in
-  flows, impact and search only when "Include test code" is on.
-- Edges are per function, not per call site: inside `Base.run`, `self.execute()`
-  stays ambiguous when a subclass overrides `execute`, even if every caller
-  happens to pass a `Base`.
-- In the other tree-sitter languages the calls come from names, not types: a method called on an
-  object whose type codemap cannot see is joined only when one definition in
-  the repository has that name (and never for names every container has, such
-  as `get` or `append`). Dynamic calls (`getattr`, reflection, callbacks passed
-  around as values) are missed unless an adapter knows the framework.
-- The text rules of layer 2 read C only.
-- Inline `<script>` in HTML is not read; `<script src>` and `on…` handlers are.
-- Indirect calls through pointers filled at run time (for example `dlsym`
-  results) stay unresolved; `codemap index` reports how many.
-- CUDA device code and code outside the repo are not mapped.
+## Contributing
+
+Issues and pull requests are welcome at [seanyeh77/codemap](https://github.com/seanyeh77/codemap).
+[docs/development.md](docs/development.md) covers the tests and building the viewer.
+
+```sh
+git clone https://github.com/seanyeh77/codemap && cd codemap
+uv run --all-extras --with pytest --with httpx2 pytest   # needs gcc; Go and TypeScript tests skip without Go or Node
+cd viewer && npm install && npm test
+```
