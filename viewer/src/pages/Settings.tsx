@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react'
 import { ORDERS, setDescOrder, useDescOrder, type DescOrder } from '../data/describe'
 import { UI } from '../ui'
 import { dateTime, noun, setLang, t } from '../i18n'
@@ -90,12 +91,12 @@ export function Settings(p: Props) {
             {st.compilers?.[b]?.cache ? <><br /><span className="muted">{cacheText(st.compilers[b].cache!)}</span></> : null}
             {st.ambiguity?.[b] ? <><br /><span className="muted">{t('多個可能目標：repo 內的候選 {v1} 條（{v2} 個呼叫）；外部同名方法的候選 {v3} 條（{v4} 個呼叫，例如聯集型別上的 toString）', { v1: st.ambiguity[b].repo_edges, v2: st.ambiguity[b].repo_sites, v3: st.ambiguity[b].external_edges, v4: st.ambiguity[b].external_sites })}</span></> : null}
             {/* which calls had no target: the reader sees what the flow and impact pages may be missing */}
-            {st.unresolved?.[b]?.length ? <details className="unresolved"><summary>{t('最常無法解析的呼叫（前 {v1} 種）', { v1: st.unresolved[b].length })}</summary>
+            {st.unresolved?.[b]?.length ? <Fold label={t('最常無法解析的呼叫（前 {v1} 種）', { v1: st.unresolved[b].length })}>
               <span className="entry-list">{st.unresolved[b].map(([call, n, at]) => <span key={call} className="entry-row"><UI.InlineCode>{call}</UI.InlineCode>{t(' × {v1}', { v1: n })}
                 {/* where: a count is a reason to doubt, the places say which flows it may have cut */}
                 {at?.length ? <span className="muted">{t('：')}{at.map(([f, l], i) => <span key={f + l}>{i ? t('、') : ''}{p.openAt
                   ? <UI.InlineCode look="location" onClick={() => p.openAt!(f, l)}>{`${f.split('/').pop()}:${l}`}</UI.InlineCode> : `${f}:${l}`}</span>)}{n > at.length ? t('…') : ''}</span> : null}</span>)}</span>
-              <span className="muted">{t('多為型別未知的物件或參數上的方法。選取位置即開啟該行。')}</span></details> : null}</span> })),
+              <span className="muted">{t('多為型別未知的物件或參數上的方法。選取位置即開啟該行。')}</span></Fold> : null}</span> })),
           // what an analyzer could not do fully: its results are not to be read as complete
           ...Object.entries(st.limits ?? {}).map(([b, l]) => ({ label: t('{v1} 分析限制', { v1: BACKEND[b] ?? LANG[b] ?? b }), value: <span>
             {b === 'go' ? <>{t('build tag 只依檔名判斷，vendor 目錄未特別處理。')}<br /></> : null}
@@ -192,4 +193,13 @@ export function Settings(p: Props) {
       ]} />
     </div>
   )
+}
+
+/** A list shown on request under its label: a quiet button that says whether it is open (no native <details>). */
+function Fold(p: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return <span className="fold">
+    <UI.Button variant="quiet" icon={open ? 'caret-down' : 'caret-right'} aria-expanded={open} onClick={() => setOpen(!open)}>{p.label}</UI.Button>
+    {open ? <span className="fold-body">{p.children}</span> : null}
+  </span>
 }
