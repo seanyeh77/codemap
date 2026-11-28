@@ -89,4 +89,7 @@ def build(root, files, tests=None):
         if not n.get("class"):
             n.pop("class", None)
         n.setdefault("line", None)
+    for k, v in part.items():               # Go writes an empty list as null
+        if isinstance(v, dict) and "errors" in v and v["errors"] is None:
+            v["errors"] = []
     return part
